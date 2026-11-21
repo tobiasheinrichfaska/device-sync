@@ -2,3 +2,4 @@ export * from './encoding.ts';
 export * from './canonical.ts';
 export * from './markers.ts';
 export * from './keys.ts';
+export * from './signature.ts';

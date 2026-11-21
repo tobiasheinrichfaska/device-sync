@@ -48,8 +48,7 @@ single spaces: `dddd dddd dddd dddd dddd`.
 
 Ported from two earlier implementations; new format version `:2` with English field names. The
 tests in `tests/log/` pin the behaviour. Not yet built: the exchange protocol (chunking, catch-up
-messages) and signatures; the fields `check` and `sig` are carried, but `sig` is neither produced nor
-verified here.
+messages); signatures are described in the section "Signatures" below.
 
 ## Change
 
@@ -112,3 +111,46 @@ device, then seq; notices by collection, id, field.
 
 An ordinary field named `deleted` (`DELETED_FIELD`) with `true` hides a record, `false` shows it
 again. It travels and decides like any field; an app must not use that name for its own data.
+
+## Signatures
+
+`signText` / `verifyText`: ECDSA P-256 with SHA-256 over the UTF-8 bytes of a text; the signature is
+the 64-byte P1363 form (r, s), 86 base64url characters. Verification is strict: a signature that is
+not canonical base64url (one spelling per signature), not 64 bytes, or not valid is simply `false`.
+
+**Signed text of a change** (`changeSigningText(appId, change, dataSet)`):
+
+```
+${appId}-change:2|${canonical({ v: 2, set: dataSet, device, seq, clock, collection, id, kind, check })}
+```
+
+- The **marker** `${appId}-change:2` is part of the text, so a signature made for one app never
+  verifies in another.
+- `set` is the **data set** the change belongs to; it does not count in another.
+- Head fields `device`, `seq`, `clock`, `collection`, `id`, `kind` are bound; `kind` `redacted` counts
+  as `set`, so erasing the content keeps the signature valid.
+- `check` is the content check value (`changeCheckValue`); it is taken before an erasure and kept, so
+  the content (`fields`, `knew`, `time`, `by`) is bound through it.
+- Example: `demo-change:2|{"check":"c1","clock":3,"collection":"items","device":"a","id":"x","kind":"set","seq":1,"set":"main","v":2}`.
+
+**Order of verification** (`judgeChange`), the first rule that applies decides:
+
+1. a member other than `device`, `seq`, `clock`, `collection`, `id`, `kind`, `fields`, `knew`, `time`,
+   `by`, `check`, `sig`: `false` (the signature does not cover it, so it would travel unchecked);
+2. the app's special-case hook (`checked` / `false` / `pending`; undefined = go on);
+3. a change under the receiver's own device id that is not already in its log: `false`;
+4. no `sig` or no `check`: `false`;
+5. a `delete` in a collection of `neverErase`: `false`;
+6. a change that is not `redacted` whose content does not match `check`: `false`;
+7. the author's key is not known (`KeySource.keyFor`): `pending`;
+8. the signature does not verify: `false`;
+9. the rights hook `mayWrite(author, change)` says no: `false`;
+10. otherwise `checked`.
+
+In a batch (`judgeChanges`) a `redacted` change that is `checked` counts only beside its record's
+final deletion (in the log already, or in the batch and `checked`); beside a deletion that is
+`pending` it is `pending`; otherwise `false`.
+
+**Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `false`:
+forgery. `readChanges` repeats the judgement while taken changes make more authors checkable; a single
+`false` aborts the whole batch and nothing is taken.

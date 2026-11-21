@@ -20,6 +20,16 @@ export { MAX_CLOCK_JUMP, concurrent, isNewer, seen, unionVector } from './vector
 export { changeCheckValue } from './check.ts';
 export { merge } from './merge.ts';
 export {
+  changeSigningText,
+  insertSignatures,
+  judgeChange,
+  judgeChanges,
+  readChanges,
+  signChange,
+  signOwnChanges,
+} from './signing.ts';
+export type { JudgeContext, JudgeOptions, KeySource, ReadResult, Verdict } from './signing.ts';
+export {
   DELETED_FIELD,
   emptyReplica,
   fieldHistory,

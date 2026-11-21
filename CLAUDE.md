@@ -49,9 +49,9 @@ Errors are codes, not sentences.
 | `docs/architecture.md`                                           | Layers and parameters (plan)                                  |
 | `manual_tests/`                                                  | Human-tester instructions (README only, no UI)                |
 | `src/index.ts`                                                   | Public entry: status and re-export of the finished layers     |
-| `src/core/` (`encoding`, `canonical`, `markers`, `keys`, `index`) | Core layer, first part: base64url, canonical JSON, markers, device keys, check code |
+| `src/core/` (`encoding`, `canonical`, `markers`, `keys`, `signature`, `index`) | Core layer, first part: base64url, canonical JSON, markers, device keys, check code, `signText`/`verifyText` |
 | `tests/core/`                                                    | Unit tests of the core layer                                  |
-| `src/log/` (`types`, `vector`, `check`, `merge`, `replica`, `index`) | Log layer, part 1 (pure): change, version vector, merge, redaction, conflict notices, history, undo |
+| `src/log/` (`types`, `vector`, `check`, `merge`, `replica`, `signing`, `index`) | Log layer (pure): change, version vector, merge, redaction, conflict notices, history, undo; signing and judging of changes (`signing`: signed text, `signChange`, `judgeChange(s)`, `readChanges`, hooks) |
 | `tests/log/`                                                     | Log tests: `basis` and `typed` (cases of both earlier implementations), `properties` (seeded random schedules), `helpers` |
 | `docs/wire-format.md`                                            | What the core and log layers put on the wire                  |
 | `tests/coupling.test.ts`                                         | Guard: no private project names, only own imports             |
@@ -79,7 +79,7 @@ npm run format:check
 
 ## Known Limitations
 
-- Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the pure part of the log layer (change model, merge, redaction, notices, history, undo) exist; the exchange protocol and signatures of the log, and trust, post, relay, transfer, push, browser are not implemented.
+- Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the pure part of the log layer (change model, merge, redaction, notices, history, undo) exist; signing of changes (`signing`, with `signText`/`verifyText`) exists; the exchange protocol of the log, and trust, post, relay, transfer, push, browser are not implemented.
 - Conflict notices are derived from the log (a change against the earlier implementations, which built them incrementally and could differ between devices); a notice lists the concurrent heads, not every superseded write.
 - The "hold back until approved" hook exists only as a type (`ApprovalHook`) and a marked spot in `merge`.
 - The soft-delete field name `deleted` is reserved; there is no limit on field count or value size yet.
