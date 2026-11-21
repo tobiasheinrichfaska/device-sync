@@ -288,7 +288,7 @@ describe('H6: memory before any signature check', () => {
     expect(steps[0]?.session.refusalReason).toBe('bad-signature');
   });
 
-  it('large signed pieces beyond maxSessionChars are refused as too-large, the buffer is dropped', async () => {
+  it('large signed pieces beyond maxSessionChars end the reading (truncated), not the session; the verified part is taken', async () => {
     let x = emptyReplica('x');
     for (let i = 0; i < 3; i += 1) x = ok(write(x, COL, `big${i}`, bigFields()));
     x = await signed(x);
@@ -298,10 +298,13 @@ describe('H6: memory before any signature check', () => {
     });
     expect(steps[0]?.session.refusal).toBeUndefined();
     expect(chars(steps[0]?.session.buffered)).toBeLessThanOrEqual(1_000_000);
-    expect(steps[1]?.session.refusal).toBe('too-large');
-    expect(steps[1]?.session.refusalReason).toBe('session-chars');
-    expect(steps[1]?.session.buffered).toBeUndefined();
-    expect(steps[2]?.replica.log).toHaveLength(0);
+    // the second piece does not fit: reading ends there, nothing is refused
+    expect(steps[1]?.session.refusal).toBeUndefined();
+    expect(chars(steps[1]?.session.buffered)).toBeLessThanOrEqual(1_000_000);
+    expect(steps[2]?.session.refusal).toBeUndefined();
+    expect(steps[2]?.session.truncated).toBe(true);
+    expect(steps[2]?.session.taken).toBe(1);
+    expect(steps[2]?.replica.log).toHaveLength(1);
   });
 
   it('LIMITS has the two new limits with their defaults', () => {
@@ -309,7 +312,7 @@ describe('H6: memory before any signature check', () => {
     expect(LIMITS.maxPendingChanges).toBeGreaterThan(0);
   });
 
-  it('a change whose author cannot be checked yet waits in a small buffer with its own count limit', async () => {
+  it('a change whose author cannot be checked yet waits; the count limit applies after the key-learning rounds', async () => {
     let q = emptyReplica('q');
     for (let i = 0; i < 5; i += 1) q = written(q, `r${i}`, { t: 'v' });
     q = await signed(q);
@@ -322,8 +325,18 @@ describe('H6: memory before any signature check', () => {
         limits: { maxPendingChanges: 3 },
       },
     );
-    expect(steps[0]?.session.refusal).toBe('too-large');
-    expect(steps[0]?.session.refusalReason).toBe('pending-changes');
+    // while the pieces arrive pending is bounded only by the session budget
+    expect(steps[0]?.session.refusal).toBeUndefined();
+    expect(steps[0]?.session.buffered).toHaveLength(5);
+    const capped = await feed(
+      emptyReplica('n'),
+      [part([...q.log], true)],
+      judgeFor('n', { keys: unknown }),
+      { limits: { maxPendingChanges: 3 } },
+    );
+    expect(capped.step.session.refusal).toBeUndefined();
+    expect(capped.step.session.truncated).toBe(true);
+    expect(capped.step.session.waiting).toBe(3);
     const fine = await feed(
       emptyReplica('n'),
       [part([...q.log], true)],
@@ -333,7 +346,7 @@ describe('H6: memory before any signature check', () => {
     expect(fine.step.session.waiting).toBe(5);
   });
 
-  it('the quota hook is asked with author, running count and replica; false ends the session', async () => {
+  it('the quota hook is asked with author, running count and replica; false ends the reading (truncated), not the session', async () => {
     let x = emptyReplica('x');
     for (let i = 0; i < 6; i += 1) x = written(x, `r${i}`, { t: 'v' });
     x = await signed(x);
@@ -344,8 +357,8 @@ describe('H6: memory before any signature check', () => {
     };
     const n = emptyReplica('n');
     const { steps } = await feed(n, [part([...x.log], false)], judgeFor('n', { quota }));
-    expect(steps[0]?.session.refusal).toBe('too-large');
-    expect(steps[0]?.session.refusalReason).toBe('quota');
+    expect(steps[0]?.session.refusal).toBeUndefined();
+    expect(steps[0]?.session.buffered).toHaveLength(3);
     expect(asked.map((a) => a[1])).toEqual([1, 2, 3, 4]);
     expect(asked[0]?.[0]).toBe('x');
     expect(asked[0]?.[2]).toBe(n);

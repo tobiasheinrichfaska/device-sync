@@ -312,7 +312,7 @@ describe('a forged change aborts the exchange and the receiver keeps its replica
     expect(step.replica).toBe(b);
   });
 
-  it('more collected changes than maxSessionChanges ends the session as too large', async () => {
+  it('more collected changes than maxSessionChanges end the reading, the verified part is taken', async () => {
     const a = await signed(
       written(written(written(emptyReplica('a'), 'r1', { t: 1 }), 'r2', { t: 2 }), 'r3', { t: 3 }),
     );
@@ -332,8 +332,9 @@ describe('a forged change aborts the exchange and the receiver keeps its replica
       )) as never;
       outcomes.push(step.session.refusal);
     }
-    expect(outcomes).toEqual([undefined, undefined, 'too-large']);
-    expect(step.replica.log).toHaveLength(0);
+    expect(outcomes).toEqual([undefined, undefined, undefined]);
+    expect(step.session.truncated).toBe(true);
+    expect(step.replica.log).toHaveLength(2);
     // exactly at the limit it goes through
     let ok = { session: startSession(b).session, replica: b };
     for (const part of parts) {

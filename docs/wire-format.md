@@ -87,8 +87,10 @@ One entry of a device's log. Only its author creates it; everybody forwards it.
 deletion of the record; `redacted` is a former `set` whose content was erased because the record was
 deleted. A redacted change keeps `device`, `seq`, `clock`, `collection`, `id`, `check` and `sig`
 (`check` is computed at that moment if the author had none) and drops `fields`, `knew`, `time`, `by`,
-so numbering stays gapless and the head stays checkable. A `set` that arrives for an already deleted
-record is stored redacted from the start.
+so numbering stays gapless and the head stays checkable. **A redacted change has exactly these
+members and no other**: `time`, `by` and `knew` are not covered by the signature (it covers the head
+and `check`), so the parser refuses them on a redacted change and the judge says `unknown-member`.
+A `set` that arrives for an already deleted record is stored redacted from the start.
 
 **Names.** `collection`, `id`, field names, keys inside a value and the device ids are used as keys
 of objects, so `__proto__`, `constructor` and `prototype` are refused everywhere (parser and local
@@ -192,41 +194,62 @@ for that change), the first rule that applies decides. Every `false` carries a r
 (`Rejection.reason`, `Session.refusalReason`):
 
 1. a member other than `device`, `seq`, `clock`, `collection`, `id`, `kind`, `fields`, `knew`, `time`,
-   `by`, `check`, `sig`: `false`, `unknown-member` (the signature does not cover it, so it would travel
-   unchecked);
+   `by`, `check`, `sig` (for a `redacted` change: other than `device`, `seq`, `clock`, `collection`,
+   `id`, `kind`, `check`, `sig`): `false`, `unknown-member` (the signature does not cover it, so it
+   would travel unchecked);
 2. the app's special-case hook (`checked` / `false` (`not-allowed`) / `pending`; undefined = go on);
-3. a change under the receiver's own device id that is not already in its log: `false`, `own-history`;
+3. a device the key source says was removed (`KeySource.standing`, a `cutoff`) and `seq` above the
+   cutoff: **`ignored`**, `after-removal` (not taken, not forwarded, not a refusal);
 4. no `sig` or no `check`: `false`, `unsigned`;
-5. a `delete` in a collection of `neverErase`: `false`, `never-erase`;
+5. a `delete` in a collection of `neverErase` (the option, or `KeySource.neverErase`): `false`,
+   `never-erase`;
 6. a change that is not `redacted` whose content does not match `check`: `false`, `bad-check`;
-7. the author's key is not known (`KeySource.keyFor`): `pending`;
-8. the signature does not verify: `false`, `bad-signature`;
-9. the same `device#seq` is already known (in the log, or earlier in the batch or session) with a
-   different signed text (head or check value): `false`, `equivocation`;
-10. a `delete` and the app's `allowFinalDelete(author, change, state)` does not say yes (it is
+7. the author's key is not known (`KeySource.standing().key`, else `keyFor`): `pending`;
+8. the signature does not verify: `false`, `bad-signature` (a change this replica already holds with
+   the same signed text and the same signature was verified when it was taken: a repeat costs no
+   second check);
+9. a change under the receiver's own device id that is not already in its log: `false`,
+   `own-history`. It is decided **only now**, after the signature verified with this device's own
+   key: an unsigned or forged change under the own id is `unsigned` / `bad-signature` and must not
+   tell the app to abandon its id;
+10. the same `device#seq` is already known (in the log, or earlier in the batch or session) with a
+    different signed text (head or check value): `false`, `equivocation`;
+11. a `delete` and the app's `allowFinalDelete(author, change, state)` does not say yes (it is
     **missing by default**, so a final deletion is judged `false`, `delete-not-allowed`: it is
     irreversible, the id is dead for ever, and every member's signature makes one valid);
-11. the rights hook `mayWrite(author, change, state)` says no: `false`, `not-allowed`;
-12. otherwise `checked`.
+12. the rights hook `mayWrite(author, change, state)` says no: `false`, `not-allowed`;
+13. otherwise `checked`.
 
-A `redacted` change that is `checked` counts only beside its record's final deletion: already in the
-replica (its data or its log), or in the same batch and `checked`; beside a deletion that is `pending`
-it is `pending`; otherwise `false`, `redacted-without-deletion`. In `readChanges` and `receiveJudged`
-the deletions verified in ANY round or piece count, also one that `merge` holds back for the moment
-(it comes with the batch), so an honest batch gets the same verdicts whatever its order, its piece
-structure or the order in which keys become known. A deletion that `merge` would skip (the number is
-known already) cannot be a helper: with the same signed text it is in the log, with another it is
-`equivocation`.
+A `redacted` change that is `checked` is taken only if its record's final deletion is **really
+applied**: already in the replica (its data or its log), or applied by `merge` in the replica as it
+would be with the batch's verified changes (the erased changes that pass included, as one fills the
+gap of its own number). A deletion that is judged right but that `merge` holds back (a gap in its
+author's numbering, a `knew` it cannot reach, a clock jump) does not count: the erased change is
+`pending` (not taken, not forwarded), and the same when the deletion itself is `pending` or `ignored`;
+without any deletion in sight it is `false`, `redacted-without-deletion` (in a partial session, see
+below, it waits instead). Otherwise a forwarder could erase a signed write at a victim while the
+deletion is not applied there. In `readChanges` and `receiveJudged` the verdicts do not depend on
+the order of the batch, its piece structure or the order in which keys become known.
 
-**Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `false`:
-forgery. `readChanges` judges the batch (`admit`, then `settle`, which repeats while taken changes
-make more authors checkable); a single `false` aborts the whole batch and nothing is taken.
+**Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `ignored`:
+neither taken nor forwarded, and not a refusal; the session goes on and the vector of that device does
+not advance past the gap, so the sender offers the changes again in every session. `false`: forgery.
+`readChanges` judges the batch (`admit`, then `settle`, which repeats while taken changes make more
+authors checkable); a single `false` aborts the whole batch and nothing is taken.
+
+**Key source.** `KeySource.keyFor(device, state)` is required. Optional: `standing(device, state)`
+returns `{ key?, cutoff? }` (the trust layer fills it from removal entries; `key` wins over `keyFor`,
+a number `cutoff` makes every change with `seq` above it `ignored`), and `neverErase`, a list of
+collections that is merged into the judge option of the same name (the device list itself must never
+be finally deleted).
 
 **What an app does with a reason.**
 
-- `own-history`: this device is told about a change of its OWN id that it does not hold: its state is
+- `own-history`: this device is told about a change of its OWN id, correctly signed with its key,
+  that it does not hold: its state is
   older than the world's (restored backup, cloned profile). It must stop writing and enrol again with
   a NEW device id; writing on would create equivocation.
+- `after-removal` is never a refusal; count it (`ReadResult.ignored`, `Session.ignored`).
 - `equivocation`: one device signed the same number twice with different content. Equivocation is
   only detected when the two histories meet in one replica: two devices holding different versions
   have equal stands, so a stand-based session never sends the change and only the fingerprints
@@ -242,7 +265,10 @@ make more authors checkable); a single `false` aborts the whole batch and nothin
 **The log is unbounded.** Nothing in the package limits how many changes the members write: a member
 can flood the log, and every device keeps and forwards it. An app bounds this with `mayWrite` (what an
 author may write) and `quota(author, count, state)` (how many changes of one author a session takes;
-default unlimited), and by removing a member that floods.
+`false` ends the reading of that session, see "Partial sessions"; default unlimited), and by removing
+a member that floods. Replicas are immutable values: the caches kept per log array (record index,
+held changes, deletions) are checked against the array's length and last element, but a replica must
+never be mutated in place.
 
 ## Exchange
 
@@ -255,14 +281,14 @@ only carries the messages; encryption belongs to the session of the `core` layer
 
 All messages are JSON objects with exactly these members; an unknown member refuses the message.
 
-| `t`       | Members                                       | Meaning                                                           |
-| --------- | --------------------------------------------- | ----------------------------------------------------------------- |
-| `stand`   | `vector`                                      | The sender's version vector; opens the session                    |
-| `changes` | `changes` (list of changes), `last` (boolean) | One piece of the changes the receiver lacks; `last` ends the list |
-| `done`    | `vector`, `fingerprint` (32 lower-case hex)   | Sent once, after the other's last piece was taken                 |
+| `t`       | Members                                                                                               | Meaning                                                                                                                    |
+| --------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `stand`   | `vector`                                                                                              | The sender's version vector; opens the session                                                                             |
+| `changes` | `changes` (list of changes), `last` (boolean), `more` (only `true`, only with `last: true`, optional) | One piece of the changes the receiver lacks; `last` ends the list; `more` says the answer was cut (see "Partial sessions") |
+| `done`    | `vector`, `fingerprint` (32 lower-case hex)                                                           | Sent once, after the other's last piece was taken                                                                          |
 
-Flow: on a `stand` the receiver answers with `pieces(missingFor(replica, vector))` (always at least
-one piece, the last marked `last: true`). On the other's last piece a device merges, then sends one
+Flow: on a `stand` the receiver answers with the changes the other lacks in the order of its own log
+(always at least one piece, the last marked `last: true`, and `more: true` when the answer was cut). On the other's last piece a device merges, then sends one
 `done` with its stand and `fingerprint(replica)`. Once it has sent and received `done`, `outcome`
 tells whether the fingerprints are equal. A repeated piece is harmless: merging is idempotent and
 `done` is sent only once.
@@ -292,7 +318,7 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
   `id` 1 to `maxId` characters, names as below, `kind` one of `set`/`delete`/`redacted`; `knew` (a
   vector; required for `set` and `delete`), optional `time` (safe integer, 0 or more), `by` (1 to
   `maxName` characters, no control or format character, NFC), `check` (43 base64url characters), `sig` (86 base64url characters, only with
-  `check`). `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
+  `check`). A `redacted` change refuses `knew`, `time` and `by`. `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
   `delete` and `redacted`.
 - **Vector:** at most `maxDevices` entries; keys are device ids, values safe integers of 0 or more.
 - **Numbers** must be safe integers (counts) or finite (values): `NaN`, `Infinity`, `-Infinity`,
@@ -314,22 +340,22 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
 One object, `LIMITS`, holds every default; the parsers, `pieces` and the session functions take
 `{ limits: Partial<Limits> }` to override some of them for one call.
 
-| Limit               | Default  | Meaning                                                                        |
-| ------------------- | -------- | ------------------------------------------------------------------------------ |
-| `maxFields`         | 40       | Fields in one `set` change                                                     |
-| `maxText`           | 2000     | Characters of one text inside a value                                          |
-| `maxValueChars`     | 16000    | JSON characters of one field value                                             |
-| `maxDepth`          | 6        | Nested lists/objects in one value                                              |
-| `maxEntries`        | 200      | Entries in one list or object of a value                                       |
-| `maxDevices`        | 50       | Devices in one vector (`stand`, `done`, `knew`)                                |
-| `maxChanges`        | 500      | Changes in one message                                                         |
-| `pieceBytes`        | 12000    | Size at which a piece is cut (UTF-8 bytes of JSON)                             |
-| `maxMessageChars`   | 1000000  | One `changes` message as JSON text (all its changes together); more is refused |
-| `maxSessionChanges` | 100000   | Changes `receiveJudged` holds over one session before it refuses               |
-| `maxSessionChars`   | 16000000 | JSON characters of the changes `receiveJudged` holds over one session          |
-| `maxPendingChanges` | 2000     | Changes of a session that wait because their author cannot be checked yet      |
-| `maxName`           | 120      | Field name, `by`, keys inside a value                                          |
-| `maxId`             | 200      | Collection name and record id                                                  |
+| Limit               | Default  | Meaning                                                                                  |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `maxFields`         | 40       | Fields in one `set` change                                                               |
+| `maxText`           | 2000     | Characters of one text inside a value                                                    |
+| `maxValueChars`     | 16000    | JSON characters of one field value                                                       |
+| `maxDepth`          | 6        | Nested lists/objects in one value                                                        |
+| `maxEntries`        | 200      | Entries in one list or object of a value                                                 |
+| `maxDevices`        | 50       | Devices in one vector (`stand`, `done`, `knew`)                                          |
+| `maxChanges`        | 500      | Changes in one message                                                                   |
+| `pieceBytes`        | 12000    | Size at which a piece is cut (UTF-8 bytes of JSON)                                       |
+| `maxMessageChars`   | 1000000  | One `changes` message as JSON text (all its changes together); more is refused           |
+| `maxSessionChanges` | 100000   | Changes one session carries: a sender cuts its answer here, a receiver ends reading here |
+| `maxSessionChars`   | 16000000 | JSON characters of the changes one session carries (same: cut, not refusal)              |
+| `maxPendingChanges` | 2000     | Changes still unverifiable AFTER the key-learning rounds of a session (cut, not refusal) |
+| `maxName`           | 120      | Field name, `by`, keys inside a value                                                    |
+| `maxId`             | 200      | Collection name and record id                                                            |
 
 Where the two earlier implementations differed, the larger value is the default (fields per change,
 text per value). The check value (43) and signature (86) lengths are fixed by the core layer.
@@ -337,7 +363,7 @@ text per value). The check value (43) and signature (86) lengths are fixed by th
 ### A rejected change ends the session
 
 `receive` (strict reading, then `onSyncMessage`) and `receiveJudged` (strict reading, then judging
-every piece AS IT ARRIVES) turn any problem into a **refusal** of the whole session, and nothing of the
+every piece AS IT ARRIVES) turn any HOSTILE input into a **refusal** of the whole session, and nothing of the
 offending piece (in `receiveJudged`: of the whole session) is taken. `Session.refusal` is one of:
 
 - `unreadable`: the message, or one change in it, is not exactly the shape (`refusalReason`
@@ -346,24 +372,50 @@ offending piece (in `receiveJudged`: of the whole session) is taken. `Session.re
   "Signatures" and `Session.refusalDevice` its author. Everything except the question "is there a
   deletion beside this erased change" is decided at once: an unsigned, forged, equivocating or
   not-allowed change refuses the session at the piece that carries it, not at the last piece.
-- `too-large`: a limit was hit before any signature was checked: more than `maxSessionChanges`
-  changes (`session-changes`), more than `maxSessionChars` JSON characters (`session-chars`), more
-  than `maxPendingChanges` waiting for a key (`pending-changes`), or the app's `quota` hook said no
-  (`quota`).
 - `unexpected`: a second `stand` (`repeated-stand`) or a second `done` (`repeated-done`) in one
   session. Every `stand` costs an answer, so one is enough.
 
 **Memory.** `receiveJudged` holds verified changes (to take), verified erased changes (waiting for
-their deletion) and changes whose author's key is unknown (a small buffer), at most
-`maxSessionChars` characters in all (`Session.bufferedChars`); nothing unverified beyond the pending
-buffer. Verified changes are held, not merged, until the last piece, so one forged change anywhere
-means nothing is taken.
+their deletion) and changes whose author's key is unknown, at most `maxSessionChanges` changes and
+`maxSessionChars` characters in all (`Session.bufferedChars`); nothing unverified beyond that.
+Changes whose author is unknown are bounded only by this overall budget while the pieces arrive: an
+author that a later change of the same batch introduces (the typical new device) must fit. Verified
+changes are held, not merged, until the last piece, so one forged change anywhere means nothing is
+taken. The accumulators are extended in place (private to the session), so a long session costs
+linear time.
+
+### Partial sessions
+
+A large honest history must never make a join impossible, so size limits do not refuse; they cut.
+
+- **Sender.** A `stand` is answered with at most `maxSessionChanges` changes and `maxSessionChars`
+  characters, taken as a **prefix of the sender's own log** (the order its changes were applied in, so
+  everything a change depends on comes before it, and each device's numbers stay gapless), and sent in
+  that order. The last message then carries `more: true` (`Session.sentMore`). An erased change is
+  never sent without its record's deletion (when the deletion is not part of the answer, the erased
+  change and later changes of its author wait for the next session). The receiver continues in its
+  next session, from the stand it then has.
+- **Receiver.** `maxSessionChanges`, `maxSessionChars` and the `quota` hook END THE READING instead
+  of refusing: a piece is cut where the limit is hit (before any signature work), later pieces are
+  skipped, everything verified so far is taken after the last piece, and the session ends with
+  `Session.truncated = true`. What is still unverifiable after the key-learning rounds is cut at
+  `maxPendingChanges` (also `truncated`). Only hostile input is a refusal.
+- **After a partial session** the fingerprints are expected to differ: `outcome(...).complete` is
+  false when either side cut (`truncated`, `peerMore`, `sentMore`); run the next session. Sessions
+  repeat until a session is complete. In a partial session an erased change without a deletion in
+  sight is not a forgery but a cut: it waits (not refused).
+- **Hostile input** is unchanged: forged, equivocating, unreadable, unexpected and not-allowed
+  changes refuse the session at the piece that carries them. A hostile change AFTER the cut is not
+  seen (reading had ended).
 
 **What a device sends.** A `stand` is answered with the changes the other lacks that carry a
 signature (`SessionOptions.signedOnly`, default true): the device's own changes that are not signed
 yet would be judged forged by every receiver, and since numbering is gapless the sender would block
 itself. From the first unsigned change of a device on, nothing of that device is sent (a later change
-could not be applied without it); `Session.withheld` counts what was left out. Plain, unjudged test
+could not be applied without it). The same holds for an erased change whose record's deletion is
+withheld (an unsigned own deletion): the erased change of the foreign author is withheld too, else
+the receiver would refuse the session and blame that author. `Session.withheld` counts what was
+left out. Plain, unjudged test
 sessions pass `signedOnly: false`.
 
 **Text entry and transports.** `parseSyncMessageText(text)` takes a message as text, refuses anything

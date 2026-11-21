@@ -9,9 +9,12 @@ shapes, merge rules on a business level, rights, texts and UI belong to your app
 > had no independent security review yet. Until that review is done and this note is removed, treat
 > everything here as work in progress.
 
-**Status: scaffold (0.0.0).** Nothing is implemented or exported yet; the package is built layer by
-layer and is not published to npm. See [docs/architecture.md](docs/architecture.md) for the planned
-layers.
+**Status: work in progress (0.0.0).** Implemented and exported so far: the `core` layer (canonical
+JSON, check values, device keys, signatures), the `log` layer (change log, merge, signing and judging,
+the exchange protocol with strict parsers and partial sessions) and the `trust` layer (device list,
+derived trust, meeting code, invitation). Not yet there: envelope, session encryption, relay client,
+push, transfer, browser. The package is not published to npm. See
+[docs/architecture.md](docs/architecture.md) for the layers.
 
 ## Install and test
 

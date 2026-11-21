@@ -2,17 +2,16 @@ import { canonical, sha256Text } from '../core/index.ts';
 import { resolveLimits } from './limits.ts';
 import { merge } from './merge.ts';
 import { parseSyncMessage, type ParseOptions, type SyncMessage } from './parse.ts';
-import { missingFor } from './replica.ts';
 import {
   admit,
   emptyJudging,
   settle,
   type Judging,
   type JudgeOptions,
-  type LimitReason,
   type Reason,
 } from './signing.ts';
 import type { Change, DeviceId, Replica, VersionVector } from './types.ts';
+import { seen } from './vector.ts';
 
 const utf8 = new TextEncoder();
 
@@ -22,11 +21,12 @@ export type ChangesMessage = Extract<SyncMessage, { t: 'changes' }>;
 /**
  * Changes cut into messages of at most `limits.pieceBytes` (UTF-8 bytes of the JSON) and
  * `limits.maxChanges` changes; always at least one, the last marked. One change larger than the
- * piece size travels alone.
+ * piece size travels alone. `more` marks the last message as a cut answer (more follows later).
  */
 export function pieces(
   changes: readonly Change[],
   options: Pick<ParseOptions, 'limits'> = {},
+  more = false,
 ): ChangesMessage[] {
   const limits = resolveLimits(options.limits);
   const out: ChangesMessage[] = [];
@@ -45,7 +45,12 @@ export function pieces(
     current.push(change);
     size += bytes;
   }
-  out.push({ t: 'changes', changes: current, last: true });
+  out.push({
+    t: 'changes',
+    changes: current,
+    last: true,
+    ...(more ? { more: true as const } : {}),
+  });
   return out;
 }
 
@@ -81,15 +86,16 @@ export function fingerprint(replica: Replica): string {
 }
 
 /**
- * Why a session ended without taking anything further: a message that cannot be read, a change that
- * is false (the detail is in `Session.refusalReason`), a limit, or a message the protocol does not
- * allow at that point (a second `stand` or `done`).
+ * Why a session ended without taking anything: a message that cannot be read, a change that is
+ * false (the detail is in `Session.refusalReason`), or a message the protocol does not allow at that
+ * point (a second `stand` or `done`). Only hostile input is a refusal: a limit of the receiver
+ * (changes, size, quota) ends the reading early instead (`Session.truncated`) and what was
+ * verified is taken.
  */
-export type Refusal = 'unreadable' | 'forged' | 'too-large' | 'unexpected';
+export type Refusal = 'unreadable' | 'forged' | 'unexpected';
 
-/** The detail of a refusal: the reason a change was false, which limit was hit, or what was repeated. */
-export type RefusalReason =
-  Reason | LimitReason | 'unparsable' | 'repeated-stand' | 'repeated-done';
+/** The detail of a refusal: the reason a change was false, or what was repeated. */
+export type RefusalReason = Reason | 'unparsable' | 'repeated-stand' | 'repeated-done';
 
 /** What a session needs beyond the parser's options. */
 export interface SessionOptions extends ParseOptions {
@@ -120,12 +126,23 @@ export interface Session {
   readonly standReceived?: boolean;
   /**
    * What `receiveJudged` holds until the last piece arrives: changes already verified (and those
-   * waiting for a key or for their deletion). Nothing unverified is ever buffered beyond a small
-   * count (`maxPendingChanges`) and `maxSessionChars` in all.
+   * waiting for a key or for their deletion). Everything held is bounded by `maxSessionChanges` and
+   * `maxSessionChars` in all. A computed view (not copied per piece, not enumerable).
    */
   readonly buffered?: readonly Change[];
   /** JSON length of `buffered`. */
   readonly bufferedChars?: number;
+  /**
+   * Reading ended early at a limit of this device (changes, size, `quota`, or too many changes still
+   * unverifiable): everything verified up to there was taken, the rest comes in a later session.
+   */
+  readonly truncated?: boolean;
+  /** The other device cut its answer at its limit (`more`): another session is needed. */
+  readonly peerMore?: boolean;
+  /** This device cut its answer at its limit: another session is needed. */
+  readonly sentMore?: boolean;
+  /** Changes of removed devices after their cutoff, skipped (`KeySource.standing`). */
+  readonly ignored?: number;
   /** What `receiveJudged` has decided of the pieces so far. */
   readonly judging?: Judging;
   /** Set when a message could not be read or a change was forged: nothing is taken any more. */
@@ -152,27 +169,72 @@ export function startSession(replica: Replica): Step {
   };
 }
 
+const recordKey = (c: Change): string => JSON.stringify([c.collection, c.id]);
+
 /**
- * What the other lacks, in an order it can apply: with `signedOnly` (default) the changes that carry
- * a signature, and from a device's first unsigned change on nothing of that device (numbering is
- * gapless, a later change could not be applied without it). `withheld` counts what was left out.
+ * Leaves out what must not be sent, and with it everything later of the same device (numbering is
+ * gapless, a later change could not be applied without it): a change without signature (when
+ * `requireSig`), and an erased change whose record's deletion is in `deleteKeys` (a deletion that
+ * exists) but is not among what is sent. Repeats until stable, as leaving out a deletion leaves out
+ * the erased changes of its record, and with them the later changes of their authors.
+ */
+function prune(
+  list: readonly Change[],
+  requireSig: boolean,
+  deleteKeys: ReadonlySet<string>,
+): Change[] {
+  let sent = list;
+  for (;;) {
+    const present = new Set(sent.filter((c) => c.kind === 'delete').map(recordKey));
+    const cut = new Set<DeviceId>();
+    const out: Change[] = [];
+    for (const change of list) {
+      if (cut.has(change.device)) continue;
+      const key = recordKey(change);
+      if (
+        (requireSig && !change.sig) ||
+        (change.kind === 'redacted' && deleteKeys.has(key) && !present.has(key))
+      ) {
+        cut.add(change.device);
+        continue;
+      }
+      out.push(change);
+    }
+    if (out.length === sent.length) return out;
+    sent = out;
+  }
+}
+
+/**
+ * What the other lacks, in the order of this device's log (so any prefix is applicable: whatever a
+ * change depends on was applied here before it): with `signedOnly` (default) only changes that carry
+ * a signature; an erased change goes only with its record's deletion (else the receiver would
+ * refuse the session and blame the erased change's author); `withheld` counts what was left out for
+ * that. The answer is then cut at the receiver-independent session budget (`maxSessionChanges`
+ * changes and `maxSessionChars` characters): `more` is true when something that could be sent was
+ * not, and the other device asks again in its next session. A cut keeps a gapless prefix of every
+ * device, and never an erased change without its deletion.
  */
 function answerFor(
   replica: Replica,
   vector: VersionVector,
   options: SessionOptions,
-): { readonly changes: Change[]; readonly withheld: number } {
-  const missing = missingFor(replica, vector);
-  if (options.signedOnly === false) return { changes: missing, withheld: 0 };
-  const cut = new Set<DeviceId>();
-  const changes: Change[] = [];
-  let withheld = 0;
-  for (const change of missing) {
-    if (!change.sig) cut.add(change.device);
-    if (cut.has(change.device)) withheld += 1;
-    else changes.push(change);
+): { readonly changes: Change[]; readonly withheld: number; readonly more: boolean } {
+  const limits = resolveLimits(options.limits);
+  const missing = replica.log.filter((c) => c.seq > seen(vector, c.device));
+  const deleteKeys = new Set(missing.filter((c) => c.kind === 'delete').map(recordKey));
+  const sendable = prune(missing, options.signedOnly !== false, deleteKeys);
+  const withheld = missing.length - sendable.length;
+  let size = 0;
+  let count = 0;
+  for (const change of sendable) {
+    size += JSON.stringify(change).length;
+    if (count >= limits.maxSessionChanges || (count > 0 && size > limits.maxSessionChars)) break;
+    count += 1;
   }
-  return { changes, withheld };
+  if (count === sendable.length) return { changes: sendable, withheld, more: false };
+  const cut = prune(sendable.slice(0, count), false, deleteKeys);
+  return { changes: cut, withheld, more: true };
 }
 
 /**
@@ -192,16 +254,17 @@ export function onSyncMessage(
   if (session.refusal) return { session, replica, send: [] };
   if (message.t === 'stand') {
     if (session.standReceived) return refused(session, replica, 'unexpected', 'repeated-stand');
-    const { changes, withheld } = answerFor(replica, message.vector, options);
+    const { changes, withheld, more } = answerFor(replica, message.vector, options);
     return {
       session: {
         ...session,
         sent: session.sent + changes.length,
         withheld: session.withheld + withheld,
         standReceived: true,
+        ...(more ? { sentMore: true } : {}),
       },
       replica,
-      send: pieces(changes, options),
+      send: pieces(changes, options, more),
     };
   }
   if (message.t === 'changes') {
@@ -211,6 +274,7 @@ export function onSyncMessage(
       taken: session.taken + merged.applied,
       waiting: merged.held.length,
       allReceived: message.last,
+      ...(message.last && message.more ? { peerMore: true } : {}),
     };
     if (!message.last || session.ownDone)
       return { session: next, replica: merged.replica, send: [] };
@@ -241,7 +305,7 @@ function refused(
   refusalReason: RefusalReason,
   refusalDevice?: DeviceId,
 ): Step {
-  const { buffered: _b, bufferedChars: _c, judging: _j, ...rest } = session;
+  const { judging: _j, ...rest } = session;
   return {
     session: { ...rest, refusal, refusalReason, ...(refusalDevice ? { refusalDevice } : {}) },
     replica,
@@ -273,11 +337,19 @@ export function receive(
  * unsigned, forged, from an unknown member, equivocating or not allowed ends the session with the
  * refusal `forged` and the reason in `Session.refusalReason`, at the first such piece). Only an
  * erased change waits for its final deletion, which may sit in a later piece, and a change whose
- * author's key is not known yet waits in a small buffer (`maxPendingChanges`). Nothing is taken
- * before the last piece, and one forged change anywhere means nothing is taken. Memory is bounded
- * by `maxSessionChanges`, `maxSessionChars` and the `quota` hook (`too-large`); the log itself is
- * not (see the docs). Pending changes are not taken and not stored: they count as `waiting` and
- * must come again in a later session.
+ * author's key is not known yet waits (it may become checkable by a change later in the batch, so
+ * while the pieces arrive it is bounded only by the session budget). Nothing is taken before the
+ * last piece, and one forged change anywhere means nothing is taken.
+ *
+ * Limits END THE READING instead of refusing: `maxSessionChanges`, `maxSessionChars` and the
+ * `quota` hook cut the session where they are hit (`Session.truncated`), everything verified up to
+ * there is taken after the last piece, and the next session continues (a sender cuts its own answers
+ * at the same budget and says `more`). The log itself is not bounded (see the docs). Pending
+ * changes are not taken and not stored: they count as `waiting` and must come again in a later
+ * session; what is still unverifiable after the rounds is cut at `maxPendingChanges`.
+ *
+ * The judging state is private to the session and extended in place: feed the pieces of a session
+ * one after the other, never from an older `Session` value again.
  */
 export async function receiveJudged(
   session: Session,
@@ -300,9 +372,6 @@ export async function receiveJudged(
   );
   if (!admission.ok) {
     const first = admission.rejections[0];
-    if (admission.limit) {
-      return refused(session, replica, 'too-large', admission.limit, admission.device);
-    }
     return refused(
       session,
       replica,
@@ -312,20 +381,12 @@ export async function receiveJudged(
     );
   }
   const judging = admission.judging;
-  if (!message.last) {
-    return {
-      session: {
-        ...session,
-        judging,
-        buffered: [...judging.accepted, ...judging.erased, ...judging.pending],
-        bufferedChars: judging.chars,
-      },
-      replica,
-      send: [],
-    };
-  }
-  const { buffered: _b, bufferedChars: _c, judging: _j, ...open } = session;
-  const read = await settle(replica, judging, judge);
+  if (!message.last) return { session: buffering(session, judging), replica, send: [] };
+  const { judging: _j, ...open } = session;
+  const read = await settle(replica, judging, judge, {
+    limits,
+    ...(message.more ? { more: true } : {}),
+  });
   if (read.rejected > 0) {
     const first = read.rejections[0];
     return refused(open, replica, 'forged', first?.reason ?? 'not-allowed', first?.change.device);
@@ -333,20 +394,39 @@ export async function receiveJudged(
   const step = onSyncMessage(
     open,
     replica,
-    { t: 'changes', changes: read.accepted, last: true },
+    { t: 'changes', changes: read.accepted, last: true, ...(message.more ? { more: true } : {}) },
     options,
   );
-  return read.pending.length === 0
-    ? step
-    : {
-        ...step,
-        session: { ...step.session, waiting: step.session.waiting + read.pending.length },
-      };
+  return {
+    ...step,
+    session: {
+      ...step.session,
+      waiting: step.session.waiting + read.pending.length,
+      ...(read.truncated ? { truncated: true } : {}),
+      ...(read.ignored > 0 ? { ignored: read.ignored } : {}),
+    },
+  };
+}
+
+/** The session with its judging; `buffered` is a view of it (copying it per piece made a session quadratic). */
+function buffering(session: Session, judging: Judging): Session {
+  const next: Session = { ...session, judging };
+  Object.defineProperty(next, 'buffered', {
+    get: () => [...judging.accepted, ...judging.erased, ...judging.pending],
+    configurable: true,
+  });
+  Object.defineProperty(next, 'bufferedChars', { get: () => judging.chars, configurable: true });
+  return next;
 }
 
 export interface Outcome {
   /** Both ended with the same data (equal fingerprints). */
   readonly equal: boolean;
+  /**
+   * Nothing was cut: neither side ended reading early or answered partially. When false the
+   * fingerprints are expected to differ and another session continues.
+   */
+  readonly complete: boolean;
   readonly sent: number;
   readonly taken: number;
   readonly fingerprint: string;
@@ -359,6 +439,7 @@ export function outcome(session: Session, replica: Replica): Outcome | undefined
   const own = fingerprint(replica);
   return {
     equal: own === session.peer.fingerprint,
+    complete: !session.truncated && !session.peerMore && !session.sentMore,
     sent: session.sent,
     taken: session.taken,
     fingerprint: own,

@@ -10,7 +10,13 @@ import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from 
  */
 export type SyncMessage =
   | { readonly t: 'stand'; readonly vector: VersionVector }
-  | { readonly t: 'changes'; readonly changes: readonly Change[]; readonly last: boolean }
+  | {
+      readonly t: 'changes';
+      readonly changes: readonly Change[];
+      readonly last: boolean;
+      /** Only on the last piece: the sender cut its answer at its limit, more follows in the next session. */
+      readonly more?: true;
+    }
   | { readonly t: 'done'; readonly vector: VersionVector; readonly fingerprint: string };
 
 export interface ParseOptions {
@@ -93,6 +99,10 @@ function changeOf(raw: unknown, limits: Limits, deviceId: (id: string) => boolea
   if (raw.knew !== undefined && !knew) return undefined;
   if (kind !== 'redacted' && !knew) return undefined;
   const { time, by } = raw;
+  // An erased change keeps only what its signature covers; time, by and knew would travel unchecked.
+  if (kind === 'redacted' && (time !== undefined || by !== undefined || raw.knew !== undefined)) {
+    return undefined;
+  }
   if (time !== undefined && !count(time)) return undefined;
   if (by !== undefined && !label(by, limits.maxName)) return undefined;
   // A signature never comes without the check value; a check value alone is an erased write.
@@ -139,10 +149,12 @@ function messageOf(
       : undefined;
   }
   if (raw.t === 'changes') {
-    if (!onlyMembers(raw, new Set(['t', 'changes', 'last']))) return undefined;
+    if (!onlyMembers(raw, new Set(['t', 'changes', 'last', 'more']))) return undefined;
     const list = raw.changes;
     if (!Array.isArray(list) || list.length > limits.maxChanges) return undefined;
     if (typeof raw.last !== 'boolean') return undefined;
+    // `more` is only ever true and only on the last piece.
+    if (raw.more !== undefined && (raw.more !== true || !raw.last)) return undefined;
     const changes: Change[] = [];
     let chars = 0;
     for (let i = 0; i < list.length; i += 1) {
@@ -153,7 +165,12 @@ function messageOf(
       if (chars > limits.maxMessageChars) return undefined;
       changes.push(change);
     }
-    return { t: 'changes', changes, last: raw.last };
+    return {
+      t: 'changes',
+      changes,
+      last: raw.last,
+      ...(raw.more === true ? { more: true as const } : {}),
+    };
   }
   return undefined;
 }

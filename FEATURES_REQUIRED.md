@@ -20,7 +20,14 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 | No quadratic work from well-formed input | one device or many deletions could stall a replica | `tests/log/performance.test.ts` (8000 writes to one record, 20000 deletions) |
 | An honest batch is never refused for its round structure | a new device could never get in | `tests/log/review2.test.ts` (H1: every order, piece size, key-learning order) |
 | One device number has one content | equivocation splits replicas silently | `tests/log/review2.test.ts` (H2: both proofs, every meeting order; reason `equivocation`) |
-| Nothing unverified fills memory | a flood of large pieces could exhaust a device | `tests/log/review2.test.ts` (H6: `maxSessionChars`, `maxPendingChanges`, `quota`, early refusal) |
+| Nothing unverified fills memory | a flood of large pieces could exhaust a device | `tests/log/review2.test.ts` (H6: `maxSessionChars`, `maxPendingChanges`, `quota` now end the reading; unsigned floods still refused at the first piece) |
+| A large honest history can always be joined | a new device could be locked out for good | `tests/log/review3.test.ts` (L1: partial sessions, newcomer batch not capped, quota/limits truncate) |
+| An erased change is taken only with its applied deletion | a forwarder could erase a signed write at one device | `tests/log/review3.test.ts` (L2: gap, `knew`, clock jump) |
+| Forgeries under the own id are not `own-history` | an app would abandon its id for a forgery | `tests/log/review3.test.ts` (L3) |
+| An unsigned deletion is not announced by its victims | an honest session was refused, an innocent author blamed | `tests/log/review3.test.ts` (L4) |
+| Piece processing is linear | known valid changes in many pieces could stall a device | `tests/log/review3.test.ts` (L6) |
+| An erased change carries only signed members | unchecked members were stored and forwarded | `tests/log/review3.test.ts` (L9) |
+| Changes after a removal are ignored, not refused | the session must go on | `tests/log/review3.test.ts` (`KeySource.standing`, `neverErase`) |
 | A device does not send what it has not signed | an honest device would block itself | `tests/log/review2.test.ts` (H4b: `signedOnly`, `withheld`) |
 | Every refusal has a reason | an app must tell "stop writing, re-enrol" from "stop trusting that device" | `tests/log/review2.test.ts` (M4: `own-history`, `equivocation`, ...) |
 | Final deletion is opt-in | one member's signature could erase any record for good | `tests/log/review2.test.ts` (M5: `allowFinalDelete`) |

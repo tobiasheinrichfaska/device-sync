@@ -62,10 +62,12 @@ export function randomChange(rng: Rng): Change {
     id: pick(rng, ['r1', 'record 2', 'ä']),
     kind,
   };
+  // An erased change keeps only what its signature covers: no knew, time or by.
+  const erased = kind === 'redacted';
   const optional = {
-    knew: randomVector(rng),
-    ...(rng() < 0.5 ? { time: int(rng, 2 ** 40) } : {}),
-    ...(rng() < 0.5
+    ...(erased ? {} : { knew: randomVector(rng) }),
+    ...(!erased && rng() < 0.5 ? { time: int(rng, 2 ** 40) } : {}),
+    ...(!erased && rng() < 0.5
       ? {
           by: pick(
             rng,

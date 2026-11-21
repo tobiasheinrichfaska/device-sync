@@ -34,9 +34,11 @@ export type {
   JudgeOptions,
   Judgement,
   KeySource,
+  LimitReason,
   ReadResult,
   Reason,
   Rejection,
+  Standing,
   Verdict,
 } from './signing.ts';
 export {

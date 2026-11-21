@@ -1,3 +1,4 @@
+import { LogCache } from './logCache.ts';
 import type { Change, DeviceId } from './types.ts';
 
 /** What the writes of one field say: the last write of each device and what writers knew of others. */
@@ -20,7 +21,7 @@ export interface RecordIndex {
 /** collection -> id -> index. Maps, so any string is an ordinary key. */
 export type LogIndex = Map<string, Map<string, RecordIndex>>;
 
-const cache = new WeakMap<readonly Change[], LogIndex>();
+const cache = new LogCache<LogIndex>();
 
 /** The index of a log: remembered for the log array a merge produced, built from the log otherwise. */
 export function indexOf(log: readonly Change[]): LogIndex {

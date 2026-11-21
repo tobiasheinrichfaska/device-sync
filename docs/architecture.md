@@ -26,8 +26,13 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
 - **Limits** (text length per value, fields per change, envelope fan-out) are configuration.
 - **Hooks**: a special case in signature checking, records that are never erased, the right to write
   (the receiver decides, `mayWrite`), whether a final deletion is allowed at all (`allowFinalDelete`, off
-  by default), a per-author quota against a flooding member (`quota`), holding a change back until
-  someone approves it.
+  by default), a per-author quota against a flooding member (`quota`; it ends the reading of a
+  session, it does not refuse it), holding a change back until someone approves it. The key source
+  (`KeySource`) gives the key of a device, optionally its removal cutoff (`standing`: later changes
+  are ignored, not refused) and collections that are never finally deleted (`neverErase`).
+- **Partial sessions**: size limits never make a large honest history impossible. A sender cuts its
+  answer to a prefix of its own log (`more: true`), a receiver whose limit is hit ends the reading and
+  takes what it verified (`Session.truncated`); the next session continues (`docs/wire-format.md`).
 - **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.

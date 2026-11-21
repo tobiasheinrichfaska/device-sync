@@ -326,7 +326,9 @@ describe('special and rights hooks, neverErase', () => {
       `${COL}/redacted`,
       `${COL}/delete`,
     ]);
-    expect(verdicts).toEqual(['false', 'false', 'checked', 'checked']);
+    // the erased write of r1 waits: its deletion is judged right but cannot apply, as the number
+    // before it (the refused deletion of the list) is missing
+    expect(verdicts).toEqual(['false', 'false', 'pending', 'checked']);
     const withoutList = await judgeChanges(
       { ...options({ a: keys.publicKey }), state: here() },
       r.log,
