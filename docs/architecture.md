@@ -30,6 +30,23 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.
 
+## Who may vouch (trust layer)
+
+The package hard-wires no role. An app passes a `Voucher` (`canVouch`, optional `mayInvite`) and
+predicates for roles, names, ids and relay ids. The two earlier implementations map onto the ready-made
+strategies like this:
+
+- "Only devices with an administrative role vouch and invite" = `vouchRoles([thatRole])`.
+- "Every device of a trusted person vouches" = `vouchAnyRole()` plus the `roleCounts` hook (a role counts
+  only while the person it names still exists in the data).
+- "Every trusted device vouches" = `vouchAll()`.
+- "A private device never holds the highest role" (a rule of one earlier implementation) = the
+  `privateRoles` predicate (the roles a private device may hold); the package knows no highest role.
+
+Left to the app: whether a removed device may still write (`mayWrite` of the judging layer; a removed
+device stays checkable so that its earlier changes can still be checked), the device lock after days
+without contact, and which person a device belongs to.
+
 ## Wire protocol of the relay
 
 Described next to the client with machine-readable test cases, so a server and any port of it can be

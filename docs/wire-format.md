@@ -270,3 +270,109 @@ later change of that device would wait for ever. `receiveJudged` collects the pi
 together on the last one, because an erased write may arrive in an earlier piece than the final
 deletion it needs. Changes whose author cannot be checked yet (`pending`) are neither taken nor
 stored; they count as `waiting` and arrive again in a later session.
+
+## Trust (device list, meeting code, invitation)
+
+Everything the `trust` layer writes into the log or hands between two devices in person. Names are
+English; the format version is `2`. Predicates for ids, names, roles and relay ids are the app's
+(parameters); a value containing `|` is never valid for a device id, a name or a role, because `|`
+separates the signed and MACed texts.
+
+### Device entries in the log
+
+One record per device in one reserved collection (default `device`; the app may name it). The record id
+is the device id. Entries are never finally deleted: the collection belongs in `neverErase`
+(`deviceNeverErase()`), so a final deletion there is judged false.
+
+| Field     | Type    | Required | Meaning                                                                                  |
+| --------- | ------- | -------- | ---------------------------------------------------------------------------------------- |
+| `name`    | text    | yes      | Display name (app predicate; default 1 to 40 letters, digits, ` ._-`)                    |
+| `sig`     | text    | yes      | Public signing key, a point (87 characters); must differ from `dh`                       |
+| `dh`      | text    | yes      | Public agreement key, a point (87 characters)                                            |
+| `role`    | text    | no       | Opaque role (app predicate; default `^[a-z][a-z0-9:_-]{0,79}$`)                          |
+| `relayId` | text    | no       | The id the relay gave the device (app predicate; default 1 to 80, no control characters) |
+| `removed` | boolean | no       | `true` ends trust; entries stay. Missing counts as false                                 |
+| `private` | boolean | no       | "Private device" flag; written only when true or when it replaces a differing value      |
+
+A device id (default `device-` and 32 lower-case hex digits, `newDeviceId`) is 128 random bits. A
+second id, `relayId`, is assigned by a relay; the trust layer only validates it.
+
+### Trust derivation
+
+Trust is derived from the log and the devices met in person, never stored (`computeTrust`):
+
+1. The devices met in person (`direct`) are trusted as given. Their role counts only when the app's
+   `roleCounts(role, replica)` says so (default: always); a role that does not count stays as
+   `roleVouched`.
+2. A device **vouches** when the app's strategy says so (`Voucher.canVouch(device, trusted)`; `vouchAll`,
+   `vouchRoles`, `vouchAnyRole` are ready made). The strategy is asked again after every step.
+3. For each field of an entry counts **the newest value written by this device itself (unsigned) or by
+   a vouching trusted device whose signature checks** (check value, `changeSigningText` with the app
+   id and data set, the voucher's signing key). A device's own write into its own entry never counts.
+   What any other device wrote counts for nothing.
+4. An entry with a vouched name and keys is trusted; this repeats until nothing is added (chains
+   A -> B -> C). A met device keeps its keys: an entry with other keys for it is ignored. A role learned
+   later from an entry counts from then on (and may make the device a voucher).
+5. `removed` = true, so vouched, ends trust, also of a met device, and what the removed device vouched
+   for no longer counts through it. The derivation is repeated without the removed ones.
+   Hiding ("deleting") an entry ends nothing.
+6. `checkable` = the trusted devices and the removed ones whose keys were vouched for: a removal ends
+   trust from now on, not what the device wrote before. `deviceKeySource` hands the keys of
+   `checkable` to `readChanges`/`judgeChanges`, derived from the replica as it would be with the
+   batch taken so far, so changes that enter a device make its own later changes checkable. A
+   removed device stays checkable; whether it may still write is the app's `mayWrite` rule.
+
+### Markers
+
+`marker(appId, kind, 2)` = `<appId>-<kind>:2` with the kinds `meeting`, `invite` and `reply`
+(`device` is the check code of the core layer). A different app id never produces the same bytes.
+
+### Meeting code
+
+Two people exchange it in person (QR bytes). **Layout:** compact JSON (no spaces), UTF-8, members in
+exactly this order; `private` only when true:
+
+```
+{"m":"<appId>-meeting:2","device":"…","name":"…","sig":"…","dh":"…","role":"…","time":<ms>,["private":true,]"proof":"…"}
+```
+
+`proof` is the device's ECDSA signature (86 characters) over the text
+`<appId>-meeting:2|device|name|sig|dh|role|time|0` (the last field `1` when private). The reader
+refuses anything that is not exactly this spelling (other order, spaces, duplicates, unknown members,
+escapes, more than 2000 bytes). `time` and `role` are mandatory.
+
+Valid for **120 000 ms** after `time` (inclusive: now - time <= 120 000), renewed by the showing
+device every **30 000 ms**, with a **60 000 ms** look-ahead for clocks (time - now <= 60 000).
+Otherwise `expired` / `ahead`; a wrong signature is `changed`.
+
+### Invitation
+
+An invitation lives **24 hours** (`until` = creation time + 86 400 000 ms; at `now >= until` it is over).
+It is text after `#join=` (a link, pasted text or QR); the part before is any page address.
+
+```
+<page>#join=<base64url(JSON)>
+{"m":"<appId>-invite:2","device":"…","name":"…","sig":"…","dh":"…","role":"…","code":"…","until":<ms>[,"newName":"…"][,"relayId":"…"][,"private":true]}
+```
+
+`device`, `name`, `sig`, `dh` are the inviting device; `code` is the one-time code (16 random bytes,
+22 characters, canonical base64url); `newName` is the name suggested for the new device; `relayId`
+the inviter's. Payload at most 2000 characters; same strictness as above (one spelling only).
+
+The new device answers with its introduction and a **proof**: HMAC-SHA-256, keyed by the 16 code bytes,
+over the text
+
+```
+<appId>-invite:2|<inviter device>|<role>|<new device>|<new name>|<new sig>|<new dh>
+```
+
+(base64url, 43 characters). It binds the invitation's inviter, role, and the new device's id, name and
+both keys. The reply text is base64url of
+`{"m":"<appId>-reply:2","to":"<inviter device>","device":"…","name":"…","sig":"…","dh":"…","proof":"…"}`.
+
+The inviter keeps `{role, code, until[, private]}` and checks the reply against it: not expired,
+`to` is itself, introduction valid, the new device is not itself, the voucher's `mayInvite` still
+allows it (when asked), and the proof matches. The invitation carries no signature: the inviter's keys
+in it are only as trustworthy as the channel it travels on (compare the check codes).
+`mayInvite(inviter, role)` decides who may invite which role; a private device must have a role the
+app's `privateRoles` predicate allows.
