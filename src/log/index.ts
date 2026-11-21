@@ -48,7 +48,7 @@ export {
   visibleRecords,
   write,
 } from './replica.ts';
-export type { WriteResult } from './replica.ts';
+export type { WriteFailure, WriteResult } from './replica.ts';
 export { LIMITS, PIECE_BYTES, resolveLimits } from './limits.ts';
 export type { Limits } from './limits.ts';
 export {

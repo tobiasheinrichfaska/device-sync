@@ -1,17 +1,54 @@
 import { base64url, sha256Text } from './encoding.ts';
 
-/** JSON with sorted keys and no undefined members: the same value always gives the same text. */
+const MAX_DEPTH = 512;
+
+/**
+ * JSON with sorted keys and no undefined object members: the same value always gives the same text.
+ * Only plain JSON is canonical: null, booleans, finite numbers, strings, arrays and plain objects.
+ * Anything else (Date, Map, Set, class instances, functions, symbols, bigint, NaN, Infinity,
+ * `undefined` in an array, cycles) throws a TypeError instead of being read as something else than
+ * what a receiver gets from the JSON text. A top-level `undefined` is `null`.
+ */
 export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value !== null && typeof value === 'object') {
+  return value === undefined ? 'null' : write(value, new Set());
+}
+
+function write(value: unknown, parents: Set<object>): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError('canonical: number is not finite');
+    return JSON.stringify(value);
+  }
+  if (typeof value !== 'object') throw new TypeError(`canonical: ${typeof value} is not JSON`);
+  if (parents.has(value)) throw new TypeError('canonical: cycle');
+  if (parents.size >= MAX_DEPTH) throw new TypeError('canonical: nested too deep');
+  parents.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const items: string[] = [];
+      for (let i = 0; i < value.length; i += 1) {
+        if (!(i in value) || value[i] === undefined) {
+          throw new TypeError('canonical: undefined in an array');
+        }
+        items.push(write(value[i], parents));
+      }
+      return `[${items.join(',')}]`;
+    }
+    const proto = Object.getPrototypeOf(value) as unknown;
+    if (proto !== Object.prototype && proto !== null) {
+      throw new TypeError('canonical: not a plain object');
+    }
     const record = value as Record<string, unknown>;
     const parts = Object.keys(record)
       .filter((k) => record[k] !== undefined)
       .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonical(record[k])}`);
+      .map((k) => `${JSON.stringify(k)}:${write(record[k], parents)}`);
     return `{${parts.join(',')}}`;
+  } finally {
+    parents.delete(value);
   }
-  return JSON.stringify(value) ?? 'null';
 }
 
 /** Check value of any value: base64url(SHA-256(canonical(value))). */

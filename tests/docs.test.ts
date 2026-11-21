@@ -57,7 +57,8 @@ describe('docs/wire-format.md against the code', () => {
     expect(DOC).toContain('always 43 characters');
     expect(checkValue({ a: 1 })).toHaveLength(43);
     expect(canonical({ 9: 'x', 10: 'y' })).toBe('{"10":"y","9":"x"}');
-    expect(canonical([undefined, () => 1])).toBe('[null,null]');
+    expect(() => canonical([undefined])).toThrow(TypeError);
+    expect(() => canonical(new Date(0))).toThrow(TypeError);
     expect(canonical({ a: undefined, b: 1 })).toBe('{"b":1}');
     expect(canonical(undefined)).toBe('null');
   });

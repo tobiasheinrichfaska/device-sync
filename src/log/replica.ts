@@ -10,6 +10,18 @@ import type {
   StoredRecord,
   VersionVector,
 } from './types.ts';
+import { resolveLimits } from './limits.ts';
+import { DEFAULT_DEVICE_ID, type ParseOptions } from './parse.ts';
+import { indexOf } from './recordIndex.ts';
+import {
+  FORBIDDEN_NAMES,
+  checkFields,
+  dict,
+  own,
+  validHead,
+  validOrigin,
+  type Problem,
+} from './validate.ts';
 import { isNewer, seen } from './vector.ts';
 
 /**
@@ -20,7 +32,7 @@ import { isNewer, seen } from './vector.ts';
 export const DELETED_FIELD = 'deleted';
 
 export function emptyReplica(device: DeviceId): Replica {
-  return { device, clock: 0, vector: {}, log: [], collections: {}, notices: [] };
+  return { device, clock: 0, vector: dict(), log: [], collections: dict(), notices: [] };
 }
 
 export function findRecord(
@@ -28,16 +40,16 @@ export function findRecord(
   collection: string,
   id: string,
 ): StoredRecord | undefined {
-  return replica.collections[collection]?.[id];
+  return own(own(replica.collections, collection), id);
 }
 
 /** The records not finally deleted; hidden ones (soft delete) included. */
 export function liveRecords(replica: Replica, collection: string): StoredRecord[] {
-  return Object.values(replica.collections[collection] ?? {}).filter((r) => !r.deleted);
+  return Object.values(own(replica.collections, collection) ?? {}).filter((r) => !r.deleted);
 }
 
 export function isHidden(record: StoredRecord): boolean {
-  return record.fields[DELETED_FIELD]?.value === true;
+  return own(record.fields, DELETED_FIELD)?.value === true;
 }
 
 /** The records a list shows: neither finally deleted nor hidden. */
@@ -49,25 +61,72 @@ export function valuesOf(record: StoredRecord): Record<string, unknown> {
   return Object.fromEntries(Object.entries(record.fields).map(([name, f]) => [name, f.value]));
 }
 
+export type WriteFailure =
+  | 'no-fields'
+  | 'record-deleted'
+  | 'no-record'
+  | 'unknown-change'
+  | 'unchanged'
+  | Problem
+  /** This device's own id is not one the receivers accept. */
+  | 'invalid-device'
+  /** More devices wrote the fields than one `knew` may name (`maxDevices`). */
+  | 'too-many-devices'
+  /** The clock or the numbering cannot count further. */
+  | 'clock-overflow';
+
 export type WriteResult =
   | { readonly ok: true; readonly replica: Replica }
-  | {
-      readonly ok: false;
-      readonly reason:
-        'no-fields' | 'record-deleted' | 'no-record' | 'unknown-change' | 'unchanged';
-    };
+  | { readonly ok: false; readonly reason: WriteFailure };
 
-/** Writes fields on this device; fields not named keep their value. */
+/**
+ * Writes fields on this device; fields not named keep their value. Everything a receiver's strict
+ * parser would refuse is refused here first (names, values, limits, origin): a change this device
+ * creates is never one the others cannot take, which would block everything later from it.
+ * `options` are the same as the parser's (`limits`, `deviceId`).
+ */
 export function write(
   replica: Replica,
   collection: string,
   id: string,
   fields: Readonly<Record<string, unknown>>,
   origin: Origin = {},
+  options: ParseOptions = {},
 ): WriteResult {
-  if (Object.keys(fields).length === 0) return { ok: false, reason: 'no-fields' };
+  if (typeof fields === 'object' && fields !== null && Object.keys(fields).length === 0) {
+    return { ok: false, reason: 'no-fields' };
+  }
+  const refused = precheck(replica, collection, id, origin, options);
+  if (refused) return { ok: false, reason: refused };
+  const checked = checkFields(fields, resolveLimits(options.limits));
+  if (!checked.ok) return { ok: false, reason: checked.reason };
   if (findRecord(replica, collection, id)?.deleted) return { ok: false, reason: 'record-deleted' };
-  return { ok: true, replica: commit(replica, collection, id, 'set', origin, fields) };
+  return commit(replica, collection, id, 'set', origin, options, checked.value);
+}
+
+/** The checks every new change passes, whatever its kind. */
+function precheck(
+  replica: Replica,
+  collection: string,
+  id: string,
+  origin: Origin,
+  options: ParseOptions,
+): 'invalid-device' | 'invalid-name' | 'invalid-origin' | undefined {
+  const limits = resolveLimits(options.limits);
+  const deviceOk = options.deviceId ?? ((s: string) => DEFAULT_DEVICE_ID.test(s));
+  let valid = false;
+  try {
+    valid =
+      typeof replica.device === 'string' &&
+      !FORBIDDEN_NAMES.has(replica.device) &&
+      deviceOk(replica.device) === true;
+  } catch {
+    valid = false;
+  }
+  if (!valid) return 'invalid-device';
+  if (!validHead(collection, id, limits)) return 'invalid-name';
+  if (!validOrigin(origin, limits)) return 'invalid-origin';
+  return undefined;
 }
 
 /** Final delete: content and history go on this device; the deletion travels to all others. */
@@ -76,9 +135,12 @@ export function remove(
   collection: string,
   id: string,
   origin: Origin = {},
-): Replica {
-  if (findRecord(replica, collection, id)?.deleted) return replica;
-  return commit(replica, collection, id, 'delete', origin);
+  options: ParseOptions = {},
+): WriteResult {
+  const refused = precheck(replica, collection, id, origin, options);
+  if (refused) return { ok: false, reason: refused };
+  if (findRecord(replica, collection, id)?.deleted) return { ok: true, replica };
+  return commit(replica, collection, id, 'delete', origin, options);
 }
 
 /** Soft delete: hides the record; undoable, the content and its history stay. */
@@ -87,8 +149,9 @@ export function softDelete(
   collection: string,
   id: string,
   origin: Origin = {},
+  options: ParseOptions = {},
 ): WriteResult {
-  return setHidden(replica, collection, id, true, origin);
+  return setHidden(replica, collection, id, true, origin, options);
 }
 
 export function restore(
@@ -96,8 +159,9 @@ export function restore(
   collection: string,
   id: string,
   origin: Origin = {},
+  options: ParseOptions = {},
 ): WriteResult {
-  return setHidden(replica, collection, id, false, origin);
+  return setHidden(replica, collection, id, false, origin, options);
 }
 
 function setHidden(
@@ -106,12 +170,13 @@ function setHidden(
   id: string,
   hidden: boolean,
   origin: Origin,
+  options: ParseOptions,
 ): WriteResult {
   const record = findRecord(replica, collection, id);
   if (!record) return { ok: false, reason: 'no-record' };
   if (record.deleted) return { ok: false, reason: 'record-deleted' };
   if (isHidden(record) === hidden) return { ok: false, reason: 'unchanged' };
-  return write(replica, collection, id, { [DELETED_FIELD]: hidden }, origin);
+  return write(replica, collection, id, { [DELETED_FIELD]: hidden }, origin, options);
 }
 
 /** Every write to a record still on this device, newest first (in the order that decides values). */
@@ -132,7 +197,7 @@ export function historyOf(replica: Replica, collection: string, id: string): His
         fields,
         // Device and clock name one write.
         applies: Object.keys(fields).filter((name) => {
-          const current = record.fields[name];
+          const current = own(record.fields, name);
           return current?.device === c.device && current.clock === c.clock;
         }),
       };
@@ -169,7 +234,7 @@ export function valueOf(
   device: DeviceId,
   field: string,
 ): unknown {
-  const current = record.fields[field];
+  const current = own(record.fields, field);
   if (!current || current.device === device) return current?.value;
   return fieldHistory(replica, collection, record.id, field).find((h) => h.device === device)
     ?.value;
@@ -186,6 +251,7 @@ export function undo(
   id: string,
   target: { readonly device: DeviceId; readonly seq: number },
   origin: Origin = {},
+  options: ParseOptions = {},
 ): WriteResult {
   const record = findRecord(replica, collection, id);
   if (!record) return { ok: false, reason: 'no-record' };
@@ -195,7 +261,7 @@ export function undo(
   const entry = writes[at];
   if (!entry) return { ok: false, reason: 'unknown-change' };
   const earlier = writes.slice(at + 1);
-  if (earlier.length === 0) return softDelete(replica, collection, id, origin);
+  if (earlier.length === 0) return softDelete(replica, collection, id, origin, options);
   const fields = Object.fromEntries(
     entry.applies.map((name) => [
       name,
@@ -203,7 +269,7 @@ export function undo(
     ]),
   );
   if (Object.keys(fields).length === 0) return { ok: false, reason: 'unchanged' };
-  return write(replica, collection, id, fields, origin);
+  return write(replica, collection, id, fields, origin, options);
 }
 
 /** The changes a device with this stand lacks, in an order it can apply directly. */
@@ -228,14 +294,17 @@ export function knownFor(
   // writes every record once, which would make its build quadratic).
   const record = findRecord(replica, collection, id);
   if (!record) return {};
-  const concerns = (name: string) => fields === null || fields.includes(name);
+  const index = indexOf(replica.log).get(collection)?.get(id);
   const devices = new Set<DeviceId>();
-  for (const c of replica.log) {
-    if (c.collection !== collection || c.id !== id) continue;
-    if (fields === null || Object.keys(c.fields ?? {}).some(concerns)) devices.add(c.device);
+  if (fields === null) {
+    for (const device of index?.devices ?? []) devices.add(device);
+  } else {
+    for (const name of fields) {
+      for (const device of index?.fields.get(name)?.last.keys() ?? []) devices.add(device);
+    }
   }
   for (const [name, value] of Object.entries(record.fields)) {
-    if (concerns(name)) devices.add(value.device);
+    if (fields === null || fields.includes(name)) devices.add(value.device);
   }
   return Object.fromEntries(
     [...devices]
@@ -251,17 +320,32 @@ function commit(
   id: string,
   kind: ChangeKind,
   origin: Origin,
+  options: ParseOptions,
   fields?: Readonly<Record<string, unknown>>,
-): Replica {
+): WriteResult {
+  const limits = resolveLimits(options.limits);
+  const seq = seen(replica.vector, replica.device) + 1;
+  const clock = replica.clock + 1;
+  if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(clock)) {
+    return { ok: false, reason: 'clock-overflow' };
+  }
+  const knew = knownFor(replica, collection, id, fields ? Object.keys(fields) : null);
+  if (Object.keys(knew).length > limits.maxDevices)
+    return { ok: false, reason: 'too-many-devices' };
   const base = {
     device: replica.device,
-    seq: seen(replica.vector, replica.device) + 1,
-    clock: replica.clock + 1,
+    seq,
+    clock,
     collection,
     id,
     kind,
-    knew: knownFor(replica, collection, id, fields ? Object.keys(fields) : null),
+    knew,
     ...originOf(origin),
   };
-  return merge(replica, [fields ? { ...base, fields } : base]).replica;
+  const change: Change = fields ? { ...base, fields } : base;
+  // What a receiver reads must fit its message limit.
+  if (JSON.stringify(change).length > limits.maxMessageChars) {
+    return { ok: false, reason: 'too-large' };
+  }
+  return { ok: true, replica: merge(replica, [change]).replica };
 }

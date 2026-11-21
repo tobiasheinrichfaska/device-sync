@@ -1,4 +1,5 @@
 import type { DeviceId, VersionVector, WriteRef } from './types.ts';
+import { dict, own } from './validate.ts';
 
 /**
  * How far one change may move the clock: far beyond any real history (every write counts one), small
@@ -14,13 +15,13 @@ export function isNewer(a: Stamp, b: Stamp): boolean {
 }
 
 export function seen(vector: VersionVector | undefined, device: DeviceId): number {
-  return vector?.[device] ?? 0;
+  return own(vector, device) ?? 0;
 }
 
 /** What two stands hold together (a stand only grows): per device the higher number. */
 export function unionVector(a: VersionVector, b: VersionVector): VersionVector {
-  const out: Record<DeviceId, number> = { ...a };
-  for (const [device, seq] of Object.entries(b)) out[device] = Math.max(out[device] ?? 0, seq);
+  const out = Object.assign(dict<number>(), a);
+  for (const [device, seq] of Object.entries(b)) out[device] = Math.max(own(out, device) ?? 0, seq);
   return out;
 }
 

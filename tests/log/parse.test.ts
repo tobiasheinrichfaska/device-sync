@@ -34,6 +34,7 @@ const change = (extra: Record<string, unknown> = {}): Record<string, unknown> =>
   id: 'r1',
   kind: 'set',
   fields: { title: 'x' },
+  knew: {},
   ...extra,
 });
 const piece = (extra: Record<string, unknown> = {}) => ({
@@ -73,7 +74,15 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
     });
     expect(parseChange(full)).toEqual(full);
     expect(
-      parseChange({ device: 'a', seq: 2, clock: 5, collection: 'items', id: 'r1', kind: 'delete' }),
+      parseChange({
+        device: 'a',
+        seq: 2,
+        clock: 5,
+        collection: 'items',
+        id: 'r1',
+        kind: 'delete',
+        knew: {},
+      }),
     ).toBeDefined();
     expect(parseSyncMessage({ t: 'changes', changes: [], last: true })).toEqual({
       t: 'changes',
@@ -219,9 +228,7 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
   });
 
   it('treats an undefined optional member as absent (it is not on the wire)', () => {
-    expect(parseChange(change({ knew: undefined, time: undefined, by: undefined }))).toEqual(
-      change(),
-    );
+    expect(parseChange(change({ time: undefined, by: undefined }))).toEqual(change());
   });
 
   it('one bad change refuses the whole message', () => {
@@ -771,6 +778,7 @@ describe('regression: the size of a whole message is bounded', () => {
     id: `r${i}`,
     kind: 'set',
     fields: Object.fromEntries(Array.from({ length: 40 }, (_, j) => [`f${j}`, 'y'.repeat(size)])),
+    knew: {},
   });
   const message = (count: number, size: number): unknown => ({
     t: 'changes',

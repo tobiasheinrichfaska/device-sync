@@ -10,7 +10,6 @@ import {
   liveRecords,
   merge,
   missingFor,
-  remove,
   restore,
   softDelete,
   undo,
@@ -18,7 +17,7 @@ import {
   write,
   type Replica,
 } from '../../src/log/index.ts';
-import { COL, ok, permutations, sync, values, written } from './helpers.ts';
+import { COL, ok, permutations, sync, values, written, removed } from './helpers.ts';
 
 const U1 = { time: 1_762_600_000_000, by: 'u1' };
 const U2 = { time: 1_762_600_060_000, by: 'u2' };
@@ -67,7 +66,7 @@ describe('soft delete and final delete', () => {
   });
 
   it('final delete erases content, history and authors; only the delete keeps its author', () => {
-    const a = remove(written(emptyReplica('A'), 'r1', { name: 'n' }), COL, 'r1', U2);
+    const a = removed(written(emptyReplica('A'), 'r1', { name: 'n' }), COL, 'r1', U2);
     expect(historyOf(a, COL, 'r1')).toEqual([]);
     expect(a.log.map((c) => [c.kind, c.by])).toEqual([
       ['redacted', undefined],
@@ -79,16 +78,16 @@ describe('soft delete and final delete', () => {
   it('final delete reaches other devices and erases their copy; a never-seeing device gets only redacted entries', () => {
     const a = written(emptyReplica('A'), 'r1', { name: 'visible-text' });
     const b = sync(a, emptyReplica('B'));
-    const bAfter = sync(remove(a, COL, 'r1'), b);
+    const bAfter = sync(removed(a, COL, 'r1'), b);
     expect(findRecord(bAfter, COL, 'r1')?.deleted).toBe(true);
     expect(JSON.stringify(bAfter)).not.toContain('visible-text');
-    const c = sync(remove(a, COL, 'r1'), emptyReplica('C'));
+    const c = sync(removed(a, COL, 'r1'), emptyReplica('C'));
     expect(c.vector).toEqual({ A: 2 });
     expect(JSON.stringify(c)).not.toContain('visible-text');
   });
 
   it('a deleted record refuses soft delete and restore', () => {
-    const gone = remove(written(emptyReplica('A'), 'r1', { name: 'n' }), COL, 'r1');
+    const gone = removed(written(emptyReplica('A'), 'r1', { name: 'n' }), COL, 'r1');
     expect(softDelete(gone, COL, 'r1')).toEqual({ ok: false, reason: 'record-deleted' });
     expect(restore(gone, COL, 'r1')).toEqual({ ok: false, reason: 'record-deleted' });
     expect(softDelete(emptyReplica('A'), COL, 'r1')).toEqual({ ok: false, reason: 'no-record' });
@@ -178,7 +177,7 @@ describe('undo', () => {
       reason: 'unknown-change',
     });
     expect(undo(a, COL, 'r2', { device: 'A', seq: 1 })).toEqual({ ok: false, reason: 'no-record' });
-    expect(undo(remove(a, COL, 'r1'), COL, 'r1', { device: 'A', seq: 1 })).toEqual({
+    expect(undo(removed(a, COL, 'r1'), COL, 'r1', { device: 'A', seq: 1 })).toEqual({
       ok: false,
       reason: 'record-deleted',
     });
@@ -188,7 +187,7 @@ describe('undo', () => {
 describe('merge order', () => {
   it('a mix of writes and a delete gives the same result in every order of single changes', () => {
     const a = written(emptyReplica('A'), 'r1', { name: 'n' });
-    const b = remove(written(emptyReplica('B'), 'r1', { level: 'x' }), COL, 'r1');
+    const b = removed(written(emptyReplica('B'), 'r1', { level: 'x' }), COL, 'r1');
     const all = [...a.log, ...b.log];
     const results = permutations(all).map((order) => {
       let d = emptyReplica('D');

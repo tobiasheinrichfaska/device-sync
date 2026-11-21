@@ -13,6 +13,7 @@ function changes(count: number, records: number): Change[] {
     id: `r${i % records}`,
     kind: 'set' as const,
     fields: { title: `t${i}` },
+    knew: {},
   }));
 }
 
@@ -50,6 +51,7 @@ describe('a large batch merges in linear time', () => {
       id: `r${i % 10}`,
       kind: 'set' as const,
       fields: { title: `c${i}` },
+      knew: {},
     }));
     const next = merge(start, more).replica;
     expect(start.collections).toEqual(frozen);

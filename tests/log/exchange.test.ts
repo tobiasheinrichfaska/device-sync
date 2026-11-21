@@ -9,7 +9,6 @@ import {
   outcome,
   pieces,
   receiveJudged,
-  remove,
   signOwnChanges,
   softDelete,
   startSession,
@@ -25,7 +24,7 @@ import {
   type Session,
 } from '../../src/log/index.ts';
 import { int, pick, randomValue } from './fuzz.ts';
-import { COL, prng, written } from './helpers.ts';
+import { COL, prng, written, removed } from './helpers.ts';
 
 const APP = 'syncdemo';
 const SET = 'main';
@@ -132,7 +131,7 @@ describe('full stack: two replicas exchange through the protocol and converge', 
   it('an erased write and its final deletion in different pieces still pass', async () => {
     let a = emptyReplica('a');
     for (let i = 0; i < 30; i += 1) a = written(a, `r${i}`, { title: 'x'.repeat(150) });
-    a = remove(a, COL, 'r0');
+    a = removed(a, COL, 'r0');
     const parts = pieces((await signed(a)).log, { limits: small });
     const erased = parts.findIndex((p) => p.changes.some((c) => c.kind === 'redacted'));
     const deletion = parts.findIndex((p) => p.changes.some((c) => c.kind === 'delete'));
@@ -381,7 +380,7 @@ describe('random multi-device schedules converge (seeded)', () => {
           if (res.ok) next = res.replica;
         }
       } else if (op < 9 && rng() < 0.35) {
-        next = remove(r, COL, record, origin);
+        next = removed(r, COL, record, origin);
         stats.removes += 1;
       } else {
         const [from, to] = [pick(rng, IDS), pick(rng, IDS)];

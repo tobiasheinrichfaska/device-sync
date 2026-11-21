@@ -63,7 +63,7 @@ export function randomChange(rng: Rng): Change {
     kind,
   };
   const optional = {
-    ...(rng() < 0.5 ? { knew: randomVector(rng) } : {}),
+    knew: randomVector(rng),
     ...(rng() < 0.5 ? { time: int(rng, 2 ** 40) } : {}),
     ...(rng() < 0.5
       ? {

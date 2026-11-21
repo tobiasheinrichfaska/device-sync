@@ -13,7 +13,6 @@ import {
   parseSyncMessage,
   pieces,
   receive,
-  remove,
   softDelete,
   startSession,
   undo,
@@ -23,7 +22,7 @@ import {
   type Session,
   type SyncMessage,
 } from '../../src/log/index.ts';
-import { COL, ok, written } from './helpers.ts';
+import { COL, ok, written, removed } from './helpers.ts';
 
 const must = <T>(v: T | undefined): T => {
   if (v === undefined) throw new Error('expected a value');
@@ -257,7 +256,7 @@ describe('exchange protocol', () => {
   it('a final deletion travels and the content is gone on both', () => {
     let a = written(emptyReplica('a'), 'r1', { title: 'secret' });
     const { x: b0 } = exchange(a, emptyReplica('b'));
-    a = remove(a, COL, 'r1');
+    a = removed(a, COL, 'r1');
     const { y, oy } = exchange(a, b0);
     expect(oy.equal).toBe(true);
     expect(findRecord(y, COL, 'r1')?.deleted).toBe(true);
@@ -273,8 +272,8 @@ describe('fingerprint', () => {
     expect(fingerprint(x)).toMatch(/^[0-9a-f]{32}$/);
     expect(fingerprint(written(x, 'r1', { title: 'y' }))).not.toBe(fingerprint(x));
     expect(fingerprint(ok(softDelete(x, COL, 'r1')))).not.toBe(fingerprint(x));
-    expect(fingerprint(remove(x, COL, 'r1'))).not.toBe(fingerprint(x));
-    expect(fingerprint(remove(x, COL, 'r1'))).not.toBe(fingerprint(ok(softDelete(x, COL, 'r1'))));
+    expect(fingerprint(removed(x, COL, 'r1'))).not.toBe(fingerprint(x));
+    expect(fingerprint(removed(x, COL, 'r1'))).not.toBe(fingerprint(ok(softDelete(x, COL, 'r1'))));
   });
 
   it('covers every collection, not only the first', () => {
@@ -296,7 +295,7 @@ describe('fingerprint', () => {
 
   it('an empty replica has a fingerprint, and a record id cannot fake a deleted record', () => {
     expect(fingerprint(emptyReplica('a'))).toMatch(/^[0-9a-f]{32}$/);
-    const del = remove(written(emptyReplica('a'), 'r1', { x: 1 }), COL, 'r1');
+    const del = removed(written(emptyReplica('a'), 'r1', { x: 1 }), COL, 'r1');
     const fake = written(emptyReplica('a'), 'r1', { deleted: 'deleted' });
     expect(fingerprint(del)).not.toBe(fingerprint(fake));
   });

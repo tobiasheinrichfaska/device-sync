@@ -11,12 +11,51 @@ describe('canonical', () => {
     expect(canonical(undefined)).toBe('null');
   });
 
-  it('keeps array order, nulls non-JSON array members, differing values differ', () => {
+  it('keeps array order, differing values differ', () => {
     expect(canonical([2, 1])).not.toBe(canonical([1, 2]));
-    expect(canonical([undefined, () => 1, [[]]])).toBe('[null,null,[[]]]');
+    expect(canonical([null, [[]]])).toBe('[null,[[]]]');
     expect(canonical({ a: 1 })).not.toBe(canonical({ a: 2 }));
     expect(canonical({ a: null })).not.toBe(canonical({}));
     expect(canonical({ a: undefined })).toBe(canonical({}));
+  });
+
+  it('throws a TypeError for anything that is not plain JSON instead of reading it differently', () => {
+    class Thing {
+      x = 1;
+    }
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const cyclic: unknown[] = [];
+    cyclic.push(cyclic);
+    const bad: [string, unknown][] = [
+      ['Date', new Date(0)],
+      ['Map', new Map()],
+      ['Set', new Set()],
+      ['class instance', new Thing()],
+      ['function', () => 1],
+      ['symbol', Symbol('s')],
+      ['bigint', 1n],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['undefined in an array', [1, undefined]],
+      ['a function in an array', [() => 1]],
+      ['a hole in an array', [1, , 3]], // eslint-disable-line no-sparse-arrays
+      ['an object cycle', cycle],
+      ['an array cycle', cyclic],
+      ['a Date nested in an object', { a: { b: new Date(0) } }],
+      ['an object with toJSON', { toJSON: () => 1 }],
+    ];
+    for (const [label, value] of bad) {
+      expect(() => canonical(value), label).toThrow(TypeError);
+      expect(() => checkValue(value), label).toThrow(TypeError);
+    }
+    // the same object twice (not a cycle) is fine
+    const shared = { k: 1 };
+    expect(canonical([shared, shared])).toBe('[{"k":1},{"k":1}]');
+    // very deep nesting is refused, not a stack overflow
+    let deep: unknown = 1;
+    for (let i = 0; i < 2000; i += 1) deep = [deep];
+    expect(() => canonical(deep)).toThrow(TypeError);
   });
 
   it('sorts keys as code units, not numerically', () => {
@@ -41,7 +80,6 @@ describe('checkValue', () => {
       { z: [1, { b: null, a: [] }], a: 'ü "\\\n😀', n: -0.5, e: 1e21, u: undefined },
       '8I2NpkH1YEPoiZsfypSVaqQliFb69W3aNSQhYNsCaVg',
     ],
-    [[undefined, () => 1, [[]]], '0OKFqYNInCiuxDSMBX3IdELLGGF8Eg7zQRt_naJFzTE'],
     [{ '': 0, 10: 1, 9: 2, B: 3, a: 4 }, 'Dbxma3huJYQLrriI9qXIb81EDve_sxrs5xE2dXv5zH8'],
     ['x', 'ui30kDosFOhtw7zKWJEbRKwdJRS3Inv26wjPuXj1Whs'],
     [3, 'TgdAhWK-24tgzgXB3s_jrRa3IjCWfeAfZAt-Rym0n84'],

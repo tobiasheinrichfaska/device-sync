@@ -15,4 +15,7 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 | Path                          | Impact                              | Audit Check                                    |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------- |
 | No app names in the package   | public repo must stay app-neutral   | `tests/coupling.test.ts` green                 |
+| Local writing is as strict as the parser | a change a receiver refuses blocks everything later from its device | `tests/log/hardening.test.ts` (H3/H4: names, values, limits, origin) |
+| A `knew` cannot be invented   | a lying `knew` could hide a conflict | `tests/log/hardening.test.ts` (M2: required, causal hold, convergence) |
+| No quadratic work from well-formed input | one device or many deletions could stall a replica | `tests/log/performance.test.ts` (8000 writes to one record, 20000 deletions) |
 | Parsers are strict            | a lenient parser opens a hole       | `tests/log/parse.test.ts`: seeded fuzzing (6000 inputs per parser), limit boundaries, depth bombs |

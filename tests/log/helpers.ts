@@ -2,6 +2,7 @@ import {
   findRecord,
   merge,
   missingFor,
+  remove,
   valuesOf,
   write,
   type Replica,
@@ -49,3 +50,11 @@ export function prng(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** Final deletion; the replica itself (unchanged when the record is already deleted). */
+export const removed = (
+  replica: Replica,
+  collection: string,
+  id: string,
+  origin: { time?: number; by?: string } = {},
+): Replica => ok(remove(replica, collection, id, origin));

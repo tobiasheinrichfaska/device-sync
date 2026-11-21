@@ -7,7 +7,6 @@ import {
   emptyReplica,
   historyOf,
   merge,
-  remove,
   restore,
   softDelete,
   undo,
@@ -17,7 +16,7 @@ import {
   type Replica,
 } from '../../src/log/index.ts';
 import { int, pick, type Rng } from './fuzz.ts';
-import { COL, prng, sync, written } from './helpers.ts';
+import { COL, prng, sync, written, removed } from './helpers.ts';
 
 const DEVICES = ['d0', 'd1', 'd2', 'd3', 'd4'];
 const RECORDS = ['r0', 'r1', 'r2', 'r3'];
@@ -77,7 +76,7 @@ function step(rng: Rng, replicas: Replica[], stats: Stats, stripOwn: boolean): v
       apply(undo(me, COL, id, { device: target.device, seq: target.seq }, origin), 'undos');
     }
   } else if (roll < 0.75) {
-    const next = remove(me, COL, id, origin);
+    const next = removed(me, COL, id, origin);
     if (next !== me) {
       replicas[i] = next;
       stats.removes += 1;

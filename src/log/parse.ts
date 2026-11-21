@@ -1,5 +1,6 @@
 import { resolveLimits, type Limits } from './limits.ts';
 import type { Change, ChangeKind, VersionVector } from './types.ts';
+import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from './validate.ts';
 
 /**
  * A message of the exchange:
@@ -21,8 +22,6 @@ export interface ParseOptions {
 /** Permissive default for device ids; an app passes its own (e.g. exactly 16 hex digits). */
 export const DEFAULT_DEVICE_ID = /^[A-Za-z0-9._-]{1,80}$/;
 
-const FORBIDDEN = new Set(['__proto__', 'constructor', 'prototype']);
-const CONTROL = /\p{Cc}/u;
 const KINDS: readonly string[] = ['set', 'delete', 'redacted'] satisfies ChangeKind[];
 const CHECK = /^[A-Za-z0-9_-]{43}$/;
 const SIG = /^[A-Za-z0-9_-]{86}$/;
@@ -42,75 +41,14 @@ const CHANGE_MEMBERS: ReadonlySet<string> = new Set([
   'sig',
 ]);
 
-/** A plain data object (from JSON, or an object literal): no class instance, no Date, no Map. */
-function isPlain(v: unknown): v is Record<string, unknown> {
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
-  const proto = Object.getPrototypeOf(v) as unknown;
-  return proto === Object.prototype || proto === null;
-}
-
-/** Safe integers only: past 2^53 a clock no longer counts up. */
-const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
-
-/** 1..max characters, no control character. */
-const text = (v: unknown, max: number): v is string =>
-  typeof v === 'string' && v.length >= 1 && v.length <= max && !CONTROL.test(v);
-
-/** A key that would reach the prototype of the object it is stored in. */
-const name = (v: unknown, max: number): v is string => text(v, max) && !FORBIDDEN.has(v);
-
 /** Only the members named; `undefined`-valued ones count as absent. */
 const onlyMembers = (o: Record<string, unknown>, allowed: ReadonlySet<string>): boolean =>
   Object.keys(o).every((k) => allowed.has(k) || o[k] === undefined);
 
-interface Budget {
-  nodes: number;
-}
-
-/** A copy of a field value, or undefined when it breaks a limit or is not plain JSON. */
-function cleanValue(v: unknown, depth: number, limits: Limits, budget: Budget): unknown {
-  // Every node is at least one character of JSON, so this also bounds the work on a huge value.
-  if (++budget.nodes > limits.maxValueChars) return undefined;
-  if (v === null || typeof v === 'boolean') return v;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
-  if (typeof v === 'string') return v.length <= limits.maxText ? v : undefined;
-  if (depth >= limits.maxDepth) return undefined;
-  if (Array.isArray(v)) {
-    if (v.length > limits.maxEntries) return undefined;
-    const out: unknown[] = [];
-    for (let i = 0; i < v.length; i += 1) {
-      const item = cleanValue(v[i], depth + 1, limits, budget);
-      if (item === undefined) return undefined;
-      out.push(item);
-    }
-    return out;
-  }
-  if (!isPlain(v)) return undefined;
-  const keys = Object.keys(v);
-  if (keys.length > limits.maxEntries) return undefined;
-  const out: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (!name(key, limits.maxName)) return undefined;
-    const item = cleanValue(v[key], depth + 1, limits, budget);
-    if (item === undefined) return undefined;
-    out[key] = item;
-  }
-  return out;
-}
-
 function fieldsOf(raw: unknown, limits: Limits): Record<string, unknown> | undefined {
-  if (!isPlain(raw)) return undefined;
-  const keys = Object.keys(raw);
-  if (keys.length === 0 || keys.length > limits.maxFields) return undefined;
-  const out: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (!name(key, limits.maxName)) return undefined;
-    const value = cleanValue(raw[key], 0, limits, { nodes: 0 });
-    if (value === undefined) return undefined;
-    if (JSON.stringify(value).length > limits.maxValueChars) return undefined;
-    out[key] = value;
-  }
-  return out;
+  if (isPlain(raw) && Object.keys(raw).length === 0) return undefined;
+  const checked = checkFields(raw, limits);
+  return checked.ok ? checked.value : undefined;
 }
 
 function vectorOf(
@@ -121,10 +59,10 @@ function vectorOf(
   if (!isPlain(raw)) return undefined;
   const keys = Object.keys(raw);
   if (keys.length > limits.maxDevices) return undefined;
-  const out: Record<string, number> = {};
+  const out = dict<number>();
   for (const device of keys) {
     const seq = raw[device];
-    if (FORBIDDEN.has(device) || deviceId(device) !== true || !count(seq)) return undefined;
+    if (FORBIDDEN_NAMES.has(device) || deviceId(device) !== true || !count(seq)) return undefined;
     out[device] = seq;
   }
   return out;
@@ -135,25 +73,27 @@ function changeOf(raw: unknown, limits: Limits, deviceId: (id: string) => boolea
   const { device, seq, clock, collection, id, kind } = raw;
   if (
     typeof device !== 'string' ||
-    FORBIDDEN.has(device) ||
+    FORBIDDEN_NAMES.has(device) ||
     deviceId(device) !== true ||
     !count(seq) ||
     seq < 1 ||
     !count(clock) ||
     clock < 1 ||
-    !text(collection, limits.maxId) ||
-    !text(id, limits.maxId) ||
+    !name(collection, limits.maxId) ||
+    !name(id, limits.maxId) ||
     typeof kind !== 'string' ||
     !KINDS.includes(kind)
   ) {
     return undefined;
   }
-  // What the author knew travels along: without it no device could tell a conflict.
+  // What the author knew travels along: without it no device could tell a conflict, so a `set` or
+  // `delete` without it is refused (an erased write needs none).
   const knew = raw.knew === undefined ? undefined : vectorOf(raw.knew, limits, deviceId);
   if (raw.knew !== undefined && !knew) return undefined;
+  if (kind !== 'redacted' && !knew) return undefined;
   const { time, by } = raw;
   if (time !== undefined && !count(time)) return undefined;
-  if (by !== undefined && !text(by, limits.maxName)) return undefined;
+  if (by !== undefined && !label(by, limits.maxName)) return undefined;
   // A signature never comes without the check value; a check value alone is an erased write.
   const { check, sig } = raw;
   if (check !== undefined && (typeof check !== 'string' || !CHECK.test(check))) return undefined;

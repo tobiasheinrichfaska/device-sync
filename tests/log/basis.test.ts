@@ -13,7 +13,6 @@ import {
   liveRecords,
   merge,
   missingFor,
-  remove,
   restore,
   softDelete,
   undo,
@@ -21,7 +20,7 @@ import {
   write,
   type Replica,
 } from '../../src/log/index.ts';
-import { COL, ok, permutations, prng, sync, values, written } from './helpers.ts';
+import { COL, ok, permutations, prng, sync, values, written, removed } from './helpers.ts';
 
 const AUTHOR1 = { time: 1_762_600_000_000, by: 'u1' };
 const AUTHOR2 = { time: 1_762_600_060_000, by: 'u2' };
@@ -43,7 +42,7 @@ describe('write', () => {
     });
     expect(values(a, 'r1')).toEqual({ label: 'x', note: 'y' });
     expect(write(emptyReplica('A'), COL, 'r1', {})).toEqual({ ok: false, reason: 'no-fields' });
-    expect(write(remove(a, COL, 'r1'), COL, 'r1', { label: 'x' })).toEqual({
+    expect(write(removed(a, COL, 'r1'), COL, 'r1', { label: 'x' })).toEqual({
       ok: false,
       reason: 'record-deleted',
     });
@@ -130,7 +129,7 @@ describe('concurrent edits', () => {
   it('give the same result in every order of arrival', () => {
     const a = written(written(emptyReplica('A'), 'r1', { label: 'x' }), 'r1', { note: 'A' });
     const b = written(written(emptyReplica('B'), 'r1', { note: 'B' }), 'r2', { label: 'x' });
-    const c = remove(written(emptyReplica('C'), 'r3', { label: 'x' }), COL, 'r3');
+    const c = removed(written(emptyReplica('C'), 'r3', { label: 'x' }), COL, 'r3');
     const all = [...a.log, ...b.log, ...c.log];
     const outcomes = permutations(all).map((order) => {
       let d = emptyReplica('D');
@@ -144,7 +143,7 @@ describe('concurrent edits', () => {
 describe('final delete', () => {
   it('erases the content everywhere, forwards only redacted entries, wins over a concurrent write', () => {
     const a = written(written(emptyReplica('A'), 'r1', { note: 'secret' }), 'r1', { label: 'x' });
-    const deleted = remove(a, COL, 'r1');
+    const deleted = removed(a, COL, 'r1');
     expect(findRecord(deleted, COL, 'r1')).toEqual({ id: 'r1', fields: {}, deleted: true });
     expect(liveRecords(deleted, COL)).toEqual([]);
     expect(deleted.log.map((c) => c.kind)).toEqual(['redacted', 'redacted', 'delete']);
@@ -156,7 +155,7 @@ describe('final delete', () => {
       expect(findRecord(r, COL, 'r1')?.deleted).toBe(true);
       expect(JSON.stringify(r)).not.toContain('later');
     }
-    expect(remove(deleted, COL, 'r1')).toBe(deleted);
+    expect(removed(deleted, COL, 'r1')).toBe(deleted);
   });
 });
 
@@ -198,7 +197,12 @@ describe('conflict notice', () => {
       c,
       missingFor(b2, c.vector).filter((x) => x.device === 'B'),
     ).replica;
-    const late = sync(a2, onlyB);
+    // B's write says it knew A's second write: it waits (causal hold) until A's write is here
+    expect(onlyB.vector).toEqual(c.vector);
+    const late = merge(onlyB, [
+      ...missingFor(a2, onlyB.vector),
+      ...missingFor(b2, onlyB.vector),
+    ]).replica;
     expect(late.notices).toEqual([]);
     expect(values(late, 'r1')?.note).toBe('B');
   });
@@ -212,7 +216,7 @@ describe('conflict notice', () => {
     const settled = written(both, 'r1', { note: 'first' });
     expect(settled.notices).toEqual([]);
     expect(sync(settled, b2).notices).toEqual([]);
-    const gone = remove(both, COL, 'r1');
+    const gone = removed(both, COL, 'r1');
     expect(gone.notices).toEqual([]);
     expect(JSON.stringify(gone)).not.toMatch(/first|second/);
   });
@@ -272,7 +276,7 @@ describe('who and when, soft delete, history, undo', () => {
     expect(softDelete(hidden, COL, 'r1')).toEqual({ ok: false, reason: 'unchanged' });
     expect(visibleRecords(ok(restore(hidden, COL, 'r1')), COL).map((r) => r.id)).toEqual(['r1']);
     expect(softDelete(emptyReplica('A'), COL, 'r1')).toEqual({ ok: false, reason: 'no-record' });
-    expect(restore(remove(two(), COL, 'r1'), COL, 'r1')).toEqual({
+    expect(restore(removed(two(), COL, 'r1'), COL, 'r1')).toEqual({
       ok: false,
       reason: 'record-deleted',
     });
@@ -351,14 +355,17 @@ describe('shortened `knew`', () => {
     expect(beforeA.notices).toEqual([]);
     const a = written(beforeA, 'r1', { note: 'from A' });
     expect(a.log[a.log.length - 1]!.knew).toEqual({ X: 1, Y: 1 });
-    // R holds Y's write and gets A's before X's
-    const r = merge(
-      sync(y, emptyReplica('R')),
-      a.log.filter((c) => c.device === 'A'),
-    ).replica;
-    expect(r.notices).toEqual([]);
-    expect(values(r, 'r1')?.note).toBe('from A');
-    expect(sync(x, r).notices).toEqual([]);
+    // R holds Y's write and gets A's before X's: A's write says it knew X's, so it waits
+    const aChanges = a.log.filter((c) => c.device === 'A');
+    const r = merge(sync(y, emptyReplica('R')), aChanges);
+    expect(r.held).toHaveLength(1);
+    expect(r.replica.notices).toEqual([]);
+    expect(values(r.replica, 'r1')?.note).toBe('from Y');
+    // once X's write is here, A's is taken (in one call, whatever the order)
+    const done = merge(r.replica, [...aChanges, ...x.log.filter((c) => c.device === 'X')]);
+    expect(done.held).toEqual([]);
+    expect(done.replica.notices).toEqual([]);
+    expect(values(done.replica, 'r1')?.note).toBe('from A');
   });
 
   // Every check of the model asks `knew` only about devices that wrote the same fields: random runs
@@ -388,7 +395,10 @@ describe('shortened `knew`', () => {
         } else {
           // a sync, now and then only of one device's changes (a forwarder that lacks the rest)
           const e = pick(devices);
-          const only = rnd() < 0.4 ? pick(devices) : null;
+          // A forwarder that lacks the rest would make the two runs differ by design: a whole-stand
+          // `knew` makes a change wait for more (causal hold) than the shortened one. Partial
+          // deliveries are covered by the property tests.
+          const only: string | null = null;
           const part = (from: Replica, to: Replica) =>
             merge(
               to,

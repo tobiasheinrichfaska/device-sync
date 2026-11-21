@@ -14,12 +14,17 @@ the vectors in `tests/core/` pin the behaviour.
 
 `canonical(value)` is the text that is hashed or signed instead of raw JSON:
 
-- arrays: `[` members joined by `,` `]`, order kept; members that are not JSON values (undefined,
-  functions) become `null`;
+- arrays: `[` members joined by `,` `]`, order kept; an `undefined` member (or a hole) throws;
 - objects: members whose value is `undefined` are dropped, the remaining keys are sorted by UTF-16 code
   unit (default JavaScript sort, so `"10"` sorts before `"9"`), each written as
   `JSON.stringify(key):canonical(value)`, joined by `,` inside `{` `}`;
-- everything else is `JSON.stringify(value)`, or `null` when that gives nothing (top-level `undefined`).
+- null, booleans, finite numbers and strings are `JSON.stringify(value)`; a top-level `undefined` is
+  `null`.
+
+Only plain JSON is canonical. Anything else throws a `TypeError` instead of being read as something
+other than what a receiver gets from the JSON text: `Date`, `Map`, `Set`, class instances (anything
+whose prototype is not `Object.prototype` or null), objects with a `toJSON`, functions, symbols,
+`bigint`, `NaN`, `Infinity`, `undefined` in an array, cycles, and nesting deeper than 512 levels.
 
 `checkValue(value)` = base64url(SHA-256(UTF-8(canonical(value)))), always 43 characters.
 
@@ -54,19 +59,19 @@ the messages of the exchange in "Exchange" below.
 
 One entry of a device's log. Only its author creates it; everybody forwards it.
 
-| Field        | Type                          | Meaning                                                                                               |
-| ------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `device`     | string                        | Author's device id (random, never derived from a person)                                              |
-| `seq`        | integer, 1, 2, 3 ...          | Per-device number, **gapless**                                                                        |
-| `clock`      | integer                       | Lamport clock at creation (own clock + 1, raised to the highest clock seen)                           |
-| `collection` | string                        | Name of the set of records                                                                            |
-| `id`         | string                        | Record id                                                                                             |
-| `kind`       | `set` / `delete` / `redacted` | see below                                                                                             |
-| `fields`     | object (optional)             | Only for `set`: field name to value. Values are any JSON (lists and objects count as one value)       |
-| `knew`       | object (optional)             | Author's version vector, shortened (see below)                                                        |
-| `time`, `by` | number, string (optional)     | Author's own time (ms since 1970) and a label; history only, never used to order writes               |
-| `check`      | string (optional)             | `changeCheckValue(change)` = `checkValue({fields, knew, time, by})`; set by the signer, kept on erase |
-| `sig`        | string (optional)             | Author's signature over the head and `check`; kept on erase                                           |
+| Field        | Type                          | Meaning                                                                                                           |
+| ------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `device`     | string                        | Author's device id (random, never derived from a person)                                                          |
+| `seq`        | integer, 1, 2, 3 ...          | Per-device number, **gapless**                                                                                    |
+| `clock`      | integer                       | Lamport clock at creation (own clock + 1, raised to the highest clock seen)                                       |
+| `collection` | string                        | Name of the set of records                                                                                        |
+| `id`         | string                        | Record id                                                                                                         |
+| `kind`       | `set` / `delete` / `redacted` | see below                                                                                                         |
+| `fields`     | object (optional)             | Only for `set`: field name to value. Values are any JSON (lists and objects count as one value)                   |
+| `knew`       | object                        | Author's version vector, shortened (see below). **Required** for `set` and `delete`; a `redacted` change has none |
+| `time`, `by` | number, string (optional)     | Author's own time (ms since 1970) and a label; history only, never used to order writes                           |
+| `check`      | string (optional)             | `changeCheckValue(change)` = `checkValue({fields, knew, time, by})`; set by the signer, kept on erase             |
+| `sig`        | string (optional)             | Author's signature over the head and `check`; kept on erase                                                       |
 
 `kind`: `set` writes the named fields (fields not named keep their value); `delete` is the final
 deletion of the record; `redacted` is a former `set` whose content was erased because the record was
@@ -75,12 +80,37 @@ deleted. A redacted change keeps `device`, `seq`, `clock`, `collection`, `id`, `
 so numbering stays gapless and the head stays checkable. A `set` that arrives for an already deleted
 record is stored redacted from the start.
 
+**Names.** `collection`, `id`, field names, keys inside a value and the device ids are used as keys
+of objects, so `__proto__`, `constructor` and `prototype` are refused everywhere (parser and local
+writing). Every other string is an ordinary name, `toString` and `valueOf` included: the log layer
+keeps collections, records, fields and version vectors in objects without a prototype. Names, and the
+label `by`, are NFC-normalised and contain no control character (`\p{Cc}`) and no format character
+(`\p{Cf}`: bidirectional overrides, zero-width characters, byte order mark); text that is not in NFC
+form is refused, not converted.
+
+**Local writing obeys the same rules.** `write`, `softDelete`, `restore`, `undo` and `remove` check
+the names, the values (plain JSON only: no `Date`, `Map`, `Set`, class instance, function, symbol,
+`bigint`, `NaN`/`Infinity`, `undefined`, cycle), the limits of the table below (`limits` option as
+for the parser), the origin (`time`, `by`) and the own device id with the strict parser's checks, and
+answer `{ ok: false, reason }` instead of creating a change a conforming receiver would refuse
+(which would block everything later from this device, the numbering being gapless). Reasons:
+`invalid-name`, `invalid-value`, `too-large`, `too-many-fields`, `invalid-origin`, `invalid-device`,
+`too-many-devices` (more devices wrote the fields than one `knew` may name), `clock-overflow`, plus
+`no-fields`, `no-record`, `record-deleted`, `unknown-change`, `unchanged`. The stored value is a copy.
+
 ## Version vector (stand)
 
 `{ [device]: highest seq received without a gap }`. A change is applied only when its `seq` is exactly
-the known `seq` + 1 for its device and its `clock` is at most own clock + `MAX_CLOCK_JUMP`
-(10 000 000); otherwise it is **held** (returned in `held`, not stored) until it can be applied.
-Duplicates and already known changes are ignored; merging is idempotent and independent of order.
+the known `seq` + 1 for its device, its `clock` is at most own clock + `MAX_CLOCK_JUMP`
+(10 000 000), and the **causal hold** is met: for every device `d` named in its `knew` the replica
+already holds at least `knew[d]` changes of `d`. Otherwise it is **held** (returned in `held`, not
+stored) until it can be applied. A single `merge` call repeats until nothing more becomes applicable,
+so changes that depend on each other (a clock raised by another device's change, a `knew` naming a
+change delivered later in the same call) are taken together whatever their order. A change that
+names more than its author could have known (an invented, huge `knew`) or that has no `knew` is held
+for good and blocks only its own author's later changes (the numbering is gapless); it cannot
+suppress a conflict notice or overwrite silently. Duplicates and already known changes are ignored;
+merging is idempotent and independent of order.
 
 ## Which value wins
 
@@ -95,13 +125,16 @@ value of those fields). A deletion names every device that wrote the record. A r
 never held gives `{}`. Devices with number 0 are left out; keys are sorted. Every decision of the
 model asks `knew` only about such devices, so it decides exactly as with the whole stand.
 `concurrent(a, b)`: both carry `knew`, come from different devices, and neither knew the other
-(`a.knew[b.device] < b.seq` and `b.knew[a.device] < a.seq`); a missing `knew` means no conflict.
+(`a.knew[b.device] < b.seq` and `b.knew[a.device] < a.seq`). `knew` is required on `set` and `delete`
+(the parser and `merge` refuse a change without it), and the causal hold above means a `knew` can only
+name changes the receiver holds.
 
 ## Conflict notice
 
 A pure function of the log, so devices holding the same changes find the same notices. For one field
 of a live record: the writes no other write knew (a later write of the same device, or a write with
-`knew[device] >= seq`, knows it) are the heads; those that are concurrent with another head clash; a
+`knew[device] >= seq`, knows it) are the heads; only the last write of each device can be one, so
+the work per field grows with the number of devices, not with the number of writes; those that are concurrent with another head clash; a
 notice `{collection, id, field, values: [{value, device, seq}], applies}` exists when the clashing
 heads carry different values (compared by canonical form). **Equal values are no notice.** A write
 that knew all heads settles it; the final deletion of the record removes it. Values are sorted by
@@ -200,16 +233,17 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
   instance, `Date`, `Map`. Members other than the listed ones refuse the object; a member that is
   `undefined` counts as absent.
 - **Change:** `device` (device id), `seq` and `clock` safe integers of 1 or more, `collection` and
-  `id` 1 to `maxId` characters without control characters, `kind` one of `set`/`delete`/`redacted`;
-  optional `knew` (a vector), `time` (safe integer, 0 or more), `by` (1 to `maxName` characters, no
-  control characters), `check` (43 base64url characters), `sig` (86 base64url characters, only with
+  `id` 1 to `maxId` characters, names as below, `kind` one of `set`/`delete`/`redacted`; `knew` (a
+  vector; required for `set` and `delete`), optional `time` (safe integer, 0 or more), `by` (1 to
+  `maxName` characters, no control or format character, NFC), `check` (43 base64url characters), `sig` (86 base64url characters, only with
   `check`). `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
   `delete` and `redacted`.
 - **Vector:** at most `maxDevices` entries; keys are device ids, values safe integers of 0 or more.
 - **Numbers** must be safe integers (counts) or finite (values): `NaN`, `Infinity`, `-Infinity`,
   floats where a count is expected, negatives and anything above 2^53 refuse.
-- **Names and keys** (`fields`, keys inside a value, `by`) are 1 to `maxName` characters without
-  control characters and never `__proto__`, `constructor` or `prototype`; the same three are refused
+- **Names and keys** (`collection`, `id`, `fields`, keys inside a value) are 1 to `maxName` (`maxId`
+  for collection and id) characters without control or format characters, in NFC form, and never
+  `__proto__`, `constructor` or `prototype`; the same three are refused
   as device ids even when the app's device id pattern would take them.
 - **A field value** is `null`, a boolean, a finite number, a text of at most `maxText` characters, or
   a list or object of such values: at most `maxDepth` levels, `maxEntries` entries per list or object,

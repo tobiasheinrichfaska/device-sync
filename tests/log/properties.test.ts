@@ -8,7 +8,6 @@ import {
   historyOf,
   merge,
   missingFor,
-  remove,
   restore,
   softDelete,
   undo,
@@ -17,7 +16,7 @@ import {
   type Change,
   type Replica,
 } from '../../src/log/index.ts';
-import { COL, prng, written } from './helpers.ts';
+import { COL, prng, written, removed } from './helpers.ts';
 
 const DEVICES = ['A', 'B', 'C'] as const;
 const IDS = ['r1', 'r2'];
@@ -89,7 +88,7 @@ function schedule(rnd: Rnd, steps: number, options: Options): Record<string, Rep
       const res = write(r, COL, id, fields);
       if (res.ok) reps[d] = res.replica;
     } else if (roll < 0.52 && options.removals) {
-      reps[d] = remove(r, COL, id);
+      reps[d] = removed(r, COL, id);
     } else if (roll < 0.6 && options.hiding !== false) {
       const res = rnd() < 0.5 ? softDelete(r, COL, id) : restore(r, COL, id);
       if (res.ok) reps[d] = res.replica;
@@ -269,7 +268,7 @@ describe('redaction', () => {
     a = written(a, 'r2', { f1: 'keep' });
     a = written(a, 'r1', { f2: 'secret too' });
     const original = [...a.log];
-    a = remove(a, COL, 'r1');
+    a = removed(a, COL, 'r1');
     expect(a.log.map((c) => c.seq).sort((x, y) => x - y)).toEqual([1, 2, 3, 4]);
     expect(a.vector).toEqual({ A: 4 });
     const red = a.log.filter((c) => c.kind === 'redacted');
@@ -320,7 +319,7 @@ describe('redaction', () => {
   it('a write after the final delete is logged redacted from the start (random orders agree)', () => {
     for (let seed = 8000; seed < 8050; seed += 1) {
       const rnd = prng(seed);
-      const a = remove(written(emptyReplica('A'), 'r1', { f1: 'x' }), COL, 'r1');
+      const a = removed(written(emptyReplica('A'), 'r1', { f1: 'x' }), COL, 'r1');
       const b = written(written(emptyReplica('B'), 'r1', { f1: 'late' }), 'r1', { f2: 'later' });
       const pool = [...a.log, ...b.log];
       const one = settle(emptyReplica('P'), shuffle(rnd, pool), rnd);

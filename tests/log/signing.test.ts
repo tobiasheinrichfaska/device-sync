@@ -10,7 +10,6 @@ import {
   judgeChanges,
   merge,
   readChanges,
-  remove,
   signChange,
   signOwnChanges,
   write,
@@ -21,7 +20,7 @@ import {
   type Verdict,
 } from '../../src/log/index.ts';
 import { redacted } from '../../src/log/merge.ts';
-import { COL, ok, written } from './helpers.ts';
+import { COL, ok, written, removed } from './helpers.ts';
 
 const APP = 'syncdemo';
 const SET = 'main';
@@ -308,9 +307,9 @@ describe('special and rights hooks, neverErase', () => {
     const keys = await pair();
     let r = emptyReplica('a');
     r = ok(write(r, 'devices', 'd1', { name: 'one' }));
-    r = remove(r, 'devices', 'd1');
+    r = removed(r, 'devices', 'd1');
     r = written(r, 'r1', { title: 'x' });
-    r = remove(r, COL, 'r1');
+    r = removed(r, COL, 'r1');
     r = await signedLog(r, keys.privateKey);
     const opts = options({ a: keys.publicKey }, { neverErase: ['devices'] });
     const verdicts = await judgeChanges({ ...opts, state: here() }, r.log);
@@ -338,7 +337,7 @@ describe('a final deletion', () => {
       keys.privateKey,
     );
     const original = last(r);
-    const deleted = await signedLog(remove(r, COL, 'r1'), keys.privateKey);
+    const deleted = await signedLog(removed(r, COL, 'r1'), keys.privateKey);
     const [erased, deletion] = deleted.log as [Change, Change];
     expect(erased.kind).toBe('redacted');
     expect(erased.fields).toBeUndefined();
@@ -376,7 +375,7 @@ describe('a final deletion', () => {
     const c = await pair();
     const r = await signedLog(written(emptyReplica('a'), 'r1', { title: 'x' }), a.privateKey);
     const byC = await signedLog(
-      remove(merge(emptyReplica('c'), r.log).replica, COL, 'r1'),
+      removed(merge(emptyReplica('c'), r.log).replica, COL, 'r1'),
       c.privateKey,
     );
     const onlyA = { ...options({ a: a.publicKey }), state: here() };
@@ -400,7 +399,7 @@ describe('a final deletion', () => {
     const keys = await pair();
     let r = written(emptyReplica('a'), 'r1', { title: 'x' });
     const content = changeCheckValue(last(r));
-    r = remove(r, COL, 'r1');
+    r = removed(r, COL, 'r1');
     expect(r.log[0]).toMatchObject({ kind: 'redacted', check: content });
     const signed = await signedLog(r, keys.privateKey);
     expect(signed.log.every((c) => c.sig)).toBe(true);
@@ -432,7 +431,7 @@ describe('own changes', () => {
     const keys = await pair();
     let r = written(emptyReplica('a'), 'r1', { title: 'x' });
     const before = await signOwnChanges(APP, keys.privateKey, r, SET);
-    r = remove(r, COL, 'r1');
+    r = removed(r, COL, 'r1');
     expect(insertSignatures(r, before).log[0]?.sig).toBe(before[0]?.sig);
     const other = [
       {
@@ -587,7 +586,7 @@ describe('start data accepted by a special hook, also when erased (both earlier 
   it('an erased copy passes only beside its record’s final deletion', async () => {
     const keys = await pair();
     let r = merge(emptyReplica('a'), compiled).replica;
-    r = await signedLog(remove(r, COL, 'r1'), keys.privateKey);
+    r = await signedLog(removed(r, COL, 'r1'), keys.privateKey);
     const erased = r.log.find((c) => c.device === START) as Change;
     const deletion = last(r);
     expect(erased).toMatchObject({ kind: 'redacted', check: changeCheckValue(original) });
