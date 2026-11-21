@@ -36,7 +36,7 @@ function files(dir: string): string[] {
 
 describe('coupling guard', () => {
   it('the package reports its honest status', () => {
-    expect(STATUS).toBe('core-partial');
+    expect(STATUS).toBe('log-partial');
   });
 
   it('no file names a private project or its domain', () => {

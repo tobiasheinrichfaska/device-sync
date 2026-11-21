@@ -51,7 +51,9 @@ Errors are codes, not sentences.
 | `src/index.ts`                                                   | Public entry: status and re-export of the finished layers     |
 | `src/core/` (`encoding`, `canonical`, `markers`, `keys`, `index`) | Core layer, first part: base64url, canonical JSON, markers, device keys, check code |
 | `tests/core/`                                                    | Unit tests of the core layer                                  |
-| `docs/wire-format.md`                                            | What the core layer puts on the wire                          |
+| `src/log/` (`types`, `vector`, `check`, `merge`, `replica`, `index`) | Log layer, part 1 (pure): change, version vector, merge, redaction, conflict notices, history, undo |
+| `tests/log/`                                                     | Log tests: `basis` and `typed` (cases of both earlier implementations), `properties` (seeded random schedules), `helpers` |
+| `docs/wire-format.md`                                            | What the core and log layers put on the wire                  |
 | `tests/coupling.test.ts`                                         | Guard: no private project names, only own imports             |
 | `scripts/fix-declarations.mjs`                                   | Rewrites `.ts` imports in the emitted declarations            |
 | `package.json`, `tsconfig.json`, `tsconfig.build.json`, `vitest.config.ts`, `.prettierrc.json`, `.prettierignore` | Toolchain (`"private": true` against an accidental npm publish) |
@@ -77,7 +79,10 @@ npm run format:check
 
 ## Known Limitations
 
-- Only the first part of the core layer exists (encoding, canonical JSON, markers, device keys, check code); log, trust, post, relay, transfer, push, browser are not implemented.
+- Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the pure part of the log layer (change model, merge, redaction, notices, history, undo) exist; the exchange protocol and signatures of the log, and trust, post, relay, transfer, push, browser are not implemented.
+- Conflict notices are derived from the log (a change against the earlier implementations, which built them incrementally and could differ between devices); a notice lists the concurrent heads, not every superseded write.
+- The "hold back until approved" hook exists only as a type (`ApprovalHook`) and a marked spot in `merge`.
+- The soft-delete field name `deleted` is reserved; there is no limit on field count or value size yet.
 - Public but unreviewed: the README says so; no npm release and no tag for use before the security review.
 
 _Last updated: 2026-11-21_
