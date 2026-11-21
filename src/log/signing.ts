@@ -611,7 +611,10 @@ export async function settle(
   const blocked = new Set<DeviceId>();
   const dropped: Change[] = [];
   let taken: Change[] = [];
-  for (;;) {
+  // Every round that goes on decided at least one waiting change, so this many rounds are enough;
+  // the bound only guarantees the loop ends whatever a key source does.
+  const maxRounds = pending.length + erased.length + 3;
+  for (let round = 0; round < maxRounds; round += 1) {
     const upTo = merge(state, [...accepted, ...taken]).replica;
     let progress = false;
     if (pending.length > 0) {

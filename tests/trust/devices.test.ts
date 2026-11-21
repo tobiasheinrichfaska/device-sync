@@ -383,7 +383,7 @@ describe('vouching with any role (roles name persons that must exist)', () => {
     const [a, b, c] = [await dev('A'), await dev('B'), await dev('C')];
     const rb = await drop(b, await enter(b, emptyOf(b), c, THOMAS, OA), c, OA);
     const rc = merge(emptyOf(c), rb.log).replica;
-    const back = ok(addDevice(rc, OA, c.intro, THOMAS, { time: 3 }));
+    const back = writeRaw(rc, DEVICE_COLLECTION, c.id, { removed: false, role: THOMAS });
     expect(listDevices(back, OA).find((e) => e.name === 'C')?.removed).toBe(false);
     const rc2 = await signed(back, c);
     const both = [known(b, ROLF), known(c, THOMAS)];
@@ -433,19 +433,20 @@ describe('vouching with any role (roles name persons that must exist)', () => {
     expect(list.find((x) => x.name === 'C')?.role).toBe(ROLF);
   });
 
-  it('"remove first, then meet again": a removed id takes other keys; removing nothing writes nothing', async () => {
+  it('a removed id stays removed: entering it again is refused (a re-admission is a new device id); removing nothing writes nothing', async () => {
     const [a, b, c] = [await dev('A'), await dev('B'), await dev('C')];
     const empty = emptyOf(a);
     expect(ok(removeDevice(empty, OA, c.id, {}))).toBe(empty);
     const r1 = ok(addDevice(empty, OA, c.intro, undefined, {}));
     const gone = ok(removeDevice(r1, OA, c.id, {}));
     expect(ok(removeDevice(gone, OA, c.id, {}))).toBe(gone);
+    expect(addDevice(gone, OA, c.intro, undefined, {})).toEqual({ ok: false, reason: 'removed' });
     const renewed = { ...c.intro, sig: b.intro.sig, dh: b.intro.dh };
-    const r2 = ok(addDevice(gone, OA, renewed, undefined, {}));
-    expect(listDevices(r2, OA).find((e) => e.device === c.id)).toMatchObject({
-      sig: b.intro.sig,
-      removed: false,
-    });
+    expect(addDevice(gone, OA, renewed, undefined, {})).toEqual({ ok: false, reason: 'removed' });
+    expect(names(await trusted(gone, [], OA))).toEqual([]);
+    // the same keys under a NEW id are a new device
+    const again = { ...c.intro, device: b.id };
+    const r2 = ok(addDevice(gone, OA, again, undefined, {}));
     expect(names(await trusted(r2, [], OA))).toEqual(['C']);
   });
 

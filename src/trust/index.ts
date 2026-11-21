@@ -1,11 +1,13 @@
 export type {
   DeviceEntry,
+  DeviceStatus,
   Introduction,
   KnownDevice,
   ProtocolOptions,
   Trust,
   TrustedDevice,
   TrustOptions,
+  TrustReason,
   Validators,
   Voucher,
 } from './types.ts';
@@ -27,12 +29,18 @@ export {
   computeTrust,
   deviceKeySource,
   deviceNeverErase,
+  deviceStatus,
   listDevices,
   removeDevice,
   renameDevice,
   setDevicePrivate,
 } from './devices.ts';
-export type { DeviceError, DeviceKeySourceOptions, DeviceResult } from './devices.ts';
+export type {
+  DeviceError,
+  DeviceKeySourceOptions,
+  DeviceResult,
+  LocalTrustOptions,
+} from './devices.ts';
 export {
   MEETING_AHEAD_MS,
   MEETING_RENEW_MS,

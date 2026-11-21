@@ -37,6 +37,19 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.
 
+## Trust derivation (trust layer)
+
+Trust is never stored; it is derived from the log and the devices met in person, and the result is a
+function of the set of changes (not of any order): potential trust by vouching from the met devices,
+a key-consistency rule (a voucher cannot replace another device's keys; conflicts fail closed),
+removals evaluated statically on the potential trust (mutual and cyclic removals remove everybody
+involved), and a write cut-off per removed device (`lastSeq` of the removal, the smallest wins, changes
+above it are `ignored`, not refused). The exact rules are in `docs/wire-format.md`, "Trust derivation".
+`derive.ts` holds one engine (a generator that asks for signature checks): `computeTrust` and
+`deviceKeySource` run it with real checks, `addDevice` and `removeDevice` run it on this device's own
+log to decide against the derived state. The derivation indexes the log once per state and is linear in
+the entries; `deviceKeySource` answers `keyFor` and `standing` by lookup.
+
 ## Who may vouch (trust layer)
 
 The package hard-wires no role. An app passes a `Voucher` (`canVouch`, optional `mayInvite`) and

@@ -28,6 +28,11 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 | Piece processing is linear | known valid changes in many pieces could stall a device | `tests/log/review3.test.ts` (L6) |
 | An erased change carries only signed members | unchecked members were stored and forwarded | `tests/log/review3.test.ts` (L9) |
 | Changes after a removal are ignored, not refused | the session must go on | `tests/log/review3.test.ts` (`KeySource.standing`, `neverErase`) |
+| Trust does not depend on order | the same log gave different trust on two devices (removal order) | `tests/trust/order.test.ts` (400 random scenarios, 4 delivery and creation orders each, incl. mutual and cyclic removals) and `tests/trust/review4.test.ts` (T1) |
+| A voucher cannot replace another device's keys | a signature of the wrong key was accepted, the real one refused | `tests/trust/review4.test.ts` (T2: both entry orders, `sig` and `dh`, relay ids) |
+| Local writing decides against the derived state | an entry a non-voucher wrote made `addDevice`/`removeDevice` do nothing | `tests/trust/review4.test.ts` (T3, `deviceStatus`) |
+| The derivation is linear | a chain of 400 devices took 2 s to derive and 300 s to read | `tests/trust/review4.test.ts` (T4: derive 400 chain, `readChanges` of 399 chain changes) |
+| A removal has a write cut-off | a removed device could write on, or the session was refused | `tests/trust/review4.test.ts` (L5: `lastSeq`, smaller cutoff of two removers, honest session converges) |
 | A device does not send what it has not signed | an honest device would block itself | `tests/log/review2.test.ts` (H4b: `signedOnly`, `withheld`) |
 | Every refusal has a reason | an app must tell "stop writing, re-enrol" from "stop trusting that device" | `tests/log/review2.test.ts` (M4: `own-history`, `equivocation`, ...) |
 | Final deletion is opt-in | one member's signature could erase any record for good | `tests/log/review2.test.ts` (M5: `allowFinalDelete`) |

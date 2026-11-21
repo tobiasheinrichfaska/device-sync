@@ -57,7 +57,10 @@ or `|`; anything else is a programming error and throws a `TypeError`. Take the 
 hash as five big-endian 16-bit numbers; each modulo 10000, zero-padded to four digits, joined by single
 spaces: `dddd dddd dddd dddd dddd`. The five groups carry about **66 bits** (5 x log2 10000 = 66.4):
 enough to catch a mistake or a casual swap, not a lasting protection against an attacker who can grind
-keys; the trust layer decides how much more a meeting needs.
+keys; the trust layer decides how much more a meeting needs. The optional parameter `groups` (default
+5, 5 to 10, else `TypeError`) takes `2 x groups` bytes: each group adds about **13.3 bits** (10 groups:
+about 133 bits); the first five groups are the same for every length. Use at least **8 groups** (about
+106 bits) where the code protects against a modified invitation link.
 
 # Wire format: log layer, part 1
 
@@ -457,6 +460,7 @@ is the device id. Entries are never finally deleted: the collection belongs in `
 | `role`    | text    | no       | Opaque role (app predicate; default `^[a-z][a-z0-9:_-]{0,79}$`)                          |
 | `relayId` | text    | no       | The id the relay gave the device (app predicate; default 1 to 80, no control characters) |
 | `removed` | boolean | no       | `true` ends trust; entries stay. Missing counts as false                                 |
+| `lastSeq` | integer | no       | Written with `removed: true`: the highest number of the removed device the remover holds |
 | `private` | boolean | no       | "Private device" flag; written only when true or when it replaces a differing value      |
 
 A device id (default `device-` and 32 lower-case hex digits, `newDeviceId`) is 128 random bits. A
@@ -464,28 +468,83 @@ second id, `relayId`, is assigned by a relay; the trust layer only validates it.
 
 ### Trust derivation
 
-Trust is derived from the log and the devices met in person, never stored (`computeTrust`):
+Trust is derived from the log and from `direct` (the devices met in person, with the keys learned in
+person), never stored (`computeTrust`, `deviceStatus`). The result is a function of the SET of changes
+and of `direct`: the order changes arrived in, the order records were created in and the order of the
+met list change nothing (property test over 400 random scenarios, `tests/trust/order.test.ts`). No rule
+iterates until it settles, no rule looks at the shrinking result.
 
-1. The devices met in person (`direct`) are trusted as given. Their role counts only when the app's
-   `roleCounts(role, replica)` says so (default: always); a role that does not count stays as
-   `roleVouched`.
-2. A device **vouches** when the app's strategy says so (`Voucher.canVouch(device, trusted)`; `vouchAll`,
-   `vouchRoles`, `vouchAnyRole` are ready made). The strategy is asked again after every step.
-3. For each field of an entry counts **the newest value written by this device itself (unsigned) or by
-   a vouching trusted device whose signature checks** (check value, `changeSigningText` with the app
-   id and data set, the voucher's signing key). A device's own write into its own entry never counts.
-   What any other device wrote counts for nothing.
-4. An entry with a vouched name and keys is trusted; this repeats until nothing is added (chains
-   A -> B -> C). A met device keeps its keys: an entry with other keys for it is ignored. A role learned
-   later from an entry counts from then on (and may make the device a voucher).
-5. `removed` = true, so vouched, ends trust, also of a met device, and what the removed device vouched
-   for no longer counts through it. The derivation is repeated without the removed ones.
+Terms. A **write** is one value of one field of an entry together with its writer and its change. A
+write **counts** when its writer is this device (unsigned, it holds its own log) or a vouching device
+of the current round, whose signature checks (check value, `changeSigningText` with the app id and the
+data set, the voucher's signing key as the derivation holds it) and who is not the device the entry
+belongs to. `canVouch(device, entries)` is the app's strategy (`vouchAll`, `vouchRoles`,
+`vouchAnyRole`); it is asked when a device joins and again when its entry changes, and must answer
+from the entry (its role); `entries` is a live view of the derivation so far.
+
+1. **Potential trust P** (removals ignored). The least fixpoint from the devices met in person, in
+   synchronous rounds: a device joins when its name, signing key and agreement key each have a valid
+   counting value (the newest valid one of the writes that count), and the keys differ. Role,
+   `relayId` and `private` are taken the same way when present. A round looks only at the state at its
+   start, so no order of records matters. A met device keeps the entry learned in person (name,
+   keys, role) and may add a role it lacks from the log (when the keys agree). A role that does not
+   count (`roleCounts`) stays as `roleVouched`. The number of rounds is bounded (a derivation always
+   ends). This device itself is always a root and its own writes count.
+2. **Key consistency.** For every device `d`, all values ever written for its `sig` and `dh` by
+   devices of P that vouch (the whole history, signatures checked, not only the newest) are collected.
+   More than one distinct `sig` or `dh`: `d` is not trusted through the chain (reason `key-conflict`;
+   a voucher that writes its own key into another entry is a conflict for that entry, whichever
+   entry was written first). A met device keeps the keys learned in person; a conflicting vouch is
+   ignored and reported (`key-mismatch`). More than one distinct `relayId`: the relay id is dropped
+   (`relay-conflict`), the device stays trusted. P is then computed again without the conflicted
+   devices. Keys of an id never change: a re-keyed device is a new device id.
+3. **Removal.** A removal edge `r -> t` exists when the newest `removed: true` that `r` wrote into the
+   entry of `t` counts (`r` is in P, vouches, signature checks) AND `r` is reachable from the met
+   devices (and this device) inside P by a chain of vouching devices that does not pass through `t`
+   (an edge `u -> w`: `u` vouches and wrote an identity field of `w`). Such a removal is **effective**.
+   It is evaluated statically on P, never on the shrinking result, so mutual or cyclic removals
+   remove everybody involved (**fail closed**: when `A` and `R` remove each other and both are
+   reachable without the other, both are removed) and the result never depends on record or log
+   order. What the device itself or a non-voucher wrote into `removed` counts for nothing; a later
+   `removed: false` (by anybody, also by the remover) does not take a removal back. A removed device
+   stays removed: re-admission means a NEW device id (`addDevice` refuses `removed`).
+4. **Trust T** = what is reachable from the met devices in P restricted to the devices that are not
+   effectively removed and not key-conflicted: the derivation of rule 1 run again without them, so a
+   device that was vouched only through a removed device drops out, and a met device that is
+   effectively removed is not trusted either. `checkable` = T plus the effectively removed devices
+   whose keys were vouched for: a removal ends trust from now on, not what the device wrote before.
    Hiding ("deleting") an entry ends nothing.
-6. `checkable` = the trusted devices and the removed ones whose keys were vouched for: a removal ends
-   trust from now on, not what the device wrote before. `deviceKeySource` hands the keys of
-   `checkable` to `readChanges`/`judgeChanges`, derived from the replica as it would be with the
-   batch taken so far, so changes that enter a device make its own later changes checkable. A
-   removed device stays checkable; whether it may still write is the app's `mayWrite` rule.
+5. **Cut-off.** `removeDevice` writes `lastSeq` (an integer, the highest change number of the removed
+   device this device holds) together with `removed: true`. `standing(device)` of an effectively
+   removed device is `{ key, cutoff }` with `cutoff` = the minimum of `lastSeq` over all its
+   effective removals (smaller = stricter, the same at every device; a removal without a valid
+   `lastSeq` gives no cutoff). `deviceKeySource` implements `KeySource.standing`: the judge ignores
+   (verdict `ignored`, reason `after-removal`) changes of that device with `seq` above the cutoff
+   without refusing the session; changes up to the cutoff stay `checked`. `deviceKeySource.neverErase`
+   lists the device collection.
+
+Reasons (`deviceStatus(replica, id, { ...options, direct })`: `{ trusted, checkable, removed,
+cutoff?, reasons }`): `key-conflict`, `key-mismatch`, `relay-conflict`, `removed`, `not-vouched`.
+`listDevices` is only a display of the raw entries (what some device wrote last, whoever it was);
+`addDevice` and `removeDevice` decide against the derived state, not against the raw entry.
+
+Cost. One pass over the log builds an index of the entries (kept per log array); the rounds then
+touch only the entries a newly vouching device wrote, so a chain of 400 devices derives in about 10 ms
+once its signatures are checked (checks are remembered per change). `deviceKeySource` derives once per
+replica state and answers `keyFor` and `standing` from that result.
+
+What the derivation does not decide (limits an app handles):
+
+- The meeting code carries the role and the name as self-declaration, has no recipient bound and can be
+  relayed by a third party within its 120 s window.
+- The single use of an invitation is not enforceable offline: two replies to one code can both be
+  taken; the damage is one more device of that role. An app keeps a ledger of used invitations.
+  A kept `open` invitation lets a removed device answer it again only with a new device id: the old id
+  stays removed.
+- A voucher can always write anything into an entry; the rules above limit what survives (keys,
+  relay ids, removals by unreachable devices), not a trusted administrator's choice of a name or a role.
+- The check code (`checkCode`) carries about 13.3 bits per group; use `groups` of 8 or more where it
+  is the only protection against a modified invitation link.
 
 ### Markers
 

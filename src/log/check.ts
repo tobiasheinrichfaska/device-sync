@@ -8,5 +8,30 @@ import type { Change } from './types.ts';
  */
 export function changeCheckValue(change: Change): string {
   const { fields, knew, time, by } = change;
-  return checkValue({ fields, knew, time, by });
+  // Judging asks again for every round a change waits; the value is kept per change object, and is
+  // computed again when any member of the content is another object (replicas are never edited in place).
+  const known = memo.get(change);
+  if (
+    known &&
+    known.fields === fields &&
+    known.knew === knew &&
+    known.time === time &&
+    known.by === by
+  ) {
+    return known.value;
+  }
+  const value = checkValue({ fields, knew, time, by });
+  memo.set(change, { fields, knew, time, by, value });
+  return value;
 }
+
+const memo = new WeakMap<
+  Change,
+  {
+    fields: Change['fields'];
+    knew: Change['knew'];
+    time: number | undefined;
+    by: string | undefined;
+    value: string;
+  }
+>();

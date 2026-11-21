@@ -38,23 +38,55 @@ export interface TrustedDevice extends DeviceEntry {
   readonly since?: string;
 }
 
+/** Why a device is not (fully) trusted, or what was left out of its entry. */
+export type TrustReason =
+  /** Vouching devices wrote more than one signing or agreement key for it: not trusted through the chain. */
+  | 'key-conflict'
+  /** A device met in person: a voucher wrote other keys than the ones learned in person (ignored). */
+  | 'key-mismatch'
+  /** Vouching devices wrote more than one relay id: the relay id is dropped, the device stays trusted. */
+  | 'relay-conflict'
+  /** A removal counts (see `docs/wire-format.md`, "Trust derivation", rule 3). */
+  | 'removed'
+  /** Nobody trusted vouches for it (or not completely). */
+  | 'not-vouched';
+
+/** The derived state of one device id (`deviceStatus`). */
+export interface DeviceStatus {
+  readonly trusted: boolean;
+  /** Its signatures can be checked: trusted, or removed with keys that were vouched for. */
+  readonly checkable: boolean;
+  /** An effective removal exists. */
+  readonly removed: boolean;
+  /** Changes of a removed device with a number above this are ignored (the smallest `lastSeq` of its removals). */
+  readonly cutoff?: number;
+  readonly reasons: readonly TrustReason[];
+}
+
 /** The result of `computeTrust`. */
 export interface Trust {
   /** Trusted devices: the met ones and those a voucher entered (removed ones left out). */
   readonly trusted: readonly TrustedDevice[];
   /** Devices whose signatures can be checked: the trusted ones and the removed ones whose keys were vouched for. */
   readonly checkable: readonly TrustedDevice[];
-  /** Ids whose removal counts. */
+  /** Ids with an effective removal (this device itself excluded, see `selfRemoved`), sorted. */
   readonly removed: readonly DeviceId[];
-  /** A trusted vouching device removed this device itself. */
+  /** A removal of this device itself counts. */
   readonly selfRemoved: boolean;
+  /** The checkable devices by id. */
+  readonly checkableById: ReadonlyMap<DeviceId, TrustedDevice>;
+  /** Per removed device the cutoff (smallest `lastSeq` of its effective removals), when one was given. */
+  readonly cutoffs: ReadonlyMap<DeviceId, number>;
+  /** Per device the reasons worth reporting (only devices that have some). */
+  readonly reasons: ReadonlyMap<DeviceId, readonly TrustReason[]>;
 }
 
 /** Who may vouch for other devices, and who may invite which role. The package hard-wires no role. */
 export interface Voucher {
   /**
-   * Whether a trusted device vouches (its entries for other devices count). `entries` = the trusted
-   * devices so far, `device` among them. Asked again on every pass of the derivation.
+   * Whether a trusted device vouches (its entries for other devices count). `entries` = the devices
+   * of the derivation so far (a live view: do not keep it), `device` among them. Asked when a device
+   * joins and again when its entry changes; answer from the entry (role), not from the list.
    */
   canVouch(device: DeviceEntry, entries: readonly DeviceEntry[]): boolean;
   /** Whether this inviter may invite a device with this role. Missing: only a device that can vouch. */

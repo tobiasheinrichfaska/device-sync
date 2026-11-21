@@ -64,11 +64,14 @@ const unsafeChar = (ch: string): boolean => {
 };
 
 /**
- * Five groups of four digits from a hash over app, device id and both public keys; compared aloud.
+ * Groups of four digits from a hash over app, device id and both public keys; compared aloud.
  * The hashed text is `<marker>|<n>:<deviceId>|<n>:<sig>|<n>:<dh>` where each `<n>` is the UTF-8
  * byte length of the field after it, so no field can be shifted into another. The five groups carry
  * about 66 bits (5 x log2(10000)): enough to catch a mistake, not a lasting protection against an
  * attacker who can grind keys; the trust layer decides how much more a meeting needs.
+ * `groups` (default 5, allowed 5 to 10, else TypeError) sets the length: each group adds about 13.3
+ * bits (10 groups: about 133 bits). Use at least 8 groups (about 106 bits) where the code is what
+ * protects against a modified invitation link; a longer code is read aloud more slowly.
  * A device id with `|` or a control character, or a key that is not a point, is a programming error
  * (TypeError).
  */
@@ -76,7 +79,11 @@ export async function checkCode(
   appId: string,
   deviceId: string,
   keys: PublicKeys,
+  groups = 5,
 ): Promise<string> {
+  if (!Number.isInteger(groups) || groups < 5 || groups > 10) {
+    throw new TypeError('checkCode: groups must be an integer from 5 to 10');
+  }
   if (typeof deviceId !== 'string' || deviceId.length === 0 || [...deviceId].some(unsafeChar)) {
     throw new TypeError('checkCode: the device id is empty or has a control character or "|"');
   }
@@ -89,10 +96,10 @@ export async function checkCode(
     `${marker(appId, 'device', FORMAT_VERSION)}|${field(deviceId)}|${field(keys.sig)}|${field(keys.dh)}`,
   );
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-  const groups: string[] = [];
-  for (let i = 0; i < 10; i += 2) {
+  const parts: string[] = [];
+  for (let i = 0; i < groups * 2; i += 2) {
     const n = (((hash[i] ?? 0) << 8) | (hash[i + 1] ?? 0)) % 10000;
-    groups.push(String(n).padStart(4, '0'));
+    parts.push(String(n).padStart(4, '0'));
   }
-  return groups.join(' ');
+  return parts.join(' ');
 }
