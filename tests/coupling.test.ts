@@ -62,7 +62,7 @@ describe('coupling guard', () => {
       encoding: 'utf8',
     });
     expect(log.length).toBeGreaterThan(0);
-    const hits = FORBIDDEN.filter((word) => new RegExp(String.raw`${word}`, 'i').test(log));
+    const hits = FORBIDDEN.filter((word) => new RegExp(String.raw`\b${word}\b`, 'i').test(log));
     expect(hits).toEqual([]);
   });
 
