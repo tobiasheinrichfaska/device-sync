@@ -11,7 +11,7 @@ Shared, app-independent technology for secure device-to-device data sync in Tobi
 apps: a signed gapless change log per device, end-to-end encrypted transfer, device trust and
 invitation, a relay client and Web Push helpers. Created 2026-11-21 (decision: extract it from the
 apps that carry copies of it). **Status: scaffold (0.0.0): nothing implemented or exported yet, not
-published to npm, GitHub repo private until Tobias says "veröffentlichen".**
+published to npm. GitHub repo made public on 2026-11-21 (Tobias' OK); the README carries a "Not reviewed" notice until the security review is done.**
 
 **The inventory of the existing implementations, the measured drift between them and the plan (names
 private projects) live in the private companion repo `device-sync-privat`**
@@ -29,8 +29,10 @@ Errors are codes, not sentences.
 
 - **Public repo in the end (AGPLv3 + commercial):** no app data, no real names, no private project
   names in files or git history. The first commit is neutral.
-- **Nothing is published, tagged for use or made public without Tobias' explicit "veröffentlichen".**
-  A security review (threat model, fuzzing of the strict parsers, independent pass) comes first.
+- **The repo is public (since 2026-11-21, Tobias' OK), the work is in the open.** Nothing is published to
+  npm or tagged for use, and the README's "Not reviewed" notice stays, until Tobias says so after a
+  security review (threat model, fuzzing of the strict parsers, independent pass). Never commit keys
+  other than throw-away test keys; commit messages follow the same no-private-names rule as files.
 - Crypto code changes only with the tests that guard it; ported code keeps the tests of both source
   implementations (their union).
 - The other apps are not converted from here; they get a note to check the package.
@@ -73,6 +75,6 @@ npm run format:check
 ## Known Limitations
 
 - Scaffold only: no layer is implemented yet.
-- Not published; the GitHub repo is private until the security review is done.
+- Public but unreviewed: the README says so; no npm release and no tag for use before the security review.
 
 _Last updated: 2026-11-21_
