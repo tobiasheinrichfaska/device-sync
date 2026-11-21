@@ -5,6 +5,10 @@ device, end-to-end encrypted transfer (files, envelopes, sessions), device trust
 client for a simple message relay, and Web Push helpers. The package is app-independent: record
 shapes, merge rules on a business level, rights, texts and UI belong to your app.
 
+> **Not reviewed — do not use for real data.** The cryptography and the protocol are being built and have
+> had no independent security review yet. Until that review is done and this note is removed, treat
+> everything here as work in progress.
+
 **Status: scaffold (0.0.0).** Nothing is implemented or exported yet; the package is built layer by
 layer and is not published to npm. See [docs/architecture.md](docs/architecture.md) for the planned
 layers.

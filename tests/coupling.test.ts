@@ -1,6 +1,7 @@
 // Guard: this is a public, app-independent package. It must not name the apps it was extracted from
 // (files and git history), and must not import anything from outside itself.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STATUS } from '../src/index.ts';
@@ -49,6 +50,19 @@ describe('coupling guard', () => {
           hits.push(`${relative(ROOT, path)}: ${word}`);
       }
     }
+    expect(hits).toEqual([]);
+  });
+
+  it('no commit message, author name or author email names a private project', () => {
+    // An exported archive has no .git: nothing to read. A real checkout must be readable, so a
+    // failing `git log` fails the test instead of silently passing.
+    if (!existsSync(join(ROOT, '.git'))) return;
+    const log = execFileSync('git', ['log', '--all', '--format=%an %ae %s %b'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    expect(log.length).toBeGreaterThan(0);
+    const hits = FORBIDDEN.filter((word) => new RegExp(String.raw`${word}`, 'i').test(log));
     expect(hits).toEqual([]);
   });
 
