@@ -47,8 +47,8 @@ single spaces: `dddd dddd dddd dddd dddd`.
 # Wire format: log layer, part 1
 
 Ported from two earlier implementations; new format version `:2` with English field names. The
-tests in `tests/log/` pin the behaviour. Not yet built: the exchange protocol (chunking, catch-up
-messages); signatures are described in the section "Signatures" below.
+tests in `tests/log/` pin the behaviour. Signatures are described in the section "Signatures",
+the messages of the exchange in "Exchange" below.
 
 ## Change
 
@@ -154,3 +154,108 @@ final deletion (in the log already, or in the batch and `checked`); beside a del
 **Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `false`:
 forgery. `readChanges` repeats the judgement while taken changes make more authors checkable; a single
 `false` aborts the whole batch and nothing is taken.
+
+## Exchange
+
+Over any channel (direct connection, relay, a file) two devices run one **session**: both send their
+stand; each answers with the changes the other lacks, in pieces; each takes what arrives and closes
+with its new stand and a fingerprint. Equal fingerprints mean both show the same data. The channel
+only carries the messages; encryption belongs to the session of the `core` layer (not built yet).
+
+### Messages
+
+All messages are JSON objects with exactly these members; an unknown member refuses the message.
+
+| `t`       | Members                                       | Meaning                                                           |
+| --------- | --------------------------------------------- | ----------------------------------------------------------------- |
+| `stand`   | `vector`                                      | The sender's version vector; opens the session                    |
+| `changes` | `changes` (list of changes), `last` (boolean) | One piece of the changes the receiver lacks; `last` ends the list |
+| `done`    | `vector`, `fingerprint` (8 lower-case hex)    | Sent once, after the other's last piece was taken                 |
+
+Flow: on a `stand` the receiver answers with `pieces(missingFor(replica, vector))` (always at least
+one piece, the last marked `last: true`). On the other's last piece a device merges, then sends one
+`done` with its stand and `fingerprint(replica)`. Once it has sent and received `done`, `outcome`
+tells whether the fingerprints are equal. A repeated piece is harmless: merging is idempotent and
+`done` is sent only once.
+
+**Pieces** are cut at `pieceBytes` UTF-8 bytes of the JSON text of the changes (each counted with one
+byte for the separator) or at `maxChanges` changes, whichever comes first; one change larger than the
+piece size travels alone. Pieces must arrive **in order**: the stream of a device is gapless, and a
+change behind a gap is not stored (`merge` returns it as `held`). A session that saw the last piece
+early is not corrupted, but ends with different fingerprints; the next session catches up.
+
+**Fingerprint.** SHA-256 over the canonical form of
+`[[collection, [[id, 'deleted'] | [id, [[field, value], ...]], ...]], ...]` (collections and fields
+sorted by name, records by id, deleted records as `'deleted'`); the first four bytes as 8 hex digits.
+Only visible data counts (current values), not history. It is a consistency check of 32 bits, not a
+proof.
+
+### Strict reading
+
+`parseChange`, `parseVector` and `parseSyncMessage` return `undefined` for anything that is not
+exactly the shape, and never throw (a throwing getter, a revoked proxy or a throwing option is
+`undefined` too). They never modify their input and return fresh objects that share nothing with it.
+
+- **Objects** must be plain (an object literal, `JSON.parse` output, or no prototype): no class
+  instance, `Date`, `Map`. Members other than the listed ones refuse the object; a member that is
+  `undefined` counts as absent.
+- **Change:** `device` (device id), `seq` and `clock` safe integers of 1 or more, `collection` and
+  `id` 1 to `maxId` characters without control characters, `kind` one of `set`/`delete`/`redacted`;
+  optional `knew` (a vector), `time` (safe integer, 0 or more), `by` (1 to `maxName` characters, no
+  control characters), `check` (43 base64url characters), `sig` (86 base64url characters, only with
+  `check`). `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
+  `delete` and `redacted`.
+- **Vector:** at most `maxDevices` entries; keys are device ids, values safe integers of 0 or more.
+- **Numbers** must be safe integers (counts) or finite (values): `NaN`, `Infinity`, `-Infinity`,
+  floats where a count is expected, negatives and anything above 2^53 refuse.
+- **Names and keys** (`fields`, keys inside a value, `by`) are 1 to `maxName` characters without
+  control characters and never `__proto__`, `constructor` or `prototype`; the same three are refused
+  as device ids even when the app's device id pattern would take them.
+- **A field value** is `null`, a boolean, a finite number, a text of at most `maxText` characters, or
+  a list or object of such values: at most `maxDepth` levels, `maxEntries` entries per list or object,
+  and `maxValueChars` characters as JSON text per value. Reading is bounded: every node costs one
+  character of that budget, so a huge or deeply nested value is refused without being read in full.
+- **Device ids** are checked with the option `deviceId: (id: string) => boolean`. The default is
+  `DEFAULT_DEVICE_ID`, `/^[A-Za-z0-9._-]{1,80}$/`; an app passes its own pattern (for example exactly
+  16 hex digits). The package does not fix a length.
+
+### Limits
+
+One object, `LIMITS`, holds every default; the parsers, `pieces` and the session functions take
+`{ limits: Partial<Limits> }` to override some of them for one call.
+
+| Limit               | Default | Meaning                                                                        |
+| ------------------- | ------- | ------------------------------------------------------------------------------ |
+| `maxFields`         | 40      | Fields in one `set` change                                                     |
+| `maxText`           | 2000    | Characters of one text inside a value                                          |
+| `maxValueChars`     | 16000   | JSON characters of one field value                                             |
+| `maxDepth`          | 6       | Nested lists/objects in one value                                              |
+| `maxEntries`        | 200     | Entries in one list or object of a value                                       |
+| `maxDevices`        | 50      | Devices in one vector (`stand`, `done`, `knew`)                                |
+| `maxChanges`        | 500     | Changes in one message                                                         |
+| `pieceBytes`        | 12000   | Size at which a piece is cut (UTF-8 bytes of JSON)                             |
+| `maxMessageChars`   | 1000000 | One `changes` message as JSON text (all its changes together); more is refused |
+| `maxSessionChanges` | 100000  | Changes `receiveJudged` collects over one session before it refuses            |
+| `maxName`           | 120     | Field name, `by`, keys inside a value                                          |
+| `maxId`             | 200     | Collection name and record id                                                  |
+
+Where the two earlier implementations differed, the larger value is the default (fields per change,
+text per value). The check value (43) and signature (86) lengths are fixed by the core layer.
+
+### A rejected change ends the session
+
+`receive` (strict reading, then `onSyncMessage`) and `receiveJudged` (strict reading, then
+`readChanges` on everything the other sent) turn any problem into a **refusal** of the whole session,
+and nothing of the offending piece (in `receiveJudged`: of the whole session) is taken:
+
+- `unreadable`: the message, or one change in it, is not exactly the shape.
+- `forged`: `readChanges` judged a change false (signature, check value, a change under the
+  receiver's own id, rights).
+- `too-large`: more than `maxSessionChanges` changes collected.
+
+A refused session sends nothing, ignores every later message and has no `outcome`. This is
+deliberate: taking the valid part of a piece would leave a gap in a device's numbering, and every
+later change of that device would wait for ever. `receiveJudged` collects the pieces and judges them
+together on the last one, because an erased write may arrive in an earlier piece than the final
+deletion it needs. Changes whose author cannot be checked yet (`pending`) are neither taken nor
+stored; they count as `waiting` and arrive again in a later session.

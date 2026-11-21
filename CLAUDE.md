@@ -10,7 +10,7 @@
 Shared, app-independent technology for secure device-to-device data sync in Tobias' offline-first web
 apps: a signed gapless change log per device, end-to-end encrypted transfer, device trust and
 invitation, a relay client and Web Push helpers. Created 2026-11-21 (decision: extract it from the
-apps that carry copies of it). **Status: 0.0.0, core layer partly implemented (encoding, canonical, markers, keys), not
+apps that carry copies of it). **Status: 0.0.0, core layer partly implemented, log layer incl. signing and exchange protocol (parsers, session, fingerprint), not
 published to npm. GitHub repo made public on 2026-11-21 (Tobias' OK); the README carries a "Not reviewed" notice until the security review is done.**
 
 **The inventory of the existing implementations, the measured drift between them and the plan (names
@@ -51,9 +51,9 @@ Errors are codes, not sentences.
 | `src/index.ts`                                                   | Public entry: status and re-export of the finished layers     |
 | `src/core/` (`encoding`, `canonical`, `markers`, `keys`, `signature`, `index`) | Core layer, first part: base64url, canonical JSON, markers, device keys, check code, `signText`/`verifyText` |
 | `tests/core/`                                                    | Unit tests of the core layer                                  |
-| `src/log/` (`types`, `vector`, `check`, `merge`, `replica`, `signing`, `index`) | Log layer (pure): change, version vector, merge, redaction, conflict notices, history, undo; signing and judging of changes (`signing`: signed text, `signChange`, `judgeChange(s)`, `readChanges`, hooks) |
-| `tests/log/`                                                     | Log tests: `basis` and `typed` (cases of both earlier implementations), `properties` (seeded random schedules), `helpers` |
-| `docs/wire-format.md`                                            | What the core and log layers put on the wire                  |
+| `src/log/` (`types`, `vector`, `check`, `merge`, `replica`, `signing`, `limits`, `parse`, `protocol`, `index`) | Log layer (pure): change, version vector, merge, redaction, conflict notices, history, undo; signing and judging of changes (`signing`: signed text, `signChange`, `judgeChange(s)`, `readChanges`, hooks); exchange protocol: `limits` (`LIMITS`, one object), `parse` (strict `parseChange`/`parseVector`/`parseSyncMessage`), `protocol` (`pieces`, `fingerprint`, session `startSession`/`onSyncMessage`/`receive`/`receiveJudged`/`outcome`) |
+| `tests/log/`                                                     | Log tests: `basis` and `typed` (cases of both earlier implementations), `properties` (seeded random schedules), `protocol` (session, pieces, fingerprint, refusals), `parse` (strict reading, limits, seeded fuzzing, depth bombs), `exchange` (full stack with real signatures, 120 seeded schedules, forgeries), `fuzz` and `helpers` (generators) |
+| `docs/wire-format.md`                                            | What the core and log layers put on the wire, incl. the exchange: messages, limits table, strictness rules |
 | `tests/coupling.test.ts`                                         | Guard: no private project names, only own imports             |
 | `scripts/fix-declarations.mjs`                                   | Rewrites `.ts` imports in the emitted declarations            |
 | `package.json`, `tsconfig.json`, `tsconfig.build.json`, `vitest.config.ts`, `.prettierrc.json`, `.prettierignore` | Toolchain (`"private": true` against an accidental npm publish) |
@@ -79,10 +79,11 @@ npm run format:check
 
 ## Known Limitations
 
-- Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the pure part of the log layer (change model, merge, redaction, notices, history, undo) exist; signing of changes (`signing`, with `signText`/`verifyText`) exists; the exchange protocol of the log, and trust, post, relay, transfer, push, browser are not implemented.
+- Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the log layer (change model, merge, redaction, notices, history, undo, signing, exchange protocol with strict parsers) exist; the end-to-end encrypted session, trust, post, relay, transfer, push and browser are not implemented.
+- Exchange: pieces must arrive in order within one session (a piece out of order leaves a gap, the session ends with different fingerprints, the next session catches up); the fingerprint is 32 bits; `receiveJudged` keeps up to `maxSessionChanges` changes in memory until the last piece; changes of authors that cannot be checked yet are dropped and must come again. Apps pass their own device id pattern (`deviceId` option); the default is permissive.
 - Conflict notices are derived from the log (a change against the earlier implementations, which built them incrementally and could differ between devices); a notice lists the concurrent heads, not every superseded write.
 - The "hold back until approved" hook exists only as a type (`ApprovalHook`) and a marked spot in `merge`.
-- The soft-delete field name `deleted` is reserved; there is no limit on field count or value size yet.
+- The soft-delete field name `deleted` is reserved; field count and value size are limited only on the wire (`LIMITS`), not when writing locally.
 - Public but unreviewed: the README says so; no npm release and no tag for use before the security review.
 
 _Last updated: 2026-11-21_

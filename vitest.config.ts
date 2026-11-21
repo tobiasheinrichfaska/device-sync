@@ -6,5 +6,7 @@ export default defineConfig({
     environment: 'node',
     pool: 'forks',
     globals: true,
+    // The seeded property and fuzz tests take a few seconds; a slow machine must not flake them.
+    testTimeout: 30_000,
   },
 });
