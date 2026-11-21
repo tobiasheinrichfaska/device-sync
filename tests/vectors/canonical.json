@@ -1,0 +1,91 @@
+{
+  "about": "input is JSON TEXT; canonical is the text that is hashed; check is base64url(SHA-256(UTF-8(canonical))), 43 characters. Numbers are the ECMAScript Number::toString of the IEEE double the input text rounds to.",
+  "cases": [
+    {
+      "name": "numbers: exponent forms, negative zero, doubles at and past 2^53",
+      "input": "[1e21,1e-7,0.30000000000000004,-0,5e-324,9007199254740992,9007199254740993,1.5e300,100,1E2,0.1,-1e-7,123456789012345680000,1e300]",
+      "canonical": "[1e+21,1e-7,0.30000000000000004,0,5e-324,9007199254740992,9007199254740992,1.5e+300,100,100,0.1,-1e-7,123456789012345680000,1e+300]",
+      "check": "u022hKFp3cJEKSs1fE7XnAXY6ogm4ouwOycWACRnY84"
+    },
+    {
+      "name": "keys sort by UTF-16 code unit: U+1F600 (D83D DE00) before U+FF5E, \"10\" before \"9\", \"\" first",
+      "input": "{\"\\uff5e\":1,\"\\ud83d\\ude00\":2,\"b\":3,\"a\":4,\"10\":5,\"9\":6,\"\":7}",
+      "canonical": "{\"\":7,\"10\":5,\"9\":6,\"a\":4,\"b\":3,\"😀\":2,\"～\":1}",
+      "check": "P-wuFNRREk5G66pXqhB9GXDjF3bVETojNzLkbeXy2t8"
+    },
+    {
+      "name": "escapes: only quote, backslash and C0 controls are escaped; U+2028, U+007F and non-ASCII stay raw",
+      "input": "[\"\\u2028\\u2029\",\"\\u0000\\u001f\\u007f\",\"\\b\\f\\n\\r\\t\",\"\\\"\\\\/\",\"\\u00e9\",\"\\ud83d\\ude00\",\"e\\u0301\"]",
+      "canonical": "[\"\u2028\u2029\",\"\\u0000\\u001f\",\"\\b\\f\\n\\r\\t\",\"\\\"\\\\/\",\"é\",\"😀\",\"é\"]",
+      "check": "D1ahZl0QT6LTfXfgFuG6yWDLf1ax_Utp1hZzlgKWRuE"
+    },
+    {
+      "name": "nested: white space dropped, keys sorted at every level, list order kept",
+      "input": "{ \"z\": [ {\"b\": null, \"a\": [true, false]}, 1 ], \"a\": {\"y\": \"x\", \"x\": {}} }",
+      "canonical": "{\"a\":{\"x\":{},\"y\":\"x\"},\"z\":[{\"a\":[true,false],\"b\":null},1]}",
+      "check": "31VQv8i7-bcfLw1pVKrVgAIA3w9mvzkahEqaDXdv32g"
+    },
+    {
+      "name": "top-level scalars and empty containers",
+      "input": "null",
+      "canonical": "null",
+      "check": "dCNOmK_nSY-12vHzasLXiswzlGT5UHA7jAGYkvmCuQs"
+    },
+    {
+      "name": "empty list",
+      "input": "[]",
+      "canonical": "[]",
+      "check": "T1PNoYwrqgwDVLtfmj7L5e0Sq02OEbqHPC8RFhICuUU"
+    },
+    {
+      "name": "empty object",
+      "input": "{}",
+      "canonical": "{}",
+      "check": "RBNvo1WzZ4oRRq0W9-hknpT7T8If536DEMBg9hyq_4o"
+    },
+    {
+      "name": "a text",
+      "input": "\"x\"",
+      "canonical": "\"x\"",
+      "check": "ui30kDosFOhtw7zKWJEbRKwdJRS3Inv26wjPuXj1Whs"
+    }
+  ],
+  "refused": [
+    {
+      "name": "lone high surrogate in a text",
+      "input": "\"\\ud800\"",
+      "reason": "lone-surrogate"
+    },
+    {
+      "name": "lone low surrogate inside a key",
+      "input": "{\"a\\udc00\":1}",
+      "reason": "lone-surrogate"
+    },
+    {
+      "name": "a surrogate pair in the wrong order is two lone surrogates",
+      "input": "[\"\\ude00\\ud83d\"]",
+      "reason": "lone-surrogate"
+    },
+    {
+      "name": "duplicate keys in one object",
+      "input": "{\"a\":1,\"a\":2}",
+      "reason": "duplicate-key"
+    },
+    {
+      "name": "duplicate keys spelled differently (escape and plain)",
+      "input": "{\"a\":1,\"\\u0061\":2}",
+      "reason": "duplicate-key"
+    },
+    {
+      "name": "duplicate keys in a nested object",
+      "input": "{\"x\":[{\"k\":1,\"k\":1}]}",
+      "reason": "duplicate-key"
+    }
+  ],
+  "notRefused": [
+    {
+      "name": "the same key in different objects is fine",
+      "input": "{\"a\":{\"k\":1},\"b\":{\"k\":2}}"
+    }
+  ]
+}

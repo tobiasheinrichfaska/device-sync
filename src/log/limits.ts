@@ -25,8 +25,15 @@ export interface Limits {
    * a single message can cost; a transport should also cap what it hands to the parser.
    */
   readonly maxMessageChars: number;
-  /** Most changes `receiveJudged` collects over the pieces of one session before it gives up. */
+  /** Most changes `receiveJudged` holds over the pieces of one session before it gives up. */
   readonly maxSessionChanges: number;
+  /**
+   * Most characters (UTF-16 units of the JSON) of changes `receiveJudged` holds over one session:
+   * the count limit alone does not bound memory, as one change may be long.
+   */
+  readonly maxSessionChars: number;
+  /** Most changes of a session that wait because their author cannot be checked yet. */
+  readonly maxPendingChanges: number;
   /** Longest field name, author label (`by`) and object key inside a value. */
   readonly maxName: number;
   /** Longest collection name and record id. */
@@ -44,6 +51,8 @@ export const LIMITS: Limits = Object.freeze({
   pieceBytes: 12000,
   maxMessageChars: 1_000_000,
   maxSessionChanges: 100_000,
+  maxSessionChars: 16_000_000,
+  maxPendingChanges: 2000,
   maxName: 120,
   maxId: 200,
 });

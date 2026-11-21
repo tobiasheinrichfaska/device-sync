@@ -3,8 +3,16 @@ import { resolveLimits } from './limits.ts';
 import { merge } from './merge.ts';
 import { parseSyncMessage, type ParseOptions, type SyncMessage } from './parse.ts';
 import { missingFor } from './replica.ts';
-import { readChanges, type JudgeOptions } from './signing.ts';
-import type { Change, Replica, VersionVector } from './types.ts';
+import {
+  admit,
+  emptyJudging,
+  settle,
+  type Judging,
+  type JudgeOptions,
+  type LimitReason,
+  type Reason,
+} from './signing.ts';
+import type { Change, DeviceId, Replica, VersionVector } from './types.ts';
 
 const utf8 = new TextEncoder();
 
@@ -72,8 +80,27 @@ export function fingerprint(replica: Replica): string {
   return Array.from(digest.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Why a session ended without taking anything further. */
-export type Refusal = 'unreadable' | 'forged' | 'too-large';
+/**
+ * Why a session ended without taking anything further: a message that cannot be read, a change that
+ * is false (the detail is in `Session.refusalReason`), a limit, or a message the protocol does not
+ * allow at that point (a second `stand` or `done`).
+ */
+export type Refusal = 'unreadable' | 'forged' | 'too-large' | 'unexpected';
+
+/** The detail of a refusal: the reason a change was false, which limit was hit, or what was repeated. */
+export type RefusalReason =
+  Reason | LimitReason | 'unparsable' | 'repeated-stand' | 'repeated-done';
+
+/** What a session needs beyond the parser's options. */
+export interface SessionOptions extends ParseOptions {
+  /**
+   * Answer a `stand` only with changes that carry a signature (default true). A device's own
+   * changes that are not signed yet would be judged forged by every receiver, and since numbering
+   * is gapless the sender would block itself; they wait until signed (`Session.withheld` counts
+   * them). Plain, unjudged test sessions pass `false`.
+   */
+  readonly signedOnly?: boolean;
+}
 
 export interface Session {
   /** Changes this device handed to the other. */
@@ -87,10 +114,26 @@ export interface Session {
   /** This device has sent its `done` message. */
   readonly ownDone: boolean;
   readonly peer?: { readonly vector: VersionVector; readonly fingerprint: string };
-  /** Changes of earlier pieces that `receiveJudged` holds until the last piece arrives. */
+  /** Changes this device did not send because they carry no signature yet (see `signedOnly`). */
+  readonly withheld: number;
+  /** The other's `stand` arrived (one per session). */
+  readonly standReceived?: boolean;
+  /**
+   * What `receiveJudged` holds until the last piece arrives: changes already verified (and those
+   * waiting for a key or for their deletion). Nothing unverified is ever buffered beyond a small
+   * count (`maxPendingChanges`) and `maxSessionChars` in all.
+   */
   readonly buffered?: readonly Change[];
+  /** JSON length of `buffered`. */
+  readonly bufferedChars?: number;
+  /** What `receiveJudged` has decided of the pieces so far. */
+  readonly judging?: Judging;
   /** Set when a message could not be read or a change was forged: nothing is taken any more. */
   readonly refusal?: Refusal;
+  /** Why (see `RefusalReason`; for `own-history` and `equivocation` read the notes on `Reason`). */
+  readonly refusalReason?: RefusalReason;
+  /** The author of the change that caused the refusal, when there is one. */
+  readonly refusalDevice?: DeviceId;
 }
 
 export interface Step {
@@ -103,31 +146,62 @@ export interface Step {
 /** The session opens with this device's stand. */
 export function startSession(replica: Replica): Step {
   return {
-    session: { sent: 0, taken: 0, waiting: 0, allReceived: false, ownDone: false },
+    session: { sent: 0, taken: 0, waiting: 0, allReceived: false, ownDone: false, withheld: 0 },
     replica,
     send: [{ t: 'stand', vector: replica.vector }],
   };
 }
 
 /**
+ * What the other lacks, in an order it can apply: with `signedOnly` (default) the changes that carry
+ * a signature, and from a device's first unsigned change on nothing of that device (numbering is
+ * gapless, a later change could not be applied without it). `withheld` counts what was left out.
+ */
+function answerFor(
+  replica: Replica,
+  vector: VersionVector,
+  options: SessionOptions,
+): { readonly changes: Change[]; readonly withheld: number } {
+  const missing = missingFor(replica, vector);
+  if (options.signedOnly === false) return { changes: missing, withheld: 0 };
+  const cut = new Set<DeviceId>();
+  const changes: Change[] = [];
+  let withheld = 0;
+  for (const change of missing) {
+    if (!change.sig) cut.add(change.device);
+    if (cut.has(change.device)) withheld += 1;
+    else changes.push(change);
+  }
+  return { changes, withheld };
+}
+
+/**
  * What a received (already parsed) message changes, and what to send in return. A stand is answered
- * with the changes the other lacks; changes are merged, and after the last piece this device closes
- * with its stand and fingerprint; `done` is remembered for `outcome`. A refused session ignores
- * everything. This variant takes changes as they are: signatures are judged by `receiveJudged`.
+ * with the changes the other lacks (only signed ones, see `SessionOptions.signedOnly`); changes are
+ * merged, and after the last piece this device closes with its stand and fingerprint; `done` is
+ * remembered for `outcome`. A second `stand` or `done` in one session ends it (refusal `unexpected`):
+ * every `stand` costs an answer. A refused session ignores everything. This variant takes changes
+ * as they are: signatures are judged by `receiveJudged`.
  */
 export function onSyncMessage(
   session: Session,
   replica: Replica,
   message: SyncMessage,
-  options: Pick<ParseOptions, 'limits'> = {},
+  options: SessionOptions = {},
 ): Step {
   if (session.refusal) return { session, replica, send: [] };
   if (message.t === 'stand') {
-    const missing = missingFor(replica, message.vector);
+    if (session.standReceived) return refused(session, replica, 'unexpected', 'repeated-stand');
+    const { changes, withheld } = answerFor(replica, message.vector, options);
     return {
-      session: { ...session, sent: session.sent + missing.length },
+      session: {
+        ...session,
+        sent: session.sent + changes.length,
+        withheld: session.withheld + withheld,
+        standReceived: true,
+      },
       replica,
-      send: pieces(missing, options),
+      send: pieces(changes, options),
     };
   }
   if (message.t === 'changes') {
@@ -152,6 +226,7 @@ export function onSyncMessage(
       ],
     };
   }
+  if (session.peer) return refused(session, replica, 'unexpected', 'repeated-done');
   return {
     session: { ...session, peer: { vector: message.vector, fingerprint: message.fingerprint } },
     replica,
@@ -159,10 +234,20 @@ export function onSyncMessage(
   };
 }
 
-const refused = (session: Session, replica: Replica, refusal: Refusal): Step => {
-  const { buffered: _dropped, ...rest } = session;
-  return { session: { ...rest, refusal }, replica, send: [] };
-};
+function refused(
+  session: Session,
+  replica: Replica,
+  refusal: Refusal,
+  refusalReason: RefusalReason,
+  refusalDevice?: DeviceId,
+): Step {
+  const { buffered: _b, bufferedChars: _c, judging: _j, ...rest } = session;
+  return {
+    session: { ...rest, refusal, refusalReason, ...(refusalDevice ? { refusalDevice } : {}) },
+    replica,
+    send: [],
+  };
+}
 
 /**
  * A message as it arrived (any JSON value): read strictly, then `onSyncMessage`. Anything that is
@@ -174,42 +259,77 @@ export function receive(
   session: Session,
   replica: Replica,
   raw: unknown,
-  options: ParseOptions = {},
+  options: SessionOptions = {},
 ): Step {
   if (session.refusal) return { session, replica, send: [] };
   const message = parseSyncMessage(raw, options);
-  if (!message) return refused(session, replica, 'unreadable');
+  if (!message) return refused(session, replica, 'unreadable', 'unparsable');
   return onSyncMessage(session, replica, message, options);
 }
 
 /**
- * Like `receive`, but every change is also judged with `readChanges` (signature, check value,
- * rights; see "Signatures"). The pieces of the other's changes are collected first and judged
- * together when the last one arrives: an erased write and its final deletion may sit in different
- * pieces, and a redacted change only counts beside its deletion. One forged change ends the session
- * with the refusal `forged` and nothing is taken. Changes that cannot be checked yet (`pending`: the
- * author's key is unknown) are not taken and not stored; they count as `waiting` and must come
- * again in a later session. More than `limits.maxSessionChanges` collected changes: `too-large`.
+ * Like `receive`, but every change is also judged (signature, check value, rights; see
+ * "Signatures"), AS ITS PIECE ARRIVES: whatever can be decided at once is (a change that is
+ * unsigned, forged, from an unknown member, equivocating or not allowed ends the session with the
+ * refusal `forged` and the reason in `Session.refusalReason`, at the first such piece). Only an
+ * erased change waits for its final deletion, which may sit in a later piece, and a change whose
+ * author's key is not known yet waits in a small buffer (`maxPendingChanges`). Nothing is taken
+ * before the last piece, and one forged change anywhere means nothing is taken. Memory is bounded
+ * by `maxSessionChanges`, `maxSessionChars` and the `quota` hook (`too-large`); the log itself is
+ * not (see the docs). Pending changes are not taken and not stored: they count as `waiting` and
+ * must come again in a later session.
  */
 export async function receiveJudged(
   session: Session,
   replica: Replica,
   raw: unknown,
   judge: JudgeOptions,
-  options: ParseOptions = {},
+  options: SessionOptions = {},
 ): Promise<Step> {
   if (session.refusal) return { session, replica, send: [] };
   const message = parseSyncMessage(raw, options);
-  if (!message) return refused(session, replica, 'unreadable');
+  if (!message) return refused(session, replica, 'unreadable', 'unparsable');
   if (message.t !== 'changes') return onSyncMessage(session, replica, message, options);
-  const all = [...(session.buffered ?? []), ...message.changes];
-  if (all.length > resolveLimits(options.limits).maxSessionChanges) {
-    return refused(session, replica, 'too-large');
+  const limits = resolveLimits(options.limits);
+  const admission = await admit(
+    replica,
+    session.judging ?? emptyJudging(),
+    message.changes,
+    judge,
+    limits,
+  );
+  if (!admission.ok) {
+    const first = admission.rejections[0];
+    if (admission.limit) {
+      return refused(session, replica, 'too-large', admission.limit, admission.device);
+    }
+    return refused(
+      session,
+      replica,
+      'forged',
+      first?.reason ?? 'not-allowed',
+      first?.change.device,
+    );
   }
-  if (!message.last) return { session: { ...session, buffered: all }, replica, send: [] };
-  const { buffered: _collected, ...open } = session;
-  const read = await readChanges(replica, all, judge);
-  if (read.rejected > 0) return refused(open, replica, 'forged');
+  const judging = admission.judging;
+  if (!message.last) {
+    return {
+      session: {
+        ...session,
+        judging,
+        buffered: [...judging.accepted, ...judging.erased, ...judging.pending],
+        bufferedChars: judging.chars,
+      },
+      replica,
+      send: [],
+    };
+  }
+  const { buffered: _b, bufferedChars: _c, judging: _j, ...open } = session;
+  const read = await settle(replica, judging, judge);
+  if (read.rejected > 0) {
+    const first = read.rejections[0];
+    return refused(open, replica, 'forged', first?.reason ?? 'not-allowed', first?.change.device);
+  }
   const step = onSyncMessage(
     open,
     replica,

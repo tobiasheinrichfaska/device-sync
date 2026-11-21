@@ -18,4 +18,13 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 | Local writing is as strict as the parser | a change a receiver refuses blocks everything later from its device | `tests/log/hardening.test.ts` (H3/H4: names, values, limits, origin) |
 | A `knew` cannot be invented   | a lying `knew` could hide a conflict | `tests/log/hardening.test.ts` (M2: required, causal hold, convergence) |
 | No quadratic work from well-formed input | one device or many deletions could stall a replica | `tests/log/performance.test.ts` (8000 writes to one record, 20000 deletions) |
+| An honest batch is never refused for its round structure | a new device could never get in | `tests/log/review2.test.ts` (H1: every order, piece size, key-learning order) |
+| One device number has one content | equivocation splits replicas silently | `tests/log/review2.test.ts` (H2: both proofs, every meeting order; reason `equivocation`) |
+| Nothing unverified fills memory | a flood of large pieces could exhaust a device | `tests/log/review2.test.ts` (H6: `maxSessionChars`, `maxPendingChanges`, `quota`, early refusal) |
+| A device does not send what it has not signed | an honest device would block itself | `tests/log/review2.test.ts` (H4b: `signedOnly`, `withheld`) |
+| Every refusal has a reason | an app must tell "stop writing, re-enrol" from "stop trusting that device" | `tests/log/review2.test.ts` (M4: `own-history`, `equivocation`, ...) |
+| Final deletion is opt-in | one member's signature could erase any record for good | `tests/log/review2.test.ts` (M5: `allowFinalDelete`) |
+| A field written by many devices stays writable | `too-many-devices` after 51 phones over the years | `tests/log/review2.test.ts` (X1: 80 devices in a row; 60 concurrent heads still trigger) |
+| One signature, one spelling; check code unambiguous | malleable signatures, colliding codes | `tests/core/review2.test.ts` (N1 low-s, N2 length-prefixed text) |
+| Other implementations get the same bytes | cross-language ambiguity | `tests/vectors.test.ts` + `tests/vectors/*.json` |
 | Parsers are strict            | a lenient parser opens a hole       | `tests/log/parse.test.ts`: seeded fuzzing (6000 inputs per parser), limit boundaries, depth bombs |

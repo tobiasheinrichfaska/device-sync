@@ -1,3 +1,4 @@
+import { hasDuplicateKeys } from '../core/json.ts';
 import { resolveLimits, type Limits } from './limits.ts';
 import type { Change, ChangeKind, VersionVector } from './types.ts';
 import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from './validate.ts';
@@ -208,7 +209,8 @@ export function parseSyncMessage(
 /**
  * A message as the text a transport hands over: refused at once when it is not a string or longer
  * than twice `maxMessageChars` (room for white space and the members around the changes), before any
- * JSON is read; otherwise parsed and read strictly as `parseSyncMessage`. Never throws.
+ * JSON is read; otherwise parsed (a text with a key twice in one object is refused) and read strictly
+ * as `parseSyncMessage`. Never throws.
  */
 export function parseSyncMessageText(
   text: unknown,
@@ -217,6 +219,9 @@ export function parseSyncMessageText(
   return guarded(() => {
     if (typeof text !== 'string') return undefined;
     if (text.length > resolveLimits(options.limits).maxMessageChars * 2) return undefined;
-    return parseSyncMessage(JSON.parse(text), options);
+    const raw: unknown = JSON.parse(text);
+    // JSON.parse keeps the last of two equal keys; other readers do not: refuse such a text
+    if (hasDuplicateKeys(text)) return undefined;
+    return parseSyncMessage(raw, options);
   });
 }

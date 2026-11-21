@@ -25,7 +25,8 @@ import { prng, written } from './helpers.ts';
 const APP = 'syncdemo';
 const SET = 'main';
 // small pieces, so that one session needs several
-const SMALL = { limits: { pieceBytes: 260 } };
+// plain sessions: the replicas here are not signed
+const SMALL = { limits: { pieceBytes: 260 }, signedOnly: false };
 const pairs: Record<string, CryptoKeyPair> = {};
 const keys: KeySource = { keyFor: (device) => pairs[device]?.publicKey };
 

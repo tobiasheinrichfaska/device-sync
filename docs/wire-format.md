@@ -45,9 +45,19 @@ produces the same bytes. All markers of this format use version `2` (`FORMAT_VER
 ## Check code
 
 For comparing a device aloud: SHA-256 over the UTF-8 text
-`${marker(appId, 'device', 2)}|${deviceId}|${sig}|${dh}` (`sig`, `dh` as the base64url points). Take the
-first ten bytes as five big-endian 16-bit numbers; each modulo 10000, zero-padded to four digits, joined by
-single spaces: `dddd dddd dddd dddd dddd`.
+
+```
+${marker(appId, 'device', 2)}|${n}:${deviceId}|${n}:${sig}|${n}:${dh}
+```
+
+where each `${n}` is the decimal **UTF-8 byte length** of the field after it, so no field can be shifted
+into another (without the prefixes, `('a', 'b|c')` and `('a|b', 'c')` gave the same code). Both keys must
+be points (`isPoint`) and the device id non-empty without a control character (U+0000 to U+001F, U+007F)
+or `|`; anything else is a programming error and throws a `TypeError`. Take the first ten bytes of the
+hash as five big-endian 16-bit numbers; each modulo 10000, zero-padded to four digits, joined by single
+spaces: `dddd dddd dddd dddd dddd`. The five groups carry about **66 bits** (5 x log2 10000 = 66.4):
+enough to catch a mistake or a casual swap, not a lasting protection against an attacker who can grind
+keys; the trust layer decides how much more a meeting needs.
 
 # Wire format: log layer, part 1
 
@@ -95,7 +105,8 @@ for the parser), the origin (`time`, `by`) and the own device id with the strict
 answer `{ ok: false, reason }` instead of creating a change a conforming receiver would refuse
 (which would block everything later from this device, the numbering being gapless). Reasons:
 `invalid-name`, `invalid-value`, `too-large`, `too-many-fields`, `invalid-origin`, `invalid-device`,
-`too-many-devices` (more devices wrote the fields than one `knew` may name), `clock-overflow`, plus
+`too-many-devices` (more than `maxDevices` unresolved concurrent writes to the fields: one `knew` could not
+name them all), `clock-overflow`, plus
 `no-fields`, `no-record`, `record-deleted`, `unknown-change`, `unchanged`. The stored value is a copy.
 
 ## Version vector (stand)
@@ -119,11 +130,17 @@ Per field the write with the higher `clock` wins; on equal clocks the **higher d
 
 ## Shortened `knew`
 
-A change's `knew` contains, from its author's stand at write time, only the devices that wrote the
-fields this change writes (writes in the author's log of that record, devices holding a current
-value of those fields). A deletion names every device that wrote the record. A record the author
-never held gives `{}`. Devices with number 0 are left out; keys are sorted. Every decision of the
-model asks `knew` only about such devices, so it decides exactly as with the whole stand.
+A change's `knew` contains, from its author's stand at write time, only the **heads** of the fields
+this change writes: per such field, the devices whose last write to it (in the author's log of that
+record) is not dominated by another write the author holds, i.e. no write says in its `knew` that it
+knew that write. Everything else is covered transitively: a receiver that holds a head also holds
+everything the head's author knew (the causal hold), and notices compare only heads. A deletion
+names the heads over all fields of the record. So the number of devices named is the number of
+**unresolved concurrent** writes, not the number of devices that ever wrote the field: a field written
+by 80 devices one after another, each synced first, stays writable (`too-many-devices` only happens with
+more than `maxDevices` unresolved heads). A record the author never held gives `{}`. Devices with
+number 0 are left out; keys are sorted. Every decision of the model asks `knew` only about such
+devices, so it decides exactly as with the whole stand (`tests/log/basis.test.ts`, 400 random runs).
 `concurrent(a, b)`: both carry `knew`, come from different devices, and neither knew the other
 (`a.knew[b.device] < b.seq` and `b.knew[a.device] < a.seq`). `knew` is required on `set` and `delete`
 (the parser and `merge` refuse a change without it), and the causal hold above means a `knew` can only
@@ -148,8 +165,11 @@ again. It travels and decides like any field; an app must not use that name for 
 ## Signatures
 
 `signText` / `verifyText`: ECDSA P-256 with SHA-256 over the UTF-8 bytes of a text; the signature is
-the 64-byte P1363 form (r, s), 86 base64url characters. Verification is strict: a signature that is
-not canonical base64url (one spelling per signature), not 64 bytes, or not valid is simply `false`.
+the 64-byte P1363 form (r, s), 86 base64url characters. Signing normalises to **low-s** (if s > n/2 it
+becomes n - s; n is the order of the P-256 group, `FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551`),
+and verification refuses a high s, because (r, n - s) also verifies and would give a signed change a
+second spelling. Verification is strict: a signature that is not canonical base64url (one spelling
+per signature), not 64 bytes, high-s, or not valid is simply `false`.
 
 **Signed text of a change** (`changeSigningText(appId, change, dataSet)`):
 
@@ -159,34 +179,70 @@ ${appId}-change:2|${canonical({ v: 2, set: dataSet, device, seq, clock, collecti
 
 - The **marker** `${appId}-change:2` is part of the text, so a signature made for one app never
   verifies in another.
-- `set` is the **data set** the change belongs to; it does not count in another.
+- `set` is the **data set** the change belongs to (a non-empty string; anything else is a `TypeError`,
+  so the binding can never be dropped silently); it does not count in another.
 - Head fields `device`, `seq`, `clock`, `collection`, `id`, `kind` are bound; `kind` `redacted` counts
   as `set`, so erasing the content keeps the signature valid.
 - `check` is the content check value (`changeCheckValue`); it is taken before an erasure and kept, so
   the content (`fields`, `knew`, `time`, `by`) is bound through it.
 - Example: `demo-change:2|{"check":"c1","clock":3,"collection":"items","device":"a","id":"x","kind":"set","seq":1,"set":"main","v":2}`.
 
-**Order of verification** (`judgeChange`), the first rule that applies decides:
+**Order of verification** (`judgeChanges`; `judgeChange` is exactly `judgeChanges(context, [change])`
+for that change), the first rule that applies decides. Every `false` carries a reason code
+(`Rejection.reason`, `Session.refusalReason`):
 
 1. a member other than `device`, `seq`, `clock`, `collection`, `id`, `kind`, `fields`, `knew`, `time`,
-   `by`, `check`, `sig`: `false` (the signature does not cover it, so it would travel unchecked);
-2. the app's special-case hook (`checked` / `false` / `pending`; undefined = go on);
-3. a change under the receiver's own device id that is not already in its log: `false`;
-4. no `sig` or no `check`: `false`;
-5. a `delete` in a collection of `neverErase`: `false`;
-6. a change that is not `redacted` whose content does not match `check`: `false`;
+   `by`, `check`, `sig`: `false`, `unknown-member` (the signature does not cover it, so it would travel
+   unchecked);
+2. the app's special-case hook (`checked` / `false` (`not-allowed`) / `pending`; undefined = go on);
+3. a change under the receiver's own device id that is not already in its log: `false`, `own-history`;
+4. no `sig` or no `check`: `false`, `unsigned`;
+5. a `delete` in a collection of `neverErase`: `false`, `never-erase`;
+6. a change that is not `redacted` whose content does not match `check`: `false`, `bad-check`;
 7. the author's key is not known (`KeySource.keyFor`): `pending`;
-8. the signature does not verify: `false`;
-9. the rights hook `mayWrite(author, change)` says no: `false`;
-10. otherwise `checked`.
+8. the signature does not verify: `false`, `bad-signature`;
+9. the same `device#seq` is already known (in the log, or earlier in the batch or session) with a
+   different signed text (head or check value): `false`, `equivocation`;
+10. a `delete` and the app's `allowFinalDelete(author, change, state)` does not say yes (it is
+    **missing by default**, so a final deletion is judged `false`, `delete-not-allowed`: it is
+    irreversible, the id is dead for ever, and every member's signature makes one valid);
+11. the rights hook `mayWrite(author, change, state)` says no: `false`, `not-allowed`;
+12. otherwise `checked`.
 
-In a batch (`judgeChanges`) a `redacted` change that is `checked` counts only beside its record's
-final deletion (in the log already, or in the batch and `checked`); beside a deletion that is
-`pending` it is `pending`; otherwise `false`.
+A `redacted` change that is `checked` counts only beside its record's final deletion: already in the
+replica (its data or its log), or in the same batch and `checked`; beside a deletion that is `pending`
+it is `pending`; otherwise `false`, `redacted-without-deletion`. In `readChanges` and `receiveJudged`
+the deletions verified in ANY round or piece count, also one that `merge` holds back for the moment
+(it comes with the batch), so an honest batch gets the same verdicts whatever its order, its piece
+structure or the order in which keys become known. A deletion that `merge` would skip (the number is
+known already) cannot be a helper: with the same signed text it is in the log, with another it is
+`equivocation`.
 
 **Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `false`:
-forgery. `readChanges` repeats the judgement while taken changes make more authors checkable; a single
-`false` aborts the whole batch and nothing is taken.
+forgery. `readChanges` judges the batch (`admit`, then `settle`, which repeats while taken changes
+make more authors checkable); a single `false` aborts the whole batch and nothing is taken.
+
+**What an app does with a reason.**
+
+- `own-history`: this device is told about a change of its OWN id that it does not hold: its state is
+  older than the world's (restored backup, cloned profile). It must stop writing and enrol again with
+  a NEW device id; writing on would create equivocation.
+- `equivocation`: one device signed the same number twice with different content. Equivocation is
+  only detected when the two histories meet in one replica: two devices holding different versions
+  have equal stands, so a stand-based session never sends the change and only the fingerprints
+  differ; a third device that meets both versions refuses the second. There is no hash chain. The
+  author (`Rejection.change.device`, `Session.refusalDevice`) is faulty or malicious: the app should
+  stop trusting that device (remove it from the device list) and tell the people involved. Whoever
+  already took one version keeps it; the replicas do not heal by themselves. An erased change
+  (`y:1 redacted`) whose deletion was the other version is refused as `redacted-without-deletion`
+  for ever on a device holding the harmless version: the signal is the reason code.
+- `delete-not-allowed`: pass `allowFinalDelete` if the app has final deletions at all.
+- the others name the rule that failed.
+
+**The log is unbounded.** Nothing in the package limits how many changes the members write: a member
+can flood the log, and every device keeps and forwards it. An app bounds this with `mayWrite` (what an
+author may write) and `quota(author, count, state)` (how many changes of one author a session takes;
+default unlimited), and by removing a member that floods.
 
 ## Exchange
 
@@ -219,9 +275,9 @@ early is not corrupted, but ends with different fingerprints; the next session c
 
 **Fingerprint.** SHA-256 over the canonical form of
 `[[collection, [[id, 'deleted'] | [id, [[field, value], ...]], ...]], ...]` (collections and fields
-sorted by name, records by id, deleted records as `'deleted'`); the first four bytes as 8 hex digits.
-Only visible data counts (current values), not history. It is a consistency check of 32 bits, not a
-proof.
+sorted by name, records by id, deleted records as `'deleted'`); the first 16 bytes as 32 hex digits.
+Only visible data counts (current values), not history. It is a consistency check of 128 bits, not a
+proof against a peer that lies.
 
 ### Strict reading
 
@@ -258,34 +314,57 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
 One object, `LIMITS`, holds every default; the parsers, `pieces` and the session functions take
 `{ limits: Partial<Limits> }` to override some of them for one call.
 
-| Limit               | Default | Meaning                                                                        |
-| ------------------- | ------- | ------------------------------------------------------------------------------ |
-| `maxFields`         | 40      | Fields in one `set` change                                                     |
-| `maxText`           | 2000    | Characters of one text inside a value                                          |
-| `maxValueChars`     | 16000   | JSON characters of one field value                                             |
-| `maxDepth`          | 6       | Nested lists/objects in one value                                              |
-| `maxEntries`        | 200     | Entries in one list or object of a value                                       |
-| `maxDevices`        | 50      | Devices in one vector (`stand`, `done`, `knew`)                                |
-| `maxChanges`        | 500     | Changes in one message                                                         |
-| `pieceBytes`        | 12000   | Size at which a piece is cut (UTF-8 bytes of JSON)                             |
-| `maxMessageChars`   | 1000000 | One `changes` message as JSON text (all its changes together); more is refused |
-| `maxSessionChanges` | 100000  | Changes `receiveJudged` collects over one session before it refuses            |
-| `maxName`           | 120     | Field name, `by`, keys inside a value                                          |
-| `maxId`             | 200     | Collection name and record id                                                  |
+| Limit               | Default  | Meaning                                                                        |
+| ------------------- | -------- | ------------------------------------------------------------------------------ |
+| `maxFields`         | 40       | Fields in one `set` change                                                     |
+| `maxText`           | 2000     | Characters of one text inside a value                                          |
+| `maxValueChars`     | 16000    | JSON characters of one field value                                             |
+| `maxDepth`          | 6        | Nested lists/objects in one value                                              |
+| `maxEntries`        | 200      | Entries in one list or object of a value                                       |
+| `maxDevices`        | 50       | Devices in one vector (`stand`, `done`, `knew`)                                |
+| `maxChanges`        | 500      | Changes in one message                                                         |
+| `pieceBytes`        | 12000    | Size at which a piece is cut (UTF-8 bytes of JSON)                             |
+| `maxMessageChars`   | 1000000  | One `changes` message as JSON text (all its changes together); more is refused |
+| `maxSessionChanges` | 100000   | Changes `receiveJudged` holds over one session before it refuses               |
+| `maxSessionChars`   | 16000000 | JSON characters of the changes `receiveJudged` holds over one session          |
+| `maxPendingChanges` | 2000     | Changes of a session that wait because their author cannot be checked yet      |
+| `maxName`           | 120      | Field name, `by`, keys inside a value                                          |
+| `maxId`             | 200      | Collection name and record id                                                  |
 
 Where the two earlier implementations differed, the larger value is the default (fields per change,
 text per value). The check value (43) and signature (86) lengths are fixed by the core layer.
 
 ### A rejected change ends the session
 
-`receive` (strict reading, then `onSyncMessage`) and `receiveJudged` (strict reading, then
-`readChanges` on everything the other sent) turn any problem into a **refusal** of the whole session,
-and nothing of the offending piece (in `receiveJudged`: of the whole session) is taken:
+`receive` (strict reading, then `onSyncMessage`) and `receiveJudged` (strict reading, then judging
+every piece AS IT ARRIVES) turn any problem into a **refusal** of the whole session, and nothing of the
+offending piece (in `receiveJudged`: of the whole session) is taken. `Session.refusal` is one of:
 
-- `unreadable`: the message, or one change in it, is not exactly the shape.
-- `forged`: `readChanges` judged a change false (signature, check value, a change under the
-  receiver's own id, rights).
-- `too-large`: more than `maxSessionChanges` changes collected.
+- `unreadable`: the message, or one change in it, is not exactly the shape (`refusalReason`
+  `unparsable`).
+- `forged`: a change was judged false; `Session.refusalReason` is the reason code of the section
+  "Signatures" and `Session.refusalDevice` its author. Everything except the question "is there a
+  deletion beside this erased change" is decided at once: an unsigned, forged, equivocating or
+  not-allowed change refuses the session at the piece that carries it, not at the last piece.
+- `too-large`: a limit was hit before any signature was checked: more than `maxSessionChanges`
+  changes (`session-changes`), more than `maxSessionChars` JSON characters (`session-chars`), more
+  than `maxPendingChanges` waiting for a key (`pending-changes`), or the app's `quota` hook said no
+  (`quota`).
+- `unexpected`: a second `stand` (`repeated-stand`) or a second `done` (`repeated-done`) in one
+  session. Every `stand` costs an answer, so one is enough.
+
+**Memory.** `receiveJudged` holds verified changes (to take), verified erased changes (waiting for
+their deletion) and changes whose author's key is unknown (a small buffer), at most
+`maxSessionChars` characters in all (`Session.bufferedChars`); nothing unverified beyond the pending
+buffer. Verified changes are held, not merged, until the last piece, so one forged change anywhere
+means nothing is taken.
+
+**What a device sends.** A `stand` is answered with the changes the other lacks that carry a
+signature (`SessionOptions.signedOnly`, default true): the device's own changes that are not signed
+yet would be judged forged by every receiver, and since numbering is gapless the sender would block
+itself. From the first unsigned change of a device on, nothing of that device is sent (a later change
+could not be applied without it); `Session.withheld` counts what was left out. Plain, unjudged test
+sessions pass `signedOnly: false`.
 
 **Text entry and transports.** `parseSyncMessageText(text)` takes a message as text, refuses anything
 longer than twice `maxMessageChars` before it reads any JSON, and then reads strictly. A transport
@@ -300,10 +379,10 @@ ends the session, and pieces that arrive after it are not taken. Duplicated piec
 
 A refused session sends nothing, ignores every later message and has no `outcome`. This is
 deliberate: taking the valid part of a piece would leave a gap in a device's numbering, and every
-later change of that device would wait for ever. `receiveJudged` collects the pieces and judges them
-together on the last one, because an erased write may arrive in an earlier piece than the final
-deletion it needs. Changes whose author cannot be checked yet (`pending`) are neither taken nor
-stored; they count as `waiting` and arrive again in a later session.
+later change of that device would wait for ever. `receiveJudged` decides what it can per piece and
+settles the rest on the last one, because an erased write may arrive in an earlier piece than the
+final deletion it needs. Changes whose author cannot be checked yet (`pending`) are neither taken
+nor stored; they count as `waiting` and arrive again in a later session.
 
 ## Trust (device list, meeting code, invitation)
 
@@ -410,3 +489,62 @@ allows it (when asked), and the proof matches. The invitation carries no signatu
 in it are only as trustworthy as the channel it travels on (compare the check codes).
 `mayInvite(inviter, role)` decides who may invite which role; a private device must have a role the
 app's `privateRoles` predicate allows.
+
+# Cross-language notes
+
+What another implementation (another language, another JSON library) must do to produce and accept
+the same bytes. The committed vectors in `tests/vectors/` are meant for such ports; the tests in
+`tests/vectors.test.ts` run them against this code. All vector files are JSON.
+
+## Numbers
+
+Canonical text of a number is the ECMAScript `Number::toString` of the **IEEE 754 double** the JSON
+text rounds to (`JSON.stringify`): `1e21` is `1e+21`, `1e-7` is `1e-7`, `0.1 + 0.2` is
+`0.30000000000000004`, **`-0` is `0`**, `5e-324` is `5e-324`, `1E2` is `100`, and `9007199254740993`
+(2^53 + 1) is read as the double `9007199254740992` and written so. Exponent form starts at 1e21 and
+below 1e-6. A port needs the shortest-round-trip printing of doubles in this exact style (a
+`%g`-like printer is not enough). `NaN` and the infinities are refused. Counts (`seq`, `clock`,
+vector entries, `time`) must be safe integers (at most 2^53 - 1) and are refused otherwise.
+
+## Key order
+
+Object keys are sorted by **UTF-16 code unit**, not by code point and not by UTF-8 bytes. A key made of
+U+1F600 (UTF-16 `D83D DE00`) therefore sorts BEFORE one made of U+FF5E (`FF5E`), although its code point
+is larger; `"10"` sorts before `"9"`; the empty key sorts first. A language that sorts by code point or
+by UTF-8 bytes must sort by UTF-16 units here (vector: `canonical.json`, "keys sort by UTF-16").
+
+## Strings
+
+Written as `JSON.stringify` writes them: `"` and `\` escaped, the C0 controls (U+0000 to U+001F) as
+`\b \t \n \f \r` or `\u00xx` (lower-case hex), everything else raw: U+007F, U+2028, U+2029 and all
+non-ASCII characters are NOT escaped, and `/` is not escaped. Hashing is over the UTF-8 bytes of the
+whole text. Text is never normalised by the canonical form (`e` + U+0301 stays two characters); the
+strict readers refuse names and labels that are not in NFC form instead.
+
+**Lone surrogates** (a UTF-16 unit of D800 to DFFF without its partner) have no UTF-8 form; an
+encoder writes U+FFFD for them, so two different values would get one hash. They are refused
+everywhere: `canonical` throws a `TypeError` for a text or a key that has one, and the strict readers
+(`parseChange`, `parseSyncMessage`, local `write`) refuse them in names, keys and texts
+(`invalid-name` / `invalid-value`). A language whose strings are UTF-8 cannot hold one and refuses the
+JSON text that spells one as an escape (`"\ud800"`); a surrogate **pair** spelled as two escapes is the
+one character it encodes.
+
+## Duplicate keys
+
+A JSON text in which an object has the same key twice (compared after decoding escapes: `"a"` and
+`"` + backslash + `u0061"` are the same key) is **refused** by the text entry points (`parseSyncMessageText`,
+`hasDuplicateKeys`). Parsers disagree on such texts (JavaScript keeps the last, others the first or
+fail), and a signed value must not mean two things. A port must refuse them before it reads any
+member. The same key in different objects is fine.
+
+## What is signed and hashed
+
+- Check value: `base64url(SHA-256(UTF-8(canonical(value))))` without padding, 43 characters
+  (`canonical.json`).
+- Signed text of a change: `<appId>-change:2|` and the canonical form of `{v: 2, set, device, seq, clock,
+collection, id, kind, check}`, a `redacted` change counting as `set` (`signing-text.json`).
+- Signature: ECDSA P-256 / SHA-256, 64 bytes (r, s big-endian, 32 bytes each), unpadded base64url,
+  **low-s only** (s at most n/2). A signer must normalise; a verifier must refuse a high s.
+- Check code of a device: `check-code.json`.
+- `verification.json` holds one public key (a throw-away made for that file) and one signed change
+  that every implementation must accept, with the variants it must refuse.

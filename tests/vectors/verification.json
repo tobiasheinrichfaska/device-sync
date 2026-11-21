@@ -1,0 +1,369 @@
+{
+  "about": "THROW-AWAY KEY: generated once for this file and never used anywhere else; its private half was discarded. Any implementation must accept \"valid\" (check value matches the content, signature verifies over the signed text under appId and dataSet) and refuse every entry of \"refused\". All signatures are low-s.",
+  "appId": "demo",
+  "dataSet": "main",
+  "publicKey": "BC3j0J6K9g7Fr5P-REdbseBv5WGhaWMhW1tjU7uzZCZO7fqpTPcNJagOpE7Jx2EyMmCuhzBIi3ecOJWjxxE6Of4",
+  "contentCanonical": "{\"by\":\"user\",\"fields\":{\"title\":\"Hello\"},\"knew\":{},\"time\":1700000000000}",
+  "signedText": "demo-change:2|{\"check\":\"EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g\",\"clock\":1,\"collection\":\"items\",\"device\":\"dev-a\",\"id\":\"r1\",\"kind\":\"set\",\"seq\":1,\"set\":\"main\",\"v\":2}",
+  "valid": {
+    "device": "dev-a",
+    "seq": 1,
+    "clock": 1,
+    "collection": "items",
+    "id": "r1",
+    "kind": "set",
+    "fields": {
+      "title": "Hello"
+    },
+    "knew": {},
+    "time": 1700000000000,
+    "by": "user",
+    "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+    "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+  },
+  "refused": [
+    {
+      "name": "field value changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hallo"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "field value changed and check value recomputed, old signature",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hallo"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "6PTrkX12MLwKxrSnXW17nQMFPqLip42Lks1yWYZ06qM",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "knew changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {
+          "x": 1
+        },
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "time changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "by changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "other",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "seq changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 2,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "clock changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 2,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "collection changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "other",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "id changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r2",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "device changed",
+      "change": {
+        "device": "dev-b",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "kind changed to delete",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "delete",
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "check value changed",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "AF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "signature bit flipped",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQAjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
+    },
+    {
+      "name": "high-s twin of the valid signature (r, n - s)",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBfYJjKV_LbCiwQHvV00vZc1pNo2lyNh-t50W3n_v3W_rw"
+      }
+    },
+    {
+      "name": "signature missing",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g"
+      }
+    },
+    {
+      "name": "other data set",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      },
+      "dataSet": "other"
+    },
+    {
+      "name": "other app id",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      },
+      "appId": "other"
+    },
+    {
+      "name": "member the signature does not cover",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log",
+        "extra": 1
+      }
+    }
+  ]
+}

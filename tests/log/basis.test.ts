@@ -339,11 +339,12 @@ describe('shortened `knew`', () => {
     expect(a.log[a.log.length - 1]!.knew).toEqual({}); // nobody wrote "note" before
     const again = written(a, 'r1', { label: 'x' });
     const last = again.log[again.log.length - 1]!;
-    expect(last.knew).toEqual({ A: 2, B: 1 });
+    // B's write knew A's earlier one, so A is covered through B: only the head is named
+    expect(last.knew).toEqual({ B: 1 });
     expect(JSON.stringify(last).length).toBeLessThan(250);
     expect(Object.keys(a.vector)).toHaveLength(26);
-    // a final delete names everyone who wrote the record
-    expect(knownFor(again, COL, 'r1', null)).toEqual({ A: 3, B: 1 });
+    // a final delete names the heads over all fields of the record (B's write is covered by A's last)
+    expect(knownFor(again, COL, 'r1', null)).toEqual({ A: 3 });
   });
 
   // The case a `knew` of only the current values would get wrong: A knew Y's write although X's,
@@ -354,7 +355,8 @@ describe('shortened `knew`', () => {
     const beforeA = sync(x, sync(y, emptyReplica('A')));
     expect(beforeA.notices).toEqual([]);
     const a = written(beforeA, 'r1', { note: 'from A' });
-    expect(a.log[a.log.length - 1]!.knew).toEqual({ X: 1, Y: 1 });
+    // X's write knew Y's, so Y is covered through X
+    expect(a.log[a.log.length - 1]!.knew).toEqual({ X: 1 });
     // R holds Y's write and gets A's before X's: A's write says it knew X's, so it waits
     const aChanges = a.log.filter((c) => c.device === 'A');
     const r = merge(sync(y, emptyReplica('R')), aChanges);

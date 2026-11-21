@@ -25,7 +25,9 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
   apps never sign or derive the same bytes. The wire format is versioned (`:2`).
 - **Limits** (text length per value, fields per change, envelope fan-out) are configuration.
 - **Hooks**: a special case in signature checking, records that are never erased, the right to write
-  (the receiver decides), holding a change back until someone approves it.
+  (the receiver decides, `mayWrite`), whether a final deletion is allowed at all (`allowFinalDelete`, off
+  by default), a per-author quota against a flooding member (`quota`), holding a change back until
+  someone approves it.
 - **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.

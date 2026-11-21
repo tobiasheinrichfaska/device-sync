@@ -24,11 +24,21 @@ export {
   insertSignatures,
   judgeChange,
   judgeChanges,
+  judgeDetailed,
   readChanges,
   signChange,
   signOwnChanges,
 } from './signing.ts';
-export type { JudgeContext, JudgeOptions, KeySource, ReadResult, Verdict } from './signing.ts';
+export type {
+  JudgeContext,
+  JudgeOptions,
+  Judgement,
+  KeySource,
+  ReadResult,
+  Reason,
+  Rejection,
+  Verdict,
+} from './signing.ts';
 export {
   DELETED_FIELD,
   emptyReplica,
@@ -68,4 +78,12 @@ export {
   receiveJudged,
   startSession,
 } from './protocol.ts';
-export type { ChangesMessage, Outcome, Refusal, Session, Step } from './protocol.ts';
+export type {
+  ChangesMessage,
+  Outcome,
+  Refusal,
+  RefusalReason,
+  Session,
+  SessionOptions,
+  Step,
+} from './protocol.ts';

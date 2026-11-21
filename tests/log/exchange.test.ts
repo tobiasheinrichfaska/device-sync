@@ -43,6 +43,7 @@ const judgeFor = (me: string, extra: Partial<JudgeOptions> = {}): JudgeOptions =
   dataSet: SET,
   keys: keySource,
   ownDevice: me,
+  allowFinalDelete: () => true,
   ...extra,
 });
 
@@ -145,7 +146,9 @@ describe('full stack: two replicas exchange through the protocol and converge', 
 
   it('a duplicated piece (every message sent twice) changes nothing', async () => {
     const a = written(written(emptyReplica('a'), 'r1', { title: 'x' }), 'r2', { title: 'y' });
-    const twice = (_: 'x' | 'y', msgs: unknown[]) => msgs.flatMap((m) => [m, m]);
+    // a second stand or done would end the session (refusal unexpected): only pieces repeat
+    const twice = (_: 'x' | 'y', msgs: unknown[]) =>
+      msgs.flatMap((m) => ((m as { t: string }).t === 'changes' ? [m, m] : [m]));
     const r = await exchange(a, emptyReplica('b'), { tamper: twice });
     expect(r.y.log).toHaveLength(2);
     expect(r.sy.refusal).toBeUndefined();

@@ -1,0 +1,63 @@
+{
+  "about": "hashed text = \"<appId>-device:2|\" + n:deviceId + \"|\" + n:sig + \"|\" + n:dh, n = UTF-8 byte length; five groups of four digits from the first ten bytes (big-endian 16-bit numbers modulo 10000). The points are throw-away keys made for this file.",
+  "cases": [
+    {
+      "appId": "demo",
+      "deviceId": "device-1",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI",
+      "code": "2717 4484 6472 2719 2582"
+    },
+    {
+      "appId": "demo",
+      "deviceId": "dévice-2",
+      "sig": "BJ34_LgFVteVypWV_-Yn29cfTGUnFwbXqV-BDTEmRC00KDBYo74SUsX0X79VIPm4mVH8jIjwHiL6p05HBmoWVr0",
+      "dh": "BI0_jVbyg0VpKZXbyprynPJEv7pOBuEYEgBB4J13K-Mr0oVei-Zu_4adn-dZuVNvwM8qL4x8iMMZgkKT4xkO18c",
+      "code": "8651 3731 4986 1408 4963"
+    },
+    {
+      "appId": "other",
+      "deviceId": "device-1",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI",
+      "code": "2022 2138 2568 0442 2693"
+    }
+  ],
+  "refused": [
+    {
+      "name": "device id with the separator",
+      "appId": "demo",
+      "deviceId": "a|b",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI"
+    },
+    {
+      "name": "device id with a control character",
+      "appId": "demo",
+      "deviceId": "a\nb",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI"
+    },
+    {
+      "name": "empty device id",
+      "appId": "demo",
+      "deviceId": "",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI"
+    },
+    {
+      "name": "signing key is not a point",
+      "appId": "demo",
+      "deviceId": "a",
+      "sig": "b|c",
+      "dh": "BNCp4CfkxFSuh0dyQvx2SdEmqxwQHOhFjhMRmF8MGWsl7MxNZOlV4HnoxR0lDiOO95ol8Jo2xUFikeS2ev2ZlEI"
+    },
+    {
+      "name": "agreement key is not a point",
+      "appId": "demo",
+      "deviceId": "a",
+      "sig": "BPYgHB3NuSKfPRX09ySkPBxuJrXCdBOmMGDKKht2_Vi6gBlv47ll63VSC40IQTGIuySpxarBu2waBE_h89pJyBs",
+      "dh": "short"
+    }
+  ]
+}

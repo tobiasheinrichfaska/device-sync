@@ -58,14 +58,35 @@ export async function importPublicKey(
   }
 }
 
-/** Five groups of four digits from a hash over app, device id and both public keys; compared aloud. */
+const unsafeChar = (ch: string): boolean => {
+  const code = ch.codePointAt(0) ?? 0;
+  return code < 32 || code === 127 || ch === '|';
+};
+
+/**
+ * Five groups of four digits from a hash over app, device id and both public keys; compared aloud.
+ * The hashed text is `<marker>|<n>:<deviceId>|<n>:<sig>|<n>:<dh>` where each `<n>` is the UTF-8
+ * byte length of the field after it, so no field can be shifted into another. The five groups carry
+ * about 66 bits (5 x log2(10000)): enough to catch a mistake, not a lasting protection against an
+ * attacker who can grind keys; the trust layer decides how much more a meeting needs.
+ * A device id with `|` or a control character, or a key that is not a point, is a programming error
+ * (TypeError).
+ */
 export async function checkCode(
   appId: string,
   deviceId: string,
   keys: PublicKeys,
 ): Promise<string> {
-  const data = new TextEncoder().encode(
-    `${marker(appId, 'device', FORMAT_VERSION)}|${deviceId}|${keys.sig}|${keys.dh}`,
+  if (typeof deviceId !== 'string' || deviceId.length === 0 || [...deviceId].some(unsafeChar)) {
+    throw new TypeError('checkCode: the device id is empty or has a control character or "|"');
+  }
+  if (!isPoint(keys?.sig) || !isPoint(keys?.dh)) {
+    throw new TypeError('checkCode: both public keys must be uncompressed P-256 points');
+  }
+  const utf8 = new TextEncoder();
+  const field = (text: string): string => `${utf8.encode(text).length}:${text}`;
+  const data = utf8.encode(
+    `${marker(appId, 'device', FORMAT_VERSION)}|${field(deviceId)}|${field(keys.sig)}|${field(keys.dh)}`,
   );
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
   const groups: string[] = [];

@@ -86,9 +86,13 @@ describe('checkCode', () => {
   });
 
   it('matches a fixed vector (pins the derivation)', async () => {
-    const code = await checkCode('demo', 'device-0', { sig: 'S', dh: 'D' });
+    const k = await publicKeys(await generateDeviceKeys());
+    const code = await checkCode('demo', 'device-0', k);
     const hash = new Uint8Array(
-      await crypto.subtle.digest('SHA-256', new TextEncoder().encode('demo-device:2|device-0|S|D')),
+      await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(`demo-device:2|8:device-0|87:${k.sig}|87:${k.dh}`),
+      ),
     );
     const groups = [0, 2, 4, 6, 8].map((i) =>
       String((((hash[i] ?? 0) << 8) | (hash[i + 1] ?? 0)) % 10000).padStart(4, '0'),
@@ -97,6 +101,7 @@ describe('checkCode', () => {
   });
 
   it('refuses an invalid appId', async () => {
-    await expect(checkCode('Bad', A, { sig: 'S', dh: 'D' })).rejects.toThrow(/invalid appId/);
+    const k = await publicKeys(await generateDeviceKeys());
+    await expect(checkCode('Bad', A, k)).rejects.toThrow(/invalid appId/);
   });
 });

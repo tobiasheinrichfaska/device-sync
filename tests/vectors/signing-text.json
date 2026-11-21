@@ -1,0 +1,65 @@
+{
+  "about": "text = \"<appId>-change:2|\" + canonical({v:2, set:dataSet, device, seq, clock, collection, id, kind (redacted counts as set), check}); the content is bound through check.",
+  "cases": [
+    {
+      "name": "a set",
+      "appId": "demo",
+      "dataSet": "main",
+      "change": {
+        "device": "a",
+        "seq": 1,
+        "clock": 3,
+        "collection": "items",
+        "id": "x",
+        "kind": "set",
+        "check": "c1"
+      },
+      "text": "demo-change:2|{\"check\":\"c1\",\"clock\":3,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"set\",\"seq\":1,\"set\":\"main\",\"v\":2}"
+    },
+    {
+      "name": "a delete keeps kind delete",
+      "appId": "demo",
+      "dataSet": "main",
+      "change": {
+        "device": "a",
+        "seq": 2,
+        "clock": 4,
+        "collection": "items",
+        "id": "x",
+        "kind": "delete",
+        "check": "c2"
+      },
+      "text": "demo-change:2|{\"check\":\"c2\",\"clock\":4,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"delete\",\"seq\":2,\"set\":\"main\",\"v\":2}"
+    },
+    {
+      "name": "a redacted change is signed as a set",
+      "appId": "demo",
+      "dataSet": "main",
+      "change": {
+        "device": "a",
+        "seq": 1,
+        "clock": 3,
+        "collection": "items",
+        "id": "x",
+        "kind": "redacted",
+        "check": "c1"
+      },
+      "text": "demo-change:2|{\"check\":\"c1\",\"clock\":3,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"set\",\"seq\":1,\"set\":\"main\",\"v\":2}"
+    },
+    {
+      "name": "the data set and the app are part of the text; non-ASCII stays raw",
+      "appId": "other",
+      "dataSet": "münch",
+      "change": {
+        "device": "d-1",
+        "seq": 12,
+        "clock": 99,
+        "collection": "käse",
+        "id": "😀",
+        "kind": "set",
+        "check": "c3"
+      },
+      "text": "other-change:2|{\"check\":\"c3\",\"clock\":99,\"collection\":\"käse\",\"device\":\"d-1\",\"id\":\"😀\",\"kind\":\"set\",\"seq\":12,\"set\":\"münch\",\"v\":2}"
+    }
+  ]
+}

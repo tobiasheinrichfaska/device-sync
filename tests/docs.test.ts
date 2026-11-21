@@ -9,6 +9,8 @@ import {
   changeSigningText,
   checkCode,
   checkValue,
+  emptyReplica,
+  fingerprint,
   generateDeviceKeys,
   marker,
   publicKeys,
@@ -70,5 +72,21 @@ describe('docs/wire-format.md against the code', () => {
     expect(keys.sig).toHaveLength(87);
     expect(keys.dh).toHaveLength(87);
     expect(await checkCode('demo', 'dev-1', keys)).toMatch(/^\d{4}( \d{4}){4}$/);
+  });
+
+  it('the fingerprint size in the document is what the code produces', () => {
+    const m = /first (\d+) bytes as (\d+) hex digits/.exec(DOC);
+    expect(m).not.toBeNull();
+    const [bytes, digits] = [Number(m?.[1]), Number(m?.[2])];
+    expect(digits).toBe(bytes * 2);
+    expect(fingerprint(emptyReplica('a'))).toHaveLength(digits);
+    expect(DOC).toContain(`consistency check of ${bytes * 8} bits`);
+    expect(DOC).toContain(`${digits} lower-case hex`);
+  });
+
+  it('the check code text and its strength are as documented', () => {
+    expect(DOC).toContain("${marker(appId, 'device', 2)}|${n}:${deviceId}|${n}:${sig}|${n}:${dh}");
+    expect(DOC).toContain('about **66 bits**');
+    expect(Math.round(5 * Math.log2(10000) * 10) / 10).toBe(66.4);
   });
 });

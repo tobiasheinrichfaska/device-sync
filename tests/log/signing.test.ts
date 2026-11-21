@@ -29,7 +29,13 @@ const keysOf = (map: Record<string, CryptoKey | undefined>): KeySource => ({
   keyFor: (device) => map[device],
 });
 const options = (map: Record<string, CryptoKey | undefined>, extra: Partial<JudgeOptions> = {}) =>
-  ({ appId: APP, dataSet: SET, keys: keysOf(map), ...extra }) satisfies JudgeOptions;
+  ({
+    appId: APP,
+    dataSet: SET,
+    keys: keysOf(map),
+    allowFinalDelete: () => true,
+    ...extra,
+  }) satisfies JudgeOptions;
 const here = (device = 'b'): Replica => emptyReplica(device);
 const last = (r: Replica): Change => r.log[r.log.length - 1] as Change;
 
@@ -360,8 +366,9 @@ describe('a final deletion', () => {
     const text = changeSigningText(APP, erased, SET);
     expect(text).toBe(changeSigningText(APP, change, SET));
     expect(await verifyText(keys.publicKey, text, erased.sig as string)).toBe(true);
+    // alone it is not taken: an erased change counts only beside its deletion (see M3 in review2)
     const ctx = { ...options({ a: keys.publicKey }), state: here() };
-    expect(await judgeChange(ctx, erased)).toBe('checked');
+    expect(await judgeChange(ctx, erased)).toBe('false');
   });
 
   it('an erased write without its deletion is false (a forwarder cannot erase a signed write)', async () => {
@@ -456,7 +463,7 @@ describe('readChanges', () => {
     expect(ok1.rejected).toBe(0);
     const forged = { ...last(fromA), fields: { title: '9' } };
     const bad = await readChanges(here(), [forged, ...fromC.log, ...fromA.log], opts);
-    expect(bad).toEqual({ accepted: [], pending: [], rejected: 1 });
+    expect(bad).toMatchObject({ accepted: [], pending: [], rejected: 1 });
     const unsigned = last(written(emptyReplica('a'), 'r7', { title: 'u' }));
     const bad2 = await readChanges(here(), [...fromA.log, unsigned], opts);
     expect(bad2.accepted).toEqual([]);
@@ -505,7 +512,7 @@ describe('readChanges', () => {
     );
     const mayWrite = (_author: string, c: Change) => c.id !== 'r2';
     const out = await readChanges(here(), r.log, options({ a: a.publicKey }, { mayWrite }));
-    expect(out).toEqual({ accepted: [], pending: [], rejected: 1 });
+    expect(out).toMatchObject({ accepted: [], pending: [], rejected: 1 });
     const fine = await readChanges(here(), r.log, options({ a: a.publicKey }));
     expect(fine.accepted).toHaveLength(2);
   });
@@ -549,7 +556,7 @@ describe('regression: members the signature does not cover', () => {
     ).toHaveLength(2);
     // the same, but one carries a member the signature does not cover: nothing is taken
     const smuggled = { ...(second as Change), foo: 1 } as Change;
-    expect(await readChanges(here(), [first as Change, smuggled], opts)).toEqual({
+    expect(await readChanges(here(), [first as Change, smuggled], opts)).toMatchObject({
       accepted: [],
       pending: [],
       rejected: 1,

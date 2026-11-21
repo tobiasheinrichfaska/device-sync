@@ -70,7 +70,7 @@ export type WriteFailure =
   | Problem
   /** This device's own id is not one the receivers accept. */
   | 'invalid-device'
-  /** More devices wrote the fields than one `knew` may name (`maxDevices`). */
+  /** More than `maxDevices` unresolved concurrent writes to the fields: one `knew` could not name them all. */
   | 'too-many-devices'
   /** The clock or the numbering cannot count further. */
   | 'clock-overflow';
@@ -278,11 +278,14 @@ export function missingFor(replica: Replica, vector: VersionVector): Change[] {
 }
 
 /**
- * What a new change of this device says it knew: of its stand, only the devices that wrote the named
- * fields of the record (writes in its log, current values; notices are derived from the log, so
- * their devices are in it already). `fields` null = every
- * field (a final delete). Every check of the model asks `knew` only about such devices, so it
- * decides as with the whole stand, at a fraction of the size.
+ * What a new change of this device says it knew, shortened to what a conflict check needs: for the
+ * named fields of the record (`fields` null = every field, a final delete), the devices whose last
+ * write to such a field is a HEAD from this device's view, i.e. no other write it holds says it knew
+ * that write. Every other writer is covered transitively: a receiver that holds a head also holds
+ * everything the head's author knew (the causal hold), and notices only compare heads. So
+ * the number of devices named is the number of unresolved concurrent heads, not the number of
+ * devices that ever wrote the field. Every check of the model asks `knew` only about such devices,
+ * so it decides as with the whole stand, at a fraction of the size.
  */
 export function knownFor(
   replica: Replica,
@@ -295,16 +298,18 @@ export function knownFor(
   const record = findRecord(replica, collection, id);
   if (!record) return {};
   const index = indexOf(replica.log).get(collection)?.get(id);
+  const names = new Set<string>(
+    fields ?? [...(index?.fields.keys() ?? []), ...Object.keys(record.fields)],
+  );
   const devices = new Set<DeviceId>();
-  if (fields === null) {
-    for (const device of index?.devices ?? []) devices.add(device);
-  } else {
-    for (const name of fields) {
-      for (const device of index?.fields.get(name)?.last.keys() ?? []) devices.add(device);
+  for (const name of names) {
+    const field = index?.fields.get(name);
+    for (const [device, write] of field?.last ?? []) {
+      if ((field?.maxKnew.get(device) ?? 0) < write.seq) devices.add(device);
     }
-  }
-  for (const [name, value] of Object.entries(record.fields)) {
-    if (fields === null || fields.includes(name)) devices.add(value.device);
+    // A current value whose writer the index does not list (a replica built by hand): name it.
+    const current = own(record.fields, name);
+    if (current && !field?.last.has(current.device)) devices.add(current.device);
   }
   return Object.fromEntries(
     [...devices]

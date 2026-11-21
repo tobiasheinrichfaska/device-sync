@@ -14,6 +14,9 @@ export const FORBIDDEN_NAMES: ReadonlySet<string> = new Set([
 
 const CONTROL_OR_FORMAT = /[\p{Cc}\p{Cf}]/u;
 
+/** A surrogate without its partner: not text in UTF-8, and the encoder would turn it into U+FFFD. */
+const LONE_SURROGATE = /\p{Cs}/u;
+
 /** A new object without a prototype: any string is an ordinary key (`toString`, `__proto__`). */
 export function dict<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
@@ -52,6 +55,7 @@ export const label = (v: unknown, max: number): v is string =>
   v.length >= 1 &&
   v.length <= max &&
   !CONTROL_OR_FORMAT.test(v) &&
+  !LONE_SURROGATE.test(v) &&
   v.normalize('NFC') === v;
 
 /** A label that is also safe as a key of an object. */
@@ -81,7 +85,10 @@ function cleanValue(
   if (++budget.nodes > limits.maxValueChars) return fail(budget, 'too-large');
   if (v === null || typeof v === 'boolean') return v;
   if (typeof v === 'number') return Number.isFinite(v) ? v : fail(budget, 'invalid-value');
-  if (typeof v === 'string') return v.length <= limits.maxText ? v : fail(budget, 'too-large');
+  if (typeof v === 'string') {
+    if (v.length > limits.maxText) return fail(budget, 'too-large');
+    return LONE_SURROGATE.test(v) ? fail(budget, 'invalid-value') : v;
+  }
   if (typeof v !== 'object') return fail(budget, 'invalid-value');
   if (depth >= limits.maxDepth) return fail(budget, 'too-large');
   if (Array.isArray(v)) {

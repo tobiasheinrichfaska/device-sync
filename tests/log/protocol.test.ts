@@ -29,6 +29,8 @@ const must = <T>(v: T | undefined): T => {
   return v;
 };
 const json = (m: SyncMessage): unknown => JSON.parse(JSON.stringify(m));
+/** These replicas are not signed: plain sessions send everything. */
+const PLAIN = { signedOnly: false };
 
 interface Side {
   session: Session;
@@ -50,7 +52,7 @@ function exchange(x: Replica, y: Replica) {
       [b, a],
     ] as const) {
       for (const message of from.out.splice(0)) {
-        const step = receive(to.session, to.replica, json(message));
+        const step = receive(to.session, to.replica, json(message), PLAIN);
         to.session = step.session;
         to.replica = step.replica;
         to.out.push(...step.send);
@@ -123,7 +125,7 @@ describe('exchange protocol', () => {
   it('a stand is answered with exactly what the sender lacks', () => {
     const a = many('a', 4);
     const b = merge(emptyReplica('b'), a.log.slice(0, 2)).replica;
-    const step = onSyncMessage(startSession(a).session, a, { t: 'stand', vector: b.vector });
+    const step = onSyncMessage(startSession(a).session, a, { t: 'stand', vector: b.vector }, PLAIN);
     expect(step.session.sent).toBe(2);
     const sent = step.send.flatMap((m) => (m.t === 'changes' ? m.changes : []));
     expect(sent.map((c) => c.seq)).toEqual([3, 4]);
@@ -240,7 +242,7 @@ describe('exchange protocol', () => {
       startSession(a).session,
       a,
       { t: 'stand', vector: {} },
-      { limits: { maxChanges: 2 } },
+      { limits: { maxChanges: 2 }, ...PLAIN },
     );
     expect(step.send.map((m) => (m.t === 'changes' ? m.changes.length : -1))).toEqual([2, 2, 2]);
     expect(LIMITS.maxChanges).toBe(500);
