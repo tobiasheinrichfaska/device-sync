@@ -1,0 +1,36 @@
+# Architecture (plan, not yet built)
+
+The package is app-independent. Everything an app decides (record shapes, who may write what,
+approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
+
+## Layers
+
+| Layer        | Content                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out |
+| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange  |
+| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                         |
+| **post**     | Mailbox for sealed envelopes carried by third devices                                                    |
+| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring               |
+| **transfer** | Fountain QR, tone acknowledgement, direct connection (optional entry points)                             |
+| **push**     | Web Push encryption and VAPID, ring request, service worker template                                     |
+| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
+
+`core`, `log`, `trust`, `post` and `push` are pure: no clock, no randomness, no I/O (both are passed
+in) and testable without a UI. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC.
+
+## Parameters instead of constants
+
+- **`appId`**: every marker, hash prefix, key-derivation salt and storage name is built from it, so two
+  apps never sign or derive the same bytes. The wire format is versioned (`:2`).
+- **Limits** (text length per value, fields per change, envelope fan-out) are configuration.
+- **Hooks**: a special case in signature checking, records that are never erased, the right to write
+  (the receiver decides), holding a change back until someone approves it.
+- **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
+  time).
+- **Errors** are codes (`art`), not sentences; the app translates.
+
+## Wire protocol of the relay
+
+Described next to the client with machine-readable test cases, so a server and any port of it can be
+tested against the same cases. Not yet written.
