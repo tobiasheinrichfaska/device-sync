@@ -85,7 +85,7 @@ export function randomChange(rng: Rng): Change {
 export function randomMessage(rng: Rng): SyncMessage {
   const t = pick(rng, ['stand', 'changes', 'done'] as const);
   if (t === 'stand') return { t, vector: randomVector(rng) };
-  if (t === 'done') return { t, vector: randomVector(rng), fingerprint: '0123abcd' };
+  if (t === 'done') return { t, vector: randomVector(rng), fingerprint: '0123abcd'.repeat(4) };
   return {
     t,
     changes: Array.from({ length: int(rng, 4) }, () => randomChange(rng)),

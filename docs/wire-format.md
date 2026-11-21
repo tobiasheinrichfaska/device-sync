@@ -170,7 +170,7 @@ All messages are JSON objects with exactly these members; an unknown member refu
 | --------- | --------------------------------------------- | ----------------------------------------------------------------- |
 | `stand`   | `vector`                                      | The sender's version vector; opens the session                    |
 | `changes` | `changes` (list of changes), `last` (boolean) | One piece of the changes the receiver lacks; `last` ends the list |
-| `done`    | `vector`, `fingerprint` (8 lower-case hex)    | Sent once, after the other's last piece was taken                 |
+| `done`    | `vector`, `fingerprint` (32 lower-case hex)   | Sent once, after the other's last piece was taken                 |
 
 Flow: on a `stand` the receiver answers with `pieces(missingFor(replica, vector))` (always at least
 one piece, the last marked `last: true`). On the other's last piece a device merges, then sends one
@@ -252,6 +252,17 @@ and nothing of the offending piece (in `receiveJudged`: of the whole session) is
 - `forged`: `readChanges` judged a change false (signature, check value, a change under the
   receiver's own id, rights).
 - `too-large`: more than `maxSessionChanges` changes collected.
+
+**Text entry and transports.** `parseSyncMessageText(text)` takes a message as text, refuses anything
+longer than twice `maxMessageChars` before it reads any JSON, and then reads strictly. A transport
+should also cap what it hands over; the exchange does not rely on it.
+
+**Order of pieces.** The pieces of one session are meant to arrive in the order they were sent. The
+exchange does not promise to take everything from a session whose pieces were reordered, but it never
+corrupts a replica: numbering stays gapless, nothing is taken twice, nothing the sender does not hold
+appears, and the next ordinary session fills what is missing (tests: `tests/log/order.test.ts`). In the
+judged variant (`receiveJudged`) the pieces before the last one may come in any order; the last piece
+ends the session, and pieces that arrive after it are not taken. Duplicated pieces are harmless.
 
 A refused session sends nothing, ignores every later message and has no `outcome`. This is
 deliberate: taking the valid part of a piece would leave a gap in a device's numbering, and every

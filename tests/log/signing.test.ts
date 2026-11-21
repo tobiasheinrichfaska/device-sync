@@ -18,6 +18,7 @@ import {
   type JudgeOptions,
   type KeySource,
   type Replica,
+  type Verdict,
 } from '../../src/log/index.ts';
 import { redacted } from '../../src/log/merge.ts';
 import { COL, ok, written } from './helpers.ts';
@@ -554,5 +555,48 @@ describe('regression: members the signature does not cover', () => {
       pending: [],
       rejected: 1,
     });
+  });
+});
+
+describe('start data accepted by a special hook, also when erased (both earlier implementations)', () => {
+  const START = 'start';
+  const compiled = written(emptyReplica(START), 'r1', { title: 'x' }).log;
+  const original = compiled[0] as Change;
+  // exactly as compiled in: same content and clock; a number it does not know comes from a newer
+  // version and waits; an erased copy counts when its check value is the compiled content's
+  const special = (c: Change): Verdict | undefined => {
+    if (c.device !== START) return undefined;
+    const known = compiled.find((k) => k.seq === c.seq);
+    if (!known) return 'pending';
+    if (c.kind === 'redacted') return c.check === changeCheckValue(known) ? 'checked' : 'false';
+    return changeCheckValue(c) === changeCheckValue(known) && c.clock === known.clock
+      ? 'checked'
+      : 'false';
+  };
+
+  it('counts only exactly as compiled; a newer version waits', async () => {
+    const ctx = { ...options({}, { special }), state: here() };
+    expect(await judgeChange(ctx, original)).toBe('checked');
+    expect(await judgeChange(ctx, { ...original, fields: { title: 'other' } })).toBe('false');
+    expect(await judgeChange(ctx, { ...original, clock: 99 })).toBe('false');
+    expect(await judgeChange(ctx, { ...original, seq: 2, clock: 2 })).toBe('pending');
+    // without the hook it is just an unsigned change
+    expect(await judgeChange({ ...options({}), state: here() }, original)).toBe('false');
+  });
+
+  it('an erased copy passes only beside its record’s final deletion', async () => {
+    const keys = await pair();
+    let r = merge(emptyReplica('a'), compiled).replica;
+    r = await signedLog(remove(r, COL, 'r1'), keys.privateKey);
+    const erased = r.log.find((c) => c.device === START) as Change;
+    const deletion = last(r);
+    expect(erased).toMatchObject({ kind: 'redacted', check: changeCheckValue(original) });
+    const ctx = { ...options({ a: keys.publicKey }, { special }), state: here() };
+    expect(await judgeChanges(ctx, [erased, deletion])).toEqual(['checked', 'checked']);
+    expect(await judgeChanges(ctx, [erased])).toEqual(['false']);
+    expect(await judgeChanges(ctx, [{ ...erased, check: 'AAAA' }, deletion])).toEqual([
+      'false',
+      'checked',
+    ]);
   });
 });

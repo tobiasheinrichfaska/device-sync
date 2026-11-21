@@ -151,9 +151,9 @@ describe('exchange protocol', () => {
     session = onSyncMessage(session, a, {
       t: 'done',
       vector: a.vector,
-      fingerprint: '00000000',
+      fingerprint: '0'.repeat(32),
     }).session;
-    expect(outcome(session, a)).toMatchObject({ equal: false, peerFingerprint: '00000000' });
+    expect(outcome(session, a)).toMatchObject({ equal: false, peerFingerprint: '0'.repeat(32) });
   });
 
   it('a duplicated piece changes nothing and does not close twice', () => {
@@ -270,7 +270,7 @@ describe('fingerprint', () => {
     const a = written(emptyReplica('a'), 'r1', { title: 'x' });
     const { x, y } = exchange(a, emptyReplica('b'));
     expect(fingerprint(x)).toBe(fingerprint(y));
-    expect(fingerprint(x)).toMatch(/^[0-9a-f]{8}$/);
+    expect(fingerprint(x)).toMatch(/^[0-9a-f]{32}$/);
     expect(fingerprint(written(x, 'r1', { title: 'y' }))).not.toBe(fingerprint(x));
     expect(fingerprint(ok(softDelete(x, COL, 'r1')))).not.toBe(fingerprint(x));
     expect(fingerprint(remove(x, COL, 'r1'))).not.toBe(fingerprint(x));
@@ -295,7 +295,7 @@ describe('fingerprint', () => {
   });
 
   it('an empty replica has a fingerprint, and a record id cannot fake a deleted record', () => {
-    expect(fingerprint(emptyReplica('a'))).toMatch(/^[0-9a-f]{8}$/);
+    expect(fingerprint(emptyReplica('a'))).toMatch(/^[0-9a-f]{32}$/);
     const del = remove(written(emptyReplica('a'), 'r1', { x: 1 }), COL, 'r1');
     const fake = written(emptyReplica('a'), 'r1', { deleted: 'deleted' });
     expect(fingerprint(del)).not.toBe(fingerprint(fake));

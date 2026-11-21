@@ -45,10 +45,10 @@ const byId = (a: { id: string }, b: { id: string }): number =>
   a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 /**
- * A short fingerprint (8 hex digits) of what a person would see: every collection, every record with
+ * A short fingerprint (32 hex digits, 128 bits) of what a person would see: every collection, every record with
  * its current field values, and which records are deleted. Equal data give equal fingerprints
  * (values are compared in canonical form, so key order does not matter). Different data give
- * different ones except by chance: 32 bits, a consistency check and not a proof.
+ * different ones except by chance (2^-128): a consistency check, not a proof against a peer that lies.
  */
 export function fingerprint(replica: Replica): string {
   const view = Object.keys(replica.collections)
@@ -69,7 +69,7 @@ export function fingerprint(replica: Replica): string {
         ),
     ]);
   const digest = sha256Text(canonical(view));
-  return Array.from(digest.subarray(0, 4), (b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(digest.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Why a session ended without taking anything further. */

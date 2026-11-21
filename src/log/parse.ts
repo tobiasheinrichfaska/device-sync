@@ -26,7 +26,7 @@ const CONTROL = /\p{Cc}/u;
 const KINDS: readonly string[] = ['set', 'delete', 'redacted'] satisfies ChangeKind[];
 const CHECK = /^[A-Za-z0-9_-]{43}$/;
 const SIG = /^[A-Za-z0-9_-]{86}$/;
-const FINGERPRINT = /^[0-9a-f]{8}$/;
+const FINGERPRINT = /^[0-9a-f]{32}$/;
 const CHANGE_MEMBERS: ReadonlySet<string> = new Set([
   'device',
   'seq',
@@ -263,4 +263,20 @@ export function parseSyncMessage(
       options.deviceId ?? ((s) => DEFAULT_DEVICE_ID.test(s)),
     ),
   );
+}
+
+/**
+ * A message as the text a transport hands over: refused at once when it is not a string or longer
+ * than twice `maxMessageChars` (room for white space and the members around the changes), before any
+ * JSON is read; otherwise parsed and read strictly as `parseSyncMessage`. Never throws.
+ */
+export function parseSyncMessageText(
+  text: unknown,
+  options: ParseOptions = {},
+): SyncMessage | undefined {
+  return guarded(() => {
+    if (typeof text !== 'string') return undefined;
+    if (text.length > resolveLimits(options.limits).maxMessageChars * 2) return undefined;
+    return parseSyncMessage(JSON.parse(text), options);
+  });
 }

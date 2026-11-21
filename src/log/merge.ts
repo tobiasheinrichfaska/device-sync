@@ -32,7 +32,18 @@ export function merge(replica: Replica, incoming: readonly Change[]): MergeResul
   const vector: Record<DeviceId, number> = { ...replica.vector };
   const log: Change[] = [...replica.log];
   let notices: Notice[] = [...replica.notices];
-  let { clock, collections } = replica;
+  let { clock } = replica;
+  // A collection is copied once per merge (when first changed), not once per change: copying it for
+  // every change made a large batch quadratic.
+  const collections: Record<string, Record<string, StoredRecord>> = { ...replica.collections };
+  const owned = new Set<string>();
+  const edit = (name: string): Record<string, StoredRecord> => {
+    if (!owned.has(name)) {
+      collections[name] = { ...(collections[name] ?? {}) };
+      owned.add(name);
+    }
+    return collections[name] as Record<string, StoredRecord>;
+  };
   let applied = 0;
   const held: Change[] = [];
   const touched = new Map<string, readonly [string, string, string]>();
@@ -45,10 +56,9 @@ export function merge(replica: Replica, incoming: readonly Change[]): MergeResul
       continue;
     }
     // Extension point: a future `ApprovalHook` is asked here; a refused change goes to `held`.
-    const result = apply(collections, change);
-    collections = result.collections;
-    log.push(result.logged);
-    if (result.logged.kind === 'set') {
+    const logged = apply(collections, edit, change);
+    log.push(logged);
+    if (logged.kind === 'set') {
       for (const field of Object.keys(change.fields ?? {})) {
         touched.set(JSON.stringify([change.collection, change.id, field]), [
           change.collection,
@@ -71,20 +81,17 @@ export function merge(replica: Replica, incoming: readonly Change[]): MergeResul
 }
 
 function apply(
-  collections: Replica['collections'],
+  collections: Readonly<Record<string, Collection>>,
+  edit: (collection: string) => Record<string, StoredRecord>,
   change: Change,
-): { collections: Replica['collections']; logged: Change } {
-  const records: Collection = collections[change.collection] ?? {};
-  const current = records[change.id];
-  if (change.kind === 'redacted') return { collections, logged: change };
+): Change {
+  const current = collections[change.collection]?.[change.id];
+  if (change.kind === 'redacted') return change;
   // A write to a deleted record never stores its content, not even in the log.
-  if (current?.deleted && change.kind === 'set') return { collections, logged: redacted(change) };
+  if (current?.deleted && change.kind === 'set') return redacted(change);
   if (change.kind === 'delete') {
-    const next: StoredRecord = { id: change.id, fields: {}, deleted: true };
-    return {
-      collections: { ...collections, [change.collection]: { ...records, [change.id]: next } },
-      logged: change,
-    };
+    edit(change.collection)[change.id] = { id: change.id, fields: {}, deleted: true };
+    return change;
   }
   const fields: Record<string, FieldValue> = { ...(current?.fields ?? {}) };
   for (const [name, value] of Object.entries(change.fields ?? {})) {
@@ -98,11 +105,8 @@ function apply(
     const existing = fields[name];
     if (!existing || isNewer(candidate, existing)) fields[name] = candidate;
   }
-  const next: StoredRecord = { id: change.id, fields, deleted: false };
-  return {
-    collections: { ...collections, [change.collection]: { ...records, [change.id]: next } },
-    logged: change,
-  };
+  edit(change.collection)[change.id] = { id: change.id, fields, deleted: false };
+  return change;
 }
 
 /**

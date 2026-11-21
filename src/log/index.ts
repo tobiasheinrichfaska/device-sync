@@ -51,7 +51,13 @@ export {
 export type { WriteResult } from './replica.ts';
 export { LIMITS, PIECE_BYTES, resolveLimits } from './limits.ts';
 export type { Limits } from './limits.ts';
-export { DEFAULT_DEVICE_ID, parseChange, parseSyncMessage, parseVector } from './parse.ts';
+export {
+  DEFAULT_DEVICE_ID,
+  parseChange,
+  parseSyncMessage,
+  parseSyncMessageText,
+  parseVector,
+} from './parse.ts';
 export type { ParseOptions, SyncMessage } from './parse.ts';
 export {
   fingerprint,

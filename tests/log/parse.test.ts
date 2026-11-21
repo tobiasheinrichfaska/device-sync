@@ -91,7 +91,10 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
     ['stand with negative count', { t: 'stand', vector: { a: -1 } }],
     ['stand with fractional count', { t: 'stand', vector: { a: 1.5 } }],
     ['done with a bad fingerprint', { t: 'done', vector: {}, fingerprint: 'xyz' }],
-    ['done with an upper-case fingerprint', { t: 'done', vector: {}, fingerprint: 'ABCDEF01' }],
+    [
+      'done with an upper-case fingerprint',
+      { t: 'done', vector: {}, fingerprint: 'ABCDEF01'.repeat(4) },
+    ],
     ['done without fingerprint', { t: 'done', vector: {} }],
     ['a change that is only a device', { t: 'changes', changes: [{ device: 'a' }], last: true }],
     ['last is not a boolean', { t: 'changes', changes: [], last: 'yes' }],
@@ -100,7 +103,10 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
     ['an unknown type', { t: 'other' }],
     ['no type', { vector: {} }],
     ['an unknown member of a stand', { t: 'stand', vector: {}, extra: 1 }],
-    ['an unknown member of done', { t: 'done', vector: {}, fingerprint: '01234567', extra: 1 }],
+    [
+      'an unknown member of done',
+      { t: 'done', vector: {}, fingerprint: '01234567'.repeat(4), extra: 1 },
+    ],
     ['an unknown member of changes', { t: 'changes', changes: [], last: true, extra: 1 }],
     [
       'a class instance as message',
@@ -199,6 +205,18 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
       expect(parsedPiece(extra)).toBeUndefined();
     });
   }
+
+  it('a signature never without its check value; a check value alone passes (erased start data)', () => {
+    const both = parsedPiece({ check: CHECK, sig: SIG });
+    expect(both?.t === 'changes' && both.changes[0]?.sig).toBe(SIG);
+    expect(parsedPiece({ check: undefined, sig: SIG })).toBeUndefined();
+    expect(parsedPiece({ check: 'short', sig: SIG })).toBeUndefined();
+    expect(parsedPiece({ check: CHECK, sig: `${SIG}x` })).toBeUndefined();
+    const checkOnly = parsedPiece({ check: CHECK, sig: undefined });
+    expect(checkOnly?.t === 'changes' && checkOnly.changes[0]?.check).toBe(CHECK);
+    const neither = parsedPiece({ check: undefined, sig: undefined });
+    expect(neither?.t === 'changes' && neither.changes[0]?.sig).toBeUndefined();
+  });
 
   it('treats an undefined optional member as absent (it is not on the wire)', () => {
     expect(parseChange(change({ knew: undefined, time: undefined, by: undefined }))).toEqual(
@@ -659,7 +677,7 @@ describe('fuzzing (seeded)', () => {
           m.changes.forEach(validChange);
           expect(typeof m.last).toBe('boolean');
         }
-        if (m.t === 'done') expect(m.fingerprint).toMatch(/^[0-9a-f]{8}$/);
+        if (m.t === 'done') expect(m.fingerprint).toMatch(/^[0-9a-f]{32}$/);
         expect(Object.keys(m).length).toBe(m.t === 'stand' ? 2 : 3);
       },
     );

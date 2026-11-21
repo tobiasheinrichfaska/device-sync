@@ -80,10 +80,11 @@ npm run format:check
 ## Known Limitations
 
 - Only the first part of the core layer (encoding, canonical JSON, markers, device keys, check code) and the log layer (change model, merge, redaction, notices, history, undo, signing, exchange protocol with strict parsers) exist; the end-to-end encrypted session, trust, post, relay, transfer, push and browser are not implemented.
-- Exchange: pieces must arrive in order within one session (a piece out of order leaves a gap, the session ends with different fingerprints, the next session catches up); the fingerprint is 32 bits; `receiveJudged` keeps up to `maxSessionChanges` changes in memory until the last piece; changes of authors that cannot be checked yet are dropped and must come again. Apps pass their own device id pattern (`deviceId` option); the default is permissive.
+- Exchange: pieces are meant to arrive in order. A reordered session may not take everything but never corrupts a replica, and the next session fills the gap (`tests/log/order.test.ts`); in `receiveJudged` the pieces before the last may come in any order. `receiveJudged` keeps up to `maxSessionChanges` changes in memory until the last piece; changes of authors that cannot be checked yet are dropped and must come again. The fingerprint (128 bits) is a consistency check, not a proof against a peer that lies. Apps pass their own device id pattern (`deviceId` option); the default is permissive. A transport should cap message size before the parser; `parseSyncMessageText` refuses text over twice `maxMessageChars` itself.
+- Performance: a batch merge is linear (6000 changes to 6000 records in about 15 ms; `tests/log/batch.test.ts`). Writing one change at a time scans the log (`knownFor`), about 1 ms at 3000 changes, so importing thousands of records one write at a time takes seconds; a final deletion walks the log once. Not optimised further.
 - Conflict notices are derived from the log (a change against the earlier implementations, which built them incrementally and could differ between devices); a notice lists the concurrent heads, not every superseded write.
 - The "hold back until approved" hook exists only as a type (`ApprovalHook`) and a marked spot in `merge`.
 - The soft-delete field name `deleted` is reserved; field count and value size are limited only on the wire (`LIMITS`), not when writing locally.
 - Public but unreviewed: the README says so; no npm release and no tag for use before the security review.
 
-_Last updated: 2026-11-21_
+_Last updated: 2026-11-21 (tests: 313 in 18 files)_
