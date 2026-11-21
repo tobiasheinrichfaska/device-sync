@@ -10,7 +10,7 @@
 Shared, app-independent technology for secure device-to-device data sync in Tobias' offline-first web
 apps: a signed gapless change log per device, end-to-end encrypted transfer, device trust and
 invitation, a relay client and Web Push helpers. Created 2026-11-21 (decision: extract it from the
-apps that carry copies of it). **Status: scaffold (0.0.0): nothing implemented or exported yet, not
+apps that carry copies of it). **Status: 0.0.0, core layer partly implemented (encoding, canonical, markers, keys), not
 published to npm. GitHub repo made public on 2026-11-21 (Tobias' OK); the README carries a "Not reviewed" notice until the security review is done.**
 
 **The inventory of the existing implementations, the measured drift between them and the plan (names
@@ -48,7 +48,10 @@ Errors are codes, not sentences.
 | `FEATURES_REQUIRED.md`                                           | Critical paths (target)                                       |
 | `docs/architecture.md`                                           | Layers and parameters (plan)                                  |
 | `manual_tests/`                                                  | Human-tester instructions (README only, no UI)                |
-| `src/index.ts`                                                   | Public entry (only the status so far)                         |
+| `src/index.ts`                                                   | Public entry: status and re-export of the finished layers     |
+| `src/core/` (`encoding`, `canonical`, `markers`, `keys`, `index`) | Core layer, first part: base64url, canonical JSON, markers, device keys, check code |
+| `tests/core/`                                                    | Unit tests of the core layer                                  |
+| `docs/wire-format.md`                                            | What the core layer puts on the wire                          |
 | `tests/coupling.test.ts`                                         | Guard: no private project names, only own imports             |
 | `scripts/fix-declarations.mjs`                                   | Rewrites `.ts` imports in the emitted declarations            |
 | `package.json`, `tsconfig.json`, `tsconfig.build.json`, `vitest.config.ts`, `.prettierrc.json`, `.prettierignore` | Toolchain (`"private": true` against an accidental npm publish) |
@@ -74,7 +77,7 @@ npm run format:check
 
 ## Known Limitations
 
-- Scaffold only: no layer is implemented yet.
+- Only the first part of the core layer exists (encoding, canonical JSON, markers, device keys, check code); log, trust, post, relay, transfer, push, browser are not implemented.
 - Public but unreviewed: the README says so; no npm release and no tag for use before the security review.
 
 _Last updated: 2026-11-21_

@@ -35,8 +35,8 @@ function files(dir: string): string[] {
 }
 
 describe('coupling guard', () => {
-  it('the scaffold exports only its status', () => {
-    expect(STATUS).toBe('scaffold');
+  it('the package reports its honest status', () => {
+    expect(STATUS).toBe('core-partial');
   });
 
   it('no file names a private project or its domain', () => {
