@@ -1211,8 +1211,12 @@ not: clocks differ). `addEnvelopes(mailbox, incoming, today, { from })` works in
    step above is linear: the days are bucketed (at most about 32 different days are carried).
 
 `pruneMailbox` does steps 2 and 5. `keepNewest(mailbox, n)` keeps the newest n; `storeMailbox(write,
-mailbox)` writes with a callback and, when a write fails, halves the mailbox (newest stay) up to 8 times
-and tells how many envelopes did not fit (it never throws; the mailbox is nobody's data, only a carrier).
+mailbox)` writes with a callback and, when a write fails, halves the mailbox (newest stay) and tries again,
+at most 8 writes in all (`STORE_ATTEMPTS`: 2000 envelopes are tried at 2000, 1000, 500 ... 15, not down to
+nothing). It never throws and never answers with a bare number: the result is `{ ok: true, kept, dropped,
+mailbox }` (what was written; `dropped` 0 means everything was kept) or `{ ok: false, kept: 0, dropped }`
+when every write failed (the old stored state stays as it was; `dropped` is everything the mailbox held, 0
+for an empty one). The mailbox is nobody's data, only a carrier.
 
 ### Receipts
 

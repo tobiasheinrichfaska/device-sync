@@ -15,6 +15,7 @@ import {
   readMailbox,
   readReceipts,
   resolvePostLimits,
+  STORE_ATTEMPTS,
   storeMailbox,
   type Envelope,
   type Mailbox,
@@ -197,7 +198,11 @@ describe('writing the mailbox never refuses a file (the quota of a store)', () =
 
   it('it fits: written as it is, nothing dropped', async () => {
     const written: Mailbox[] = [];
-    expect(await storeMailbox((m) => void written.push(m), box(30))).toBe(0);
+    expect(await storeMailbox((m) => void written.push(m), box(30))).toMatchObject({
+      ok: true,
+      kept: 30,
+      dropped: 0,
+    });
     expect(written).toHaveLength(1);
     expect(written[0]?.items).toHaveLength(30);
   });
@@ -212,22 +217,60 @@ describe('writing the mailbox never refuses a file (the quota of a store)', () =
     expect(written).toHaveLength(1);
     const kept = written[0] as Mailbox;
     expect(kept.items.length).toBeLessThanOrEqual(10);
-    expect(dropped).toBe(60 - kept.items.length);
+    expect(dropped).toMatchObject({ ok: true, kept: kept.items.length });
+    expect(dropped.dropped).toBe(60 - kept.items.length);
+    expect(dropped.ok && dropped.mailbox).toBe(kept);
     const stay = new Set(kept.items.map((e) => e.id));
     const oldestKept = kept.items.map((e) => e.day).sort()[0] as string;
     expect(all.items.filter((e) => !stay.has(e.id)).every((e) => e.day <= oldestKept)).toBe(true);
   });
 
-  it('nothing fits at all: it does not throw, and says all of them were dropped', async () => {
+  it('nothing fits at all: it does not throw and says nothing was written (not "all kept")', async () => {
     const tries: number[] = [];
-    const dropped = await storeMailbox(async (m) => {
+    const result = await storeMailbox(async (m) => {
       tries.push(m.items.length);
       throw quota();
     }, box(40));
-    expect(dropped).toBe(40);
+    expect(result).toEqual({ ok: false, kept: 0, dropped: 40 });
     expect(tries[0]).toBe(40);
-    expect(tries.at(-1)).toBeLessThan(10);
-    expect(await storeMailbox(() => Promise.reject(quota()), box(0))).toBe(0);
+    // 40 20 10 5 2 1, then the empty mailbox is tried once and the loop ends
+    expect(tries).toEqual([40, 20, 10, 5, 2, 1, 0]);
+    expect(tries.length).toBeLessThanOrEqual(STORE_ATTEMPTS);
+  });
+
+  it('a full mailbox of 2000 is tried 8 times, 2000 down to 15, not down to nothing', async () => {
+    const result = await storeMailbox(
+      () => {
+        throw quota();
+      },
+      mailboxOf(...Array.from({ length: 2000 }, () => fake())),
+    );
+    expect(result).toEqual({ ok: false, kept: 0, dropped: 2000 });
+    const sizes: number[] = [];
+    await storeMailbox(
+      (m) => {
+        sizes.push(m.items.length);
+        throw quota();
+      },
+      mailboxOf(...Array.from({ length: 2000 }, () => fake())),
+    );
+    expect(sizes).toEqual([2000, 1000, 500, 250, 125, 62, 31, 15]);
+  });
+
+  it('an empty mailbox that cannot be written is a failure too, with nothing dropped', async () => {
+    expect(await storeMailbox(() => Promise.reject(quota()), box(0))).toEqual({
+      ok: false,
+      kept: 0,
+      dropped: 0,
+    });
+    expect(await storeMailbox(() => undefined, box(0))).toMatchObject({ ok: true, kept: 0 });
+  });
+
+  it('it fits only when halved to nothing but one: the last attempt that works is reported', async () => {
+    const result = await storeMailbox((m) => {
+      if (m.items.length > 15) throw quota();
+    }, box(2000));
+    expect(result).toMatchObject({ ok: true, kept: 15, dropped: 1985 });
   });
 });
 

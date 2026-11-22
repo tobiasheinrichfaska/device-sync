@@ -231,11 +231,7 @@ async function slotKey(
   header: string,
   dh: string,
 ): Promise<CryptoKey> {
-  return aesKey(
-    secret,
-    await sha256(header),
-    `${marker(appId, 'envelope', V)}|slot|${field(dh)}`,
-  );
+  return aesKey(secret, await sha256(header), `${marker(appId, 'envelope', V)}|slot|${field(dh)}`);
 }
 
 /** What the author signs: app, sender, channel, day and the content, every field length-prefixed. */
@@ -246,9 +242,7 @@ const signedText = (
   day: string,
   body: string,
 ): string =>
-  `${marker(appId, 'envsig', V)}|${field(from)}|${field(channel)}|${field(day)}|${field(
-    body,
-  )}`;
+  `${marker(appId, 'envsig', V)}|${field(from)}|${field(channel)}|${field(day)}|${field(body)}`;
 
 const innerText = (from: string, channel: string, sig: string, body: string): string =>
   `{"from":${JSON.stringify(from)},"channel":${JSON.stringify(channel)},"sig":"${sig}","body":"${body}"}`;
