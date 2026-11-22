@@ -75,18 +75,36 @@ export interface Envelope {
 
 // Envelopes made by `sealEnvelope` or read by `readEnvelope` are frozen and remembered here, so
 // the mailbox need not read an envelope it already read (a hand-made object is read again).
-// The app id is remembered with it: an envelope of another app is never "known".
-const known = new WeakMap<object, string>();
+// The app id is remembered with it: an envelope of another app is never "known". So are its size and
+// its number of fan slots: it was read under SOME limits, and a mailbox with tighter ones must not
+// take it on trust.
+const known = new WeakMap<
+  object,
+  { readonly appId: string; readonly size: number; readonly fans: number }
+>();
 
-function make(appId: string, id: string, day: string, text: string): Envelope {
+function make(appId: string, id: string, day: string, text: string, fans: number): Envelope {
   const envelope = Object.freeze({ id, day, text });
-  known.set(envelope, appId);
+  known.set(envelope, { appId, size: text.length, fans });
   return envelope;
 }
 
-/** True for an envelope of this app that this module made or read itself (not for a look-alike). */
-export const isKnownEnvelope = (value: unknown, appId: string): value is Envelope =>
-  typeof value === 'object' && value !== null && known.get(value) === appId;
+/**
+ * True for an envelope of this app that this module made or read itself (not for a look-alike) and,
+ * when `limits` are given, that is within them (it may have been read under larger ones).
+ */
+export function isKnownEnvelope(
+  value: unknown,
+  appId: string,
+  limits?: Partial<EnvelopeLimits>,
+): value is Envelope {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = known.get(value);
+  if (entry?.appId !== appId) return false;
+  if (!limits) return true;
+  const lim = resolveEnvelopeLimits(limits);
+  return entry.size <= lim.maxEnvelopeBytes && entry.fans <= lim.maxFans;
+}
 
 /** The members of an envelope as they sit on the wire (the id is computed from them). */
 export interface EnvelopeParts {
@@ -161,7 +179,7 @@ export function envelopeFromValue(
   const parts: EnvelopeParts = { day, eph, iv, ct, k: slots };
   if (envelopeId(appId, parts) !== id) return undefined;
   const text = envelopeText(appId, id, parts);
-  return text.length > lim.maxEnvelopeBytes ? undefined : make(appId, id, day, text);
+  return text.length > lim.maxEnvelopeBytes ? undefined : make(appId, id, day, text, slots.length);
 }
 
 /** An envelope from its wire text: exactly one spelling, bounded before parsing. Else undefined. */
@@ -352,7 +370,7 @@ export async function sealEnvelope(params: EnvelopeSealParams): Promise<Envelope
     const text = envelopeText(appId, id, parts);
     return text.length > lim.maxEnvelopeBytes
       ? refuse('too-large')
-      : { ok: true, envelope: make(appId, id, day, text) };
+      : { ok: true, envelope: make(appId, id, day, text, parts.k.length) };
   } catch {
     return refuse('crypto-failure');
   }

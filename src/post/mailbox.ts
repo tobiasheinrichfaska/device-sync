@@ -113,7 +113,9 @@ function update(
       continue;
     }
     if (present.has(id) || acked.has(id) || !isCurrent(day)) continue;
-    const envelope = isKnownEnvelope(item, appId) ? item : readEnvelope(appId, candidate.text, lim);
+    const envelope = isKnownEnvelope(item, appId, lim)
+      ? item
+      : readEnvelope(appId, candidate.text, lim);
     if (!envelope || envelope.id !== id || envelope.day !== day) {
       invalid += 1;
       continue;

@@ -1182,7 +1182,9 @@ not: clocks differ). `addEnvelopes(mailbox, incoming, today, { from })` works in
 2. drop what is too old or acknowledged from the mailbox (and acknowledgements older than `postDays`);
 3. for each incoming envelope: skip it if its id is already there or acknowledged, or its day is not
    carried; count it as `invalid` if it is not an envelope of this app with exactly that id and day (an
-   object this package made or read is trusted; any other object is read again strictly);
+   object this package made or read is trusted, but only within the limits of this call: its size and its
+   number of fan slots are remembered and checked against the limits of the mailbox, because it may have
+   been read under larger ones; any other object is read again strictly);
 4. **quota**: with `from` (another device brought them: a session or a file) at most `maxPerSupplier` (400)
    new envelopes per day from that device are taken, the newest days first (within a day in the order
    given), the rest is refused and counted (`rejected`); a further device beyond `maxSuppliers` different
@@ -1237,7 +1239,10 @@ before parsing: at most `max(pieceChars, maxEnvelopeBytes) + 512` characters):
 
 A piece is cut at `pieceChars` (12 000) characters and `maxPerMessage` (400) items; one envelope may exceed
 the piece alone. There is always at least one `ids` and one `envelopes` message (an empty one carries
-`last`).
+`last`). **Only the last message of a kind may be empty**: an `ids` or `envelopes` message with an empty
+list and `last: false` is refused by the reader (an honest sender never makes one, and without the rule a
+neighbour could keep a session open for ever with empty messages, each one costing a pass over the
+mailbox).
 
 ### The session
 
