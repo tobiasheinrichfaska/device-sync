@@ -216,15 +216,16 @@ describe('messages', () => {
     expect(findMessage(APP, [L.toneMessageMax + 1, ...new Array(30).fill(0)])).toBeUndefined();
   });
 
+  const DOMAIN = APP + '-tone:1';
   it('a message longer than the limit is not accepted even with a correct check', () => {
     const body = Uint8Array.from([
       L.toneMessageMax + 1,
       ...new Array(L.toneMessageMax + 1).fill(7),
     ]);
-    const c = crc32([new TextEncoder().encode(), body]) & 0xffff;
+    const c = crc32([new TextEncoder().encode(DOMAIN), body]) & 0xffff;
     expect(findMessage(APP, [...body, c >> 8, c & 0xff])).toBeUndefined();
     const ok16 = Uint8Array.from([L.toneMessageMax, ...new Array(L.toneMessageMax).fill(7)]);
-    const c2 = crc32([new TextEncoder().encode(), ok16]) & 0xffff;
+    const c2 = crc32([new TextEncoder().encode(DOMAIN), ok16]) & 0xffff;
     expect(findMessage(APP, [...ok16, c2 >> 8, c2 & 0xff])).toEqual(ok16.slice(1));
   });
 
