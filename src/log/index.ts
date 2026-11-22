@@ -132,3 +132,29 @@ export type {
   SessionOptions,
   Step,
 } from './protocol.ts';
+export {
+  approveAll,
+  approveChange,
+  correctValue,
+  keepValue,
+  recordsWithRequests,
+  requestCount,
+  review,
+  reviewConflicts,
+  reviewRequests,
+  reviewSettlements,
+  reviewView,
+  takeApproverValue,
+} from './review.ts';
+export type {
+  ApproveAllOptions,
+  ReviewConfig,
+  ReviewConflict,
+  ReviewConflictKind,
+  ReviewFailure,
+  ReviewRequest,
+  ReviewSettlement,
+  ReviewState,
+  ReviewValue,
+  ReviewWriteResult,
+} from './review.ts';
