@@ -597,7 +597,9 @@ origin is refused before its signature. Everything else is listed below.
 
 ## Open points of version 1
 
-Neither the written document nor the server source settles these; a server owner decides them, and until
+A port to PHP on ordinary web hosting is planned by one consumer, to be built only if that hosting stays
+without Node (decision pending there). Points 2, 3, 4 and 8 matter only for such a second server; points 5
+to 7 apply to the existing one. Neither the written document nor the server source settles these; a server owner decides them, and until
 then a client and a conformance run MUST NOT rely on any particular answer.
 
 1. **Version negotiation.** There is no version header and no negotiation. How a later version 2 shares an
