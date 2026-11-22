@@ -104,6 +104,20 @@ export interface Validators {
    * private device says so here (a domain rule of the earlier implementations, left to the app).
    */
   readonly privateRoles: (role: string) => boolean;
+  /**
+   * The relay's own invitation carried inside the invitation link (`relayInvitation`): whether this text
+   * is acceptable for an invitation of this role and this inviter. An invitation whose relay part is not
+   * is refused as a whole. Default: nothing is acceptable, so an app that does not use the relay's
+   * invitation never takes the member (`relayInvitationValidator` of the relay layer is the usual one).
+   */
+  readonly relayInvitation: (text: string, context: RelayInvitationContext) => boolean;
+}
+
+/** What a validator of the relay part may compare it with: the role of the log invitation and the inviter's relay id. */
+export interface RelayInvitationContext {
+  readonly role: string;
+  /** The inviter's relay id as the invitation carries it (`relayId`), when it does. */
+  readonly inviterRelayId: string | undefined;
 }
 
 /** What the strict parsers and the code/invitation functions need. */
