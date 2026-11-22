@@ -73,7 +73,9 @@ JWT header exactly as written). A push service may be more liberal; a token buil
 the app serves itself. On a `push` event it shows one notification from the table (title and body by the
 primary subtag of `navigator.language`, else the fallback) and keeps the event alive until it is shown
 (browsers require a visible notification for every push). On `notificationclick` it closes the notification
-and focuses a window of the app (same origin, same path or below it) or opens `appUrl`.
+and focuses a window of the app (same origin, same path or below it) or opens `appUrl`. A URL is an absolute
+`https` URL without fragment or a path starting with one `/`; **a backslash is refused anywhere in it**, because
+a browser reads `/\host` as `//host` (another origin).
 
 The script never reads the push event's `data`, never reads the notification's `data`, uses no network API
 and no `eval`; the tests run the generated text in a `node:vm` sandbox with a fake scope and look for those

@@ -27,14 +27,15 @@ export type WorkerRefusal = 'options' | 'texts' | 'language' | 'text' | 'fallbac
 const LANGUAGE = /^[a-z]{2,3}$/;
 const TAG = /^[A-Za-z0-9._-]{1,64}$/;
 const FORBIDDEN_IN_TEXT = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
+// No backslash (\x5c): a browser reads `/\host` as `//host`, another origin.
 const URL_FORM =
-  /^(?:https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/[\x21-\x22\x24-\x7e]*)?|\/(?!\/)[\x21-\x22\x24-\x7e]*)$/;
+  /^(?:https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/[\x21-\x22\x24-\x5b\x5d-\x7e]*)?|\/(?!\/)[\x21-\x22\x24-\x5b\x5d-\x7e]*)$/;
 
 /** Text for a notification: printable, no control, format, surrogate or line separator character. */
 const isText = (v: unknown, max: number): v is string =>
   typeof v === 'string' && v.length >= 1 && v.length <= max && !FORBIDDEN_IN_TEXT.test(v);
 
-/** `#` is excluded from URL_FORM (fragment), the rest is plain printable ASCII. */
+/** `#` (fragment) and the backslash are excluded from URL_FORM, the rest is plain printable ASCII. */
 const isUrl = (v: unknown): v is string =>
   typeof v === 'string' && v.length <= PUSH_LIMITS.workerUrlMax && URL_FORM.test(v);
 

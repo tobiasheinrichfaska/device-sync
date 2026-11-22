@@ -55,7 +55,8 @@ answer a version-1 client with refusals of that revision (`neue-fassung-noetig`,
   origin. A request without `Origin`, or with another one, is refused (`herkunft`, 403) **without** an
   `Access-Control-Allow-Origin` header. A client that is not a browser MUST send an allowed `Origin` itself.
 - **Access:** `Authorization: Bearer <access>` (an access of the form `z1...`, see "Tokens"). No cookies
-  are used or set; a browser client sends `credentials: 'omit'`.
+  are used or set; a browser client sends `credentials: 'omit'` and `redirect: 'error'` (the package client also
+  refuses an answer that a fetch reports as `redirected` or whose `url` is not the relay's origin).
 - **Every answer** (every status, also refusals of the HTTP layer and the empty answer of a preflight)
   carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Vary: Origin`. Every answer
   except the 204 of a preflight is JSON with `Content-Type: application/json; charset=utf-8`. An answer

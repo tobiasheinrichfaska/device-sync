@@ -177,9 +177,13 @@ export function cameraSource(o: CameraSourceOptions): CameraSource {
       let live = true;
       const next = (): void => {
         if (!live) return;
-        const frame = readCameraFrame(reader.read());
-        if (frame) emit(frame);
-        if (live) handle = o.timers.set(next, interval);
+        try {
+          const frame = readCameraFrame(reader.read());
+          if (frame) emit(frame);
+        } finally {
+          // A reader or a handler that throws must not end the polling for good.
+          if (live) handle = o.timers.set(next, interval);
+        }
       };
       handle = o.timers.set(next, interval);
       return () => {

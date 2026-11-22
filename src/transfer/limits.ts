@@ -44,6 +44,8 @@ export const TRANSFER_LIMITS = {
   messageBytesMax: 4_194_304,
   /** Messages (not yet read) a connection buffers. */
   inboxMax: 256,
+  /** Bytes of those messages together (the count alone would allow 256 messages of 4 MiB). */
+  inboxBytesMax: 16_777_216,
   /** Entries of `getStats()` the path reader looks at. */
   statsMax: 500,
   /** Send side: wait for the buffer to drain above this many buffered octets. */

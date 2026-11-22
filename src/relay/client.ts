@@ -351,6 +351,12 @@ export class RelayClient {
         if (spec.signal?.aborted) return local('aborted', attempts);
         return local(timedOut ? 'timeout' : 'network', attempts);
       }
+      // `redirect: 'error'` is the rule; a fetch that followed a redirect anyway gives an answer of another
+      // address, which is not the relay's.
+      if (response.redirected === true || !this.sameOrigin(response.url)) {
+        await response.body?.cancel().catch(() => undefined);
+        return local('malformed', attempts, response.status);
+      }
       const text = await readBody(response, spec.maxChars);
       if (spec.signal?.aborted) return local('aborted', attempts);
       if (text === undefined) {
@@ -367,6 +373,16 @@ export class RelayClient {
     } finally {
       globalThis.clearTimeout(timer);
       spec.signal?.removeEventListener('abort', onCallerAbort);
+    }
+  }
+
+  /** Whether the address of an answer is the relay's origin (an empty one, as a mock gives, is not judged). */
+  private sameOrigin(url: unknown): boolean {
+    if (typeof url !== 'string' || url === '') return true;
+    try {
+      return new URL(url).origin === this.base;
+    } catch {
+      return false;
     }
   }
 

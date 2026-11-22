@@ -184,7 +184,8 @@ there a leader": a paused leader would not answer while its lease still ran.
 `streamSource` is the one adapter under both: it asks `getUserMedia`, hands the stream to an `attach`
 function the caller gives (a video element and a canvas, an audio graph) and always stops every track: on
 `stop`, when `attach` throws, and when `stop` came before the permission prompt was answered (the stream
-that arrives late is stopped at once and the start answers `stopped`). A track that throws on `stop` does
+that arrives late is stopped at once and the start answers `stopped`). A camera frame reader or frame handler
+that throws surfaces its error but does not end the polling: the next frame is scheduled first. A track that throws on `stop` does
 not keep the others running. `mediaErrorCode` reads only the `name` of the error and maps it:
 `NotAllowedError`, `SecurityError` to `denied`; `NotFoundError`, `OverconstrainedError` to `not-found`;
 `NotReadableError`, `TrackStartError`, `AbortError` to `in-use`; anything else to `failed`. A missing

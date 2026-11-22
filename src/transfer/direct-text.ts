@@ -31,7 +31,7 @@ const FINGERPRINT = /^a=fingerprint:sha-(256|384|512) [0-9A-Fa-f]{2}(:[0-9A-Fa-f
 /**
  * Strict check of a description: printable ASCII with CRLF line ends, bounded, `v=0` first, exactly one
  * media section and that one is `application` (a data channel: nothing can ask for a camera or a microphone),
- * at least one DTLS fingerprint line of the usual shape.
+ * DTLS fingerprint lines of the usual shape that all name one value, and no bare CR or LF inside a line.
  */
 export function readSdp(sdp: unknown): TransferResult<string, 'bad-sdp'> {
   if (typeof sdp !== 'string' || sdp.length < 5 || sdp.length > L.sdpCharsMax)
@@ -40,9 +40,12 @@ export function readSdp(sdp: unknown): TransferResult<string, 'bad-sdp'> {
   const lines = sdp.slice(0, -2).split('\r\n');
   if (lines.length > L.sdpLinesMax || lines[0] !== 'v=0') return fail('bad-sdp');
   let media = 0;
-  let fingerprints = 0;
+  const fingerprints = new Set<string>();
   for (const line of lines) {
-    if (line.length > L.sdpLineCharsMax || !/^[a-z]=/.test(line)) return fail('bad-sdp');
+    // A bare CR or LF inside a "line" would hide a line (a second media section) from these checks while a
+    // parser that splits on LF still sees it.
+    if (line.length > L.sdpLineCharsMax || !/^[a-z]=[\x20-\x7e]*$/.test(line))
+      return fail('bad-sdp');
     if (line.startsWith('m=')) {
       media++;
       if (!/^m=application [0-9]+ [A-Za-z0-9/]+( [A-Za-z0-9/*-]+)*$/.test(line))
@@ -50,10 +53,12 @@ export function readSdp(sdp: unknown): TransferResult<string, 'bad-sdp'> {
     }
     if (line.startsWith('a=fingerprint:')) {
       if (!FINGERPRINT.test(line)) return fail('bad-sdp');
-      fingerprints++;
+      fingerprints.add(line.toUpperCase());
     }
   }
-  return media === 1 && fingerprints >= 1 ? pass(sdp) : fail('bad-sdp');
+  // One distinct fingerprint (the same one may be repeated at session and media level): with several,
+  // "the fingerprint the app bound" would not say which certificate the channel is checked against.
+  return media === 1 && fingerprints.size === 1 ? pass(sdp) : fail('bad-sdp');
 }
 
 /** The DTLS fingerprint lines of a description (an app may bind them to an authenticated session). */
