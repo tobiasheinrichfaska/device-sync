@@ -22,6 +22,8 @@ npm test
 npm run typecheck
 ```
 
+Security reviewers: start with [docs/review-guide.md](docs/review-guide.md) (threat model, claims mapped to code and tests, known limits, open questions).
+
 Bug reports and ideas: [GitHub Issues](https://github.com/tobiasheinrichfaska/device-sync/issues).
 
 ## License
