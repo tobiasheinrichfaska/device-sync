@@ -78,6 +78,8 @@ async function fixture() {
   return { w, a: a!, b: b!, r, enc, k };
 }
 
+const SIG = Buffer.alloc(64, 5).toString('base64url');
+
 describe('fuzzing the readers', () => {
   it('parseGrant: 3000 inputs, one spelling', async () => {
     const { k } = await fixture();
@@ -85,8 +87,12 @@ describe('fuzzing the readers', () => {
       set: 'main',
       epoch: 1,
       author: k.author,
+      from: k.author,
+      to: 'device-to',
+      kid: k.kid,
       key: k.key,
       audience: k.audience,
+      sig: SIG,
     });
     expect(parseGrant(APP, good)).toBeDefined();
     const next = prng(101);
@@ -104,8 +110,9 @@ describe('fuzzing the readers', () => {
   });
 
   it('parseRequest: 3000 inputs', () => {
-    const good = requestText(APP, { set: 'main', epoch: 7 });
-    expect(parseRequest(APP, good)).toEqual({ set: 'main', epoch: 7 });
+    const req = { set: 'main', epoch: 7, from: 'device-a', to: 'device-b', sig: SIG };
+    const good = requestText(APP, req);
+    expect(parseRequest(APP, good)).toEqual(req);
     const next = prng(102);
     for (let i = 0; i < COUNT; i += 1) {
       const input = i % 5 === 0 ? randomText(next) : mutate(good, next);

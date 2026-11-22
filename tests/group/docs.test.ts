@@ -12,7 +12,7 @@ import {
   type GroupRefusal,
 } from '../../src/group/index.ts';
 import { maxDataChars, maxGrantChars, maxStateChars } from '../../src/group/limits.ts';
-import { grantText, requestText } from '../../src/group/wire.ts';
+import { grantSigText, grantText, requestSigText, requestText } from '../../src/group/wire.ts';
 import { APP, fresh, seeded, text, world } from './helpers.ts';
 
 const DOC = readFileSync(new URL('../../docs/group.md', import.meta.url), 'utf8');
@@ -32,6 +32,7 @@ const REFUSALS: Record<GroupRefusal, true> = {
   'sender-not-trusted': true,
   'cannot-open': true,
   'bad-payload': true,
+  'bad-signature': true,
   'wrong-data-set': true,
   'author-removed': true,
   'not-in-audience': true,
@@ -70,8 +71,10 @@ const ENCRYPT: Record<EncryptRefusal, true> = {
 describe('docs/group.md', () => {
   it('names the texts and derivations exactly', () => {
     for (const t of [
-      '{"m":"<appId>-gkey:2","set":"<set>","epoch":<n>,"author":"<device>","key":"<32 bytes>","audience":["<device>",...]}',
-      '{"m":"<appId>-greq:2","set":"<set>","epoch":<n>}',
+      '{"m":"<appId>-gkey:3","set":"<set>","epoch":<n>,"author":"<device>","from":"<device>","to":"<device>","kid":"<16 bytes>","key":"<32 bytes>","audience":["<device>",...],"sig":"<64 bytes>"}',
+      '{"m":"<appId>-gkeysig:3","set":"<set>","epoch":<n>,"author":"<device>","from":"<device>","to":"<device>","kid":"<16 bytes>","audience":["<device>",...]}',
+      '{"m":"<appId>-greq:3","set":"<set>","epoch":<n>,"from":"<device>","to":"<device>","sig":"<64 bytes>"}',
+      '{"m":"<appId>-greqsig:3","set":"<set>","epoch":<n>,"from":"<device>","to":"<device>"}',
       '{"m":"<appId>-gdata:2","set":"<set>","epoch":<n>,"kid":"<16 bytes>","salt":"<16 bytes>","ct":"<ciphertext || 16-byte tag>"}',
       '{"m":"<appId>-gstate:2","set":"<set>","floor":<n>,"keys":[{"epoch":<n>,"author":"<device>","key":"<32 bytes>","audience":["<device>",...]},...]}',
       '<appId>-group:2|<n>:<set>',
@@ -84,11 +87,19 @@ describe('docs/group.md', () => {
   });
 
   it('the texts look as documented', async () => {
-    expect(grantText(APP, { set: 's', epoch: 1, author: 'a', key: 'k', audience: ['a'] })).toBe(
-      '{"m":"syncdemo-gkey:2","set":"s","epoch":1,"author":"a","key":"k","audience":["a"]}',
+    const g = { set: 's', epoch: 1, author: 'a', from: 'f', to: 't', kid: 'i', audience: ['a'] };
+    expect(grantText(APP, { ...g, key: 'k', sig: 'x' })).toBe(
+      '{"m":"syncdemo-gkey:3","set":"s","epoch":1,"author":"a","from":"f","to":"t","kid":"i","key":"k","audience":["a"],"sig":"x"}',
     );
-    expect(requestText(APP, { set: 's', epoch: 0 })).toBe(
-      '{"m":"syncdemo-greq:2","set":"s","epoch":0}',
+    expect(grantSigText(APP, g)).toBe(
+      '{"m":"syncdemo-gkeysig:3","set":"s","epoch":1,"author":"a","from":"f","to":"t","kid":"i","audience":["a"]}',
+    );
+    const q = { set: 's', epoch: 0, from: 'f', to: 't' };
+    expect(requestText(APP, { ...q, sig: 'x' })).toBe(
+      '{"m":"syncdemo-greq:3","set":"s","epoch":0,"from":"f","to":"t","sig":"x"}',
+    );
+    expect(requestSigText(APP, q)).toBe(
+      '{"m":"syncdemo-greqsig:3","set":"s","epoch":0,"from":"f","to":"t"}',
     );
     const w = await world(['A', 'B']);
     const r = await rotateGroup({
@@ -151,6 +162,10 @@ describe('docs/group.md', () => {
       'no post-compromise security beyond rotation',
       'Not security-reviewed by a human',
       'AES-GCM is not key-committing',
+      'a compromised signer can still issue grants',
+      'no forward secrecy',
+      'any trusted holder that\n  notices a removal may rotate',
+      'No key commitment in `gdata`',
     ]) {
       expect(DOC, t).toContain(t);
     }

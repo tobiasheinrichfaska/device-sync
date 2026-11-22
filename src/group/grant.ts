@@ -1,17 +1,22 @@
 // Making, distributing and accepting keys. A grant is an encrypted file (core layer) for ONE named
-// device: it authenticates the sender by the static agreement keys, so who may send a grant is the
-// trust layer's decision (`GroupTrust`). Randomness is a parameter; there is no clock.
+// device whose payload is signed by the issuing device's signing key (core `signText`), so a grant
+// is authenticated by the signature and not only by the static agreement keys of the file. Who may
+// send a grant is the trust layer's decision (`GroupTrust`). Randomness is a parameter; no clock.
 import { base64url, fromBase64url } from '../core/encoding.ts';
 import { openFile, readFileHeader, sealFile } from '../core/file.ts';
+import { importPublicKey } from '../core/keys.ts';
+import { signText, verifyText } from '../core/signature.ts';
 import { compareUtf8, isDeviceText } from '../core/secure.ts';
 import { KEY_BYTES, deriveKeyId } from './derive.ts';
 import { MAX_EPOCH, maxGrantChars, resolveGroupLimits, type GroupLimits } from './limits.ts';
 import { addKey, highestEpoch, preferredKey, type AddRefusal } from './state.ts';
 import {
+  grantSigText,
   grantText,
   isSetText,
   parseGrant,
   parseRequest,
+  requestSigText,
   requestText,
   type GroupKey,
   type GroupState,
@@ -19,9 +24,16 @@ import {
 
 const utf8 = new TextEncoder();
 
-/** The part of the trust layer's `Trust` this layer needs: who is trusted (with the agreement key) and who is removed. */
+/**
+ * The part of the trust layer's `Trust` this layer needs: who is trusted (with the agreement key
+ * and the signing key) and who is removed.
+ */
 export interface GroupTrust {
-  readonly trusted: readonly { readonly device: string; readonly dh: string }[];
+  readonly trusted: readonly {
+    readonly device: string;
+    readonly dh: string;
+    readonly sig: string;
+  }[];
   readonly removed: readonly string[];
   readonly selfRemoved?: boolean;
 }
@@ -29,6 +41,8 @@ export interface GroupTrust {
 export interface GroupOwn {
   readonly device: string;
   readonly agreement: CryptoKeyPair;
+  /** The device's signing pair: grants and rotation requests are signed with the private half. */
+  readonly signing: CryptoKeyPair;
 }
 
 /** Random bytes, as a parameter (a test passes a seeded one). Must return exactly `n` bytes. */
@@ -47,6 +61,7 @@ export type GroupRefusal =
   | 'sender-not-trusted'
   | 'cannot-open'
   | 'bad-payload'
+  | 'bad-signature'
   | 'wrong-data-set'
   | 'author-removed'
   | 'not-in-audience'
@@ -100,7 +115,9 @@ async function openPayload(
   file: Uint8Array,
   lim: GroupLimits,
   notAFile: GroupRefusal,
-): Promise<{ ok: true; from: string; text: string } | { ok: false; reason: GroupRefusal }> {
+): Promise<
+  { ok: true; from: string; sigKey: string; text: string } | { ok: false; reason: GroupRefusal }
+> {
   const limits = { maxPlaintextBytes: filePayloadBytes(lim) };
   const header = readFileHeader(appId, file, limits);
   if (!header) return { ok: false, reason: notAFile };
@@ -125,7 +142,37 @@ async function openPayload(
   } catch {
     return { ok: false, reason: 'bad-payload' };
   }
-  return { ok: true, from: header.from, text };
+  return { ok: true, from: header.from, sigKey: sender.sig, text };
+}
+
+/** True only for a signature of the sender's trusted signing key over exactly this text. */
+async function signedBy(sigKey: string, text: string, sig: string): Promise<boolean> {
+  const key = await importPublicKey(sigKey, 'sig');
+  return key !== undefined && (await verifyText(key, text, sig));
+}
+
+/** Signs a grant for `to` as this device; undefined when the signing key is unusable. */
+async function signedGrant(
+  appId: string,
+  own: GroupOwn,
+  to: string,
+  held: GroupKey & { readonly set: string },
+): Promise<string | undefined> {
+  const head = {
+    set: held.set,
+    epoch: held.epoch,
+    author: held.author,
+    from: own.device,
+    to,
+    kid: held.kid,
+    audience: held.audience,
+  };
+  try {
+    const sig = await signText(own.signing.privateKey, grantSigText(appId, head));
+    return grantText(appId, { ...head, key: held.key, sig });
+  } catch {
+    return undefined;
+  }
 }
 
 const sortedIds = (ids: Iterable<string>): string[] => [...new Set(ids)].sort(compareUtf8);
@@ -199,13 +246,8 @@ export async function rotateGroup(
   const grants: IssuedGrant[] = [];
   const skipped: string[] = [];
   for (const to of recipients) {
-    const text = grantText(appId, {
-      set: state.dataSet,
-      epoch,
-      author: own.device,
-      key: record.key,
-      audience,
-    });
+    const text = await signedGrant(appId, own, to.device, { ...record, set: state.dataSet });
+    if (text === undefined) return { ok: false, reason: 'bad-own' };
     const sealed = await sealPayload(appId, own, to, text, random, lim);
     if (sealed.ok) grants.push({ to: to.device, file: sealed.file });
     else if (sealed.reason === 'bad-random') return { ok: false, reason: 'bad-random' };
@@ -245,17 +287,16 @@ export async function issueGrants(params: IssueParams): Promise<IssueResult> {
   const keys = params.which === 'all' ? state.keys : [current];
   const grants: IssuedGrant[] = [];
   const skipped: string[] = [];
-  for (const to of recipients as { device: string; dh: string }[]) {
+  for (const to of recipients as { device: string; dh: string; sig: string }[]) {
     for (const held of keys) {
       const audience = sortedIds([...held.audience, to.device]);
       if (audience.length > lim.maxAudience) return { ok: false, reason: 'audience-full' };
-      const text = grantText(appId, {
+      const text = await signedGrant(appId, own, to.device, {
+        ...held,
         set: state.dataSet,
-        epoch: held.epoch,
-        author: held.author,
-        key: held.key,
         audience,
       });
+      if (text === undefined) return { ok: false, reason: 'bad-own' };
       const sealed = await sealPayload(appId, own, to, text, random, lim);
       if (!sealed.ok) {
         if (sealed.reason === 'bad-random') return { ok: false, reason: 'bad-random' };
@@ -293,7 +334,9 @@ export type AcceptResult =
 /**
  * Takes a grant. Checks, in this order: the file is a file of this app for this device (strict
  * read, bounded); the sender is trusted and not removed (before any key agreement); the file opens;
- * the payload is a grant for this data set; the author is not removed; sender, author and this
+ * the payload is a grant naming this sender and this device, its key id matches the key, and the
+ * sender's signature (trusted signing key) verifies, all before the state is touched; the payload
+ * is for this data set; the author is not removed; sender, author and this
  * device are in the audience; then the state's own rules (floor, epoch jump, caps). A replayed grant
  * of a held key changes nothing.
  */
@@ -306,6 +349,16 @@ export async function acceptGrant(params: AcceptParams): Promise<AcceptResult> {
   if (!opened.ok) return opened;
   const grant = parseGrant(appId, opened.text, lim);
   if (!grant) return { ok: false, reason: 'bad-payload' };
+  // The signed claims must be about this file: issuer = the sender, recipient = this device.
+  if (grant.from !== opened.from) return { ok: false, reason: 'bad-payload' };
+  if (grant.to !== own.device) return { ok: false, reason: 'wrong-recipient' };
+  // One key derivation (bounded: a 32-byte key), then one signature check, before anything else is
+  // decided and before the state is touched. The signature covers the key id, so it covers the key.
+  const kid = await deriveKeyId(appId, grant.set, grant.epoch, fromBase64url(grant.key));
+  if (kid !== grant.kid) return { ok: false, reason: 'bad-payload' };
+  if (!(await signedBy(opened.sigKey, grantSigText(appId, grant), grant.sig))) {
+    return { ok: false, reason: 'bad-signature' };
+  }
   if (grant.set !== state.dataSet) return { ok: false, reason: 'wrong-data-set' };
   if (trust.removed.includes(grant.author)) return { ok: false, reason: 'author-removed' };
   if (
@@ -318,7 +371,7 @@ export async function acceptGrant(params: AcceptParams): Promise<AcceptResult> {
   const key: GroupKey = {
     epoch: grant.epoch,
     author: grant.author,
-    kid: await deriveKeyId(appId, grant.set, grant.epoch, fromBase64url(grant.key)),
+    kid,
     key: grant.key,
     audience: grant.audience,
   };
@@ -387,8 +440,15 @@ export async function sealRotationRequest(
   const { appId, own, to, state, random } = params;
   if (!isDeviceText(own?.device) || !isSetText(state?.dataSet))
     return { ok: false, reason: 'bad-input' };
-  const text = requestText(appId, { set: state.dataSet, epoch: highestEpoch(state) });
-  return sealPayload(appId, own, to, text, random, lim);
+  if (!isDeviceText(to?.device)) return { ok: false, reason: 'bad-recipient' };
+  const head = { set: state.dataSet, epoch: highestEpoch(state), from: own.device, to: to.device };
+  let sig: string;
+  try {
+    sig = await signText(own.signing.privateKey, requestSigText(appId, head));
+  } catch {
+    return { ok: false, reason: 'bad-own' };
+  }
+  return sealPayload(appId, own, to, requestText(appId, { ...head, sig }), random, lim);
 }
 
 export type RequestResult =
@@ -401,7 +461,7 @@ export type RequestResult =
     }
   | { readonly ok: false; readonly reason: GroupRefusal };
 
-/** Opens a rotation request from a trusted device; the app decides whether to rotate (`stale` false). */
+/** Opens a rotation request signed by a trusted device; the app decides whether to rotate (`stale` false). */
 export async function openRotationRequest(
   params: Omit<AcceptParams, 'limits'> & { readonly limits?: Partial<GroupLimits> },
 ): Promise<RequestResult> {
@@ -413,6 +473,11 @@ export async function openRotationRequest(
   if (!opened.ok) return opened;
   const request = parseRequest(appId, opened.text);
   if (!request) return { ok: false, reason: 'bad-payload' };
+  if (request.from !== opened.from) return { ok: false, reason: 'bad-payload' };
+  if (request.to !== own.device) return { ok: false, reason: 'wrong-recipient' };
+  if (!(await signedBy(opened.sigKey, requestSigText(appId, request), request.sig))) {
+    return { ok: false, reason: 'bad-signature' };
+  }
   if (request.set !== state.dataSet) return { ok: false, reason: 'wrong-data-set' };
   return {
     ok: true,

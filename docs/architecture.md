@@ -218,7 +218,8 @@ the timer type and the sample limit.
 ## Group keys (group layer)
 
 `group/` gives an app one symmetric key per data set, in epochs. A key is handed to each trusted device as
-an encrypted file for that device (core layer) with the recipients taken from the trust layer's `Trust`;
+an encrypted file for that device (core layer) whose payload is signed by the issuing device's signing key (the
+reader checks it against the trust layer's signing key before it takes the key), with the recipients taken from the trust layer's `Trust`;
 after a removal `needsRotation` shows that a removed device was given the current key and `rotateGroup`
 makes the next epoch for the trusted devices only. Concurrent rotations converge by one rule (highest epoch,
 then lowest author id in UTF-8 order) and no candidate key is dropped. Messages are opaque bytes under a
