@@ -43,7 +43,7 @@ const idsChars = (count: number): number => count * (2 * MAX_DEVICE_ID + 4);
 
 /** The most characters of a key grant payload under these limits. */
 export const maxGrantChars = (lim: GroupLimits): number =>
-  idsChars(lim.maxAudience) + 4 * MAX_DEVICE_ID + 300;
+  idsChars(lim.maxAudience) + 6 * MAX_DEVICE_ID + 500;
 
 /** The most characters of a stored state under these limits. */
 export const maxStateChars = (lim: GroupLimits): number =>

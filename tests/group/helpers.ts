@@ -71,7 +71,7 @@ export async function world(names: readonly string[]): Promise<World> {
       replica = r;
       versions.push(r);
     },
-    own: (d) => ({ device: d.id, agreement: d.keys.agreement }),
+    own: (d) => ({ device: d.id, agreement: d.keys.agreement, signing: d.keys.signing }),
     versions,
     async trustOf(viewer, version = versions.length - 1) {
       const cacheKey = `${viewer.id}/${version}`;

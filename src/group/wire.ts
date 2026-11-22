@@ -6,6 +6,7 @@ import {
   hasMembers,
   isDeviceText,
   isPlain,
+  MAX_DEVICE_ID,
   parseJson,
   readBytes,
   TAG_BYTES,
@@ -23,6 +24,9 @@ import {
 
 const q = JSON.stringify;
 
+/** An ECDSA P-256 signature in the P1363 form. */
+const SIG_BYTES = 64;
+
 /** A data set name as the group layer reads it (the same predicate as a device id). */
 export const isSetText = isDeviceText;
 
@@ -39,13 +43,28 @@ export interface GroupKey {
   readonly audience: readonly string[];
 }
 
+/**
+ * Version of the signed grant and request texts (the markers `gkey`, `greq` and the two signing
+ * texts); the other texts of the layer keep the core format version.
+ */
+export const GRANT_VERSION = 3;
+
 /** What a grant carries (the payload of the file sealed for one device). */
 export interface KeyGrant {
   readonly set: string;
   readonly epoch: number;
+  /** The device that made the key (the sender's claim for a forwarded key). */
   readonly author: string;
+  /** The device that issued this grant and signed it (the sender of the file). */
+  readonly from: string;
+  /** The one device this grant is for. */
+  readonly to: string;
+  /** The key id of `key` (22 characters); the signature covers it, so it covers the key. */
+  readonly kid: string;
   readonly key: string;
   readonly audience: readonly string[];
+  /** Signature of `from` over `grantSigText` (64 bytes, low-s, base64url). */
+  readonly sig: string;
 }
 
 const isEpoch = (v: unknown, min = 1): v is number =>
@@ -65,10 +84,23 @@ const ids = (list: readonly string[]): string => `[${list.map((x) => q(x)).join(
 
 // --- grant ------------------------------------------------------------------------------------
 
-export function grantText(appId: string, g: KeyGrant): string {
-  return `{"m":${q(marker(appId, 'gkey', FORMAT_VERSION))},"set":${q(g.set)},"epoch":${g.epoch},"author":${q(
+const gm = (appId: string, kind: string): string => q(marker(appId, kind, GRANT_VERSION));
+
+/**
+ * The text a grant's issuer signs: app (in the marker), data set, epoch, key author, issuer,
+ * recipient, key id and audience. The raw key is not in it (the key id is derived from it).
+ */
+export const grantSigText = (appId: string, g: Omit<KeyGrant, 'key' | 'sig'>): string =>
+  `{"m":${gm(appId, 'gkeysig')},"set":${q(g.set)},"epoch":${g.epoch},"author":${q(
     g.author,
-  )},"key":${q(g.key)},"audience":${ids(g.audience)}}`;
+  )},"from":${q(g.from)},"to":${q(g.to)},"kid":${q(g.kid)},"audience":${ids(g.audience)}}`;
+
+export function grantText(appId: string, g: KeyGrant): string {
+  return `{"m":${gm(appId, 'gkey')},"set":${q(g.set)},"epoch":${g.epoch},"author":${q(
+    g.author,
+  )},"from":${q(g.from)},"to":${q(g.to)},"kid":${q(g.kid)},"key":${q(g.key)},"audience":${ids(
+    g.audience,
+  )},"sig":${q(g.sig)}}`;
 }
 
 export function parseGrant(
@@ -79,14 +111,30 @@ export function parseGrant(
   const lim = resolveGroupLimits(limits);
   if (typeof text !== 'string' || text.length > maxGrantChars(lim)) return undefined;
   const raw = parseJson(text);
-  if (!isPlain(raw) || !hasMembers(raw, ['m', 'set', 'epoch', 'author', 'key', 'audience'])) {
+  if (
+    !isPlain(raw) ||
+    !hasMembers(raw, ['m', 'set', 'epoch', 'author', 'from', 'to', 'kid', 'key', 'audience', 'sig'])
+  ) {
     return undefined;
   }
-  const { set, epoch, author, key, audience } = raw;
+  const { set, epoch, author, from, to, kid, key, audience, sig } = raw;
   if (!isSetText(set) || !isEpoch(epoch) || !isDeviceText(author)) return undefined;
+  if (!isDeviceText(from) || !isDeviceText(to) || from === to) return undefined;
+  if (readBytes(kid, KID_BYTES, KID_BYTES) === undefined) return undefined;
   if (readBytes(key, KEY_BYTES, KEY_BYTES) === undefined) return undefined;
+  if (readBytes(sig, SIG_BYTES, SIG_BYTES) === undefined) return undefined;
   if (!isIdList(audience, lim.maxAudience) || !audience.includes(author)) return undefined;
-  const grant: KeyGrant = { set, epoch, author, key: key as string, audience };
+  const grant: KeyGrant = {
+    set,
+    epoch,
+    author,
+    from,
+    to,
+    kid: kid as string,
+    key: key as string,
+    audience,
+    sig: sig as string,
+  };
   return grantText(appId, grant) === text ? grant : undefined;
 }
 
@@ -96,17 +144,44 @@ export interface RotationRequest {
   readonly set: string;
   /** The highest epoch the requester holds (0: none). A request below the receiver's epoch is stale. */
   readonly epoch: number;
+  /** The requester, who signed the request. */
+  readonly from: string;
+  /** The one device the request is for. */
+  readonly to: string;
+  /** Signature of `from` over `requestSigText` (64 bytes, low-s, base64url). */
+  readonly sig: string;
 }
 
+/** The text a requester signs: app (in the marker), data set, epoch held, requester and recipient. */
+export const requestSigText = (appId: string, r: Omit<RotationRequest, 'sig'>): string =>
+  `{"m":${gm(appId, 'greqsig')},"set":${q(r.set)},"epoch":${r.epoch},"from":${q(r.from)},"to":${q(
+    r.to,
+  )}}`;
+
 export const requestText = (appId: string, r: RotationRequest): string =>
-  `{"m":${q(marker(appId, 'greq', FORMAT_VERSION))},"set":${q(r.set)},"epoch":${r.epoch}}`;
+  `{"m":${gm(appId, 'greq')},"set":${q(r.set)},"epoch":${r.epoch},"from":${q(r.from)},"to":${q(
+    r.to,
+  )},"sig":${q(r.sig)}}`;
+
+/** The most characters of a rotation request payload: three ids, the signature and the frame. */
+export const MAX_REQUEST_CHARS = 3 * (2 * MAX_DEVICE_ID + 4) + 300;
 
 export function parseRequest(appId: string, text: unknown): RotationRequest | undefined {
-  if (typeof text !== 'string' || text.length > 600) return undefined;
+  if (typeof text !== 'string' || text.length > MAX_REQUEST_CHARS) return undefined;
   const raw = parseJson(text);
-  if (!isPlain(raw) || !hasMembers(raw, ['m', 'set', 'epoch'])) return undefined;
+  if (!isPlain(raw) || !hasMembers(raw, ['m', 'set', 'epoch', 'from', 'to', 'sig'])) {
+    return undefined;
+  }
   if (!isSetText(raw.set) || !isEpoch(raw.epoch, 0)) return undefined;
-  const request = { set: raw.set, epoch: raw.epoch };
+  if (!isDeviceText(raw.from) || !isDeviceText(raw.to) || raw.from === raw.to) return undefined;
+  if (readBytes(raw.sig, SIG_BYTES, SIG_BYTES) === undefined) return undefined;
+  const request = {
+    set: raw.set,
+    epoch: raw.epoch,
+    from: raw.from,
+    to: raw.to,
+    sig: raw.sig as string,
+  };
   return requestText(appId, request) === text ? request : undefined;
 }
 

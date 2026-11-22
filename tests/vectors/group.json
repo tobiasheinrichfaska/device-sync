@@ -1,5 +1,5 @@
 {
-  "description": "Group layer vectors: key ids, encrypted messages, one grant payload and one stored state. All keys here are throw-away.",
+  "description": "Group layer vectors: key ids, encrypted messages, signed grant payloads (format 3, with their signing texts and throw-away signers), one signed rotation request and one stored state. All keys here are throw-away; signatures are kept, not re-made (ECDSA is randomized).",
   "appId": "vecapp",
   "dataSet": "set-one",
   "keys": [
@@ -12,7 +12,8 @@
         "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       ],
-      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+      "grantSigText": "{\"m\":\"vecapp-gkeysig:3\",\"set\":\"set-one\",\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"DNXoIJ7j3YpauMPFvXFRyA\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}",
+      "grant": "{\"m\":\"vecapp-gkey:3\",\"set\":\"set-one\",\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"DNXoIJ7j3YpauMPFvXFRyA\",\"key\":\"AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"sig\":\"R0YNPrQsssDv3cgzhh72w_cQaEhtgW3eSaWqLuciLfpgG77VTLHLpfGShG_UqeomZwTSuaHzFuRwW6vjOvsHmw\"}"
     },
     {
       "epoch": 2,
@@ -23,7 +24,8 @@
         "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       ],
-      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"key\":\"WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+      "grantSigText": "{\"m\":\"vecapp-gkeysig:3\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"fDa-XquI1tFlEgO52r4xzg\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}",
+      "grant": "{\"m\":\"vecapp-gkey:3\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"fDa-XquI1tFlEgO52r4xzg\",\"key\":\"WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"sig\":\"EVfMpstPZnvWwFJIRwIsh9PqXWK777dd6V-E0ewjHIVVyjPEpNXmJSYA2wGl40UcA7DuFpu_S53S49mojr8wdA\"}"
     },
     {
       "epoch": 2,
@@ -34,7 +36,8 @@
         "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       ],
-      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+      "grantSigText": "{\"m\":\"vecapp-gkeysig:3\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"6Td7bc2wtgWOB6nCy6qNBA\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}",
+      "grant": "{\"m\":\"vecapp-gkey:3\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"from\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"kid\":\"6Td7bc2wtgWOB6nCy6qNBA\",\"key\":\"qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],\"sig\":\"FeF_aMWMaygO0ciGENsmms4uBz3wJlaHoANM2mScsVk-M2zJDct1soecghmt9ApEOuweAcSnYBn5hoi5TQwNmA\"}"
     }
   ],
   "messages": [
@@ -63,6 +66,28 @@
       "text": "{\"m\":\"vecapp-gdata:2\",\"set\":\"set-one\",\"epoch\":2,\"kid\":\"6Td7bc2wtgWOB6nCy6qNBA\",\"salt\":\"TVRbYmlwd36FjJOaoaivtg\",\"ct\":\"aY77nDUE8XXpI6Lb_nkTcrJWx8Nw4gCvEudlVxm-PwlMMVBKMceza4NtdRkrZB0FSekOv64FYAxpTwq5O05PI4WaVRCjiZs722XMYgevvIxAi_eDSoceTrRrRGNvq4Fy2uyxd7P46P1oYL8-3FxzC2Vs9xk\"}"
     }
   ],
+  "signers": [
+    {
+      "device": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sig": "BONpN32awSj8anxxpamucV_n4wngunyn-60th3ai0PYoXhpzg9FR_bpfEc_1FtHV43-rykrGUCNej4fpSfcV9Yk",
+      "privateKey": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgj2KSxwwtg3sW0mddRtlu5Q9rklB-CKPgphdj5LFOBp2hRANCAATjaTd9msEo_Gp8caWprnFf5-MJ4Lp8p_utLYd2otD2KF4ac4PRUf26XxHP9RbR1eN_q8pKxlAjXo-H6Un3FfWJ"
+    },
+    {
+      "device": "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sig": "BNH5ALHYLEHusP4hFJsDTmPrcftjqLBqrL1R2TkRn2UXcUXR3Qr6TFtoOP9SxiP85wLN0vVM6MwbFgwAl50htkI",
+      "privateKey": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgIGhe-8WgNPN69xNKK4lZpoGaY6xfN3I_STCq8ekrZqShRANCAATR-QCx2CxB7rD-IRSbA05j63H7Y6iwaqy9Udk5EZ9lF3FF0d0K-kxbaDj_UsYj_OcCzdL1TOjMGxYMAJedIbZC"
+    }
+  ],
+  "request": {
+    "sigText": "{\"m\":\"vecapp-greqsig:3\",\"set\":\"set-one\",\"epoch\":2,\"from\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"to\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "text": "{\"m\":\"vecapp-greq:3\",\"set\":\"set-one\",\"epoch\":2,\"from\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"to\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sig\":\"Z-4fIL3Ji7mqH5Vjq5JxgwZhxVdCz-ghagG0QIx4WWkIQSJuZ-f5LYE2Dn-eTqEJa4uIp5sYnK2LkN82CwI6kg\"}"
+  },
+  "grantSigs": [
+    "R0YNPrQsssDv3cgzhh72w_cQaEhtgW3eSaWqLuciLfpgG77VTLHLpfGShG_UqeomZwTSuaHzFuRwW6vjOvsHmw",
+    "EVfMpstPZnvWwFJIRwIsh9PqXWK777dd6V-E0ewjHIVVyjPEpNXmJSYA2wGl40UcA7DuFpu_S53S49mojr8wdA",
+    "FeF_aMWMaygO0ciGENsmms4uBz3wJlaHoANM2mScsVk-M2zJDct1soecghmt9ApEOuweAcSnYBn5hoi5TQwNmA"
+  ],
+  "requestSig": "Z-4fIL3Ji7mqH5Vjq5JxgwZhxVdCz-ghagG0QIx4WWkIQSJuZ-f5LYE2Dn-eTqEJa4uIp5sYnK2LkN82CwI6kg",
   "state": {
     "floor": 0,
     "text": "{\"m\":\"vecapp-gstate:2\",\"set\":\"set-one\",\"floor\":0,\"keys\":[{\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]},{\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]},{\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"key\":\"WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}]}"

@@ -5,7 +5,8 @@ changes. Pure layer (`src/group/`): no clock, randomness is a parameter (`random
 or network thing is the app's. It builds only on the core layer (encrypted file: `sealFile` /
 `openFile`; HKDF-SHA-256 and AES-256-GCM through WebCrypto as the other layers use them) and takes
 its idea of "who is a member" from the trust layer (`Trust`: `trusted`, `removed`, `selfRemoved`).
-The package does no new cryptography: a grant is an encrypted file, a message is AES-GCM under an
+The package does no new cryptography: a grant is an encrypted file whose payload is signed with the
+issuing device's signing key (core `signText`, ECDSA P-256, low-s), a message is AES-GCM under an
 HKDF-derived key. An independent `node:crypto` derivation (`tests/group/reference.ts`) and the vectors
 `tests/vectors/group.json` pin every byte.
 
@@ -17,9 +18,9 @@ HKDF-derived key. An independent `node:crypto` derivation (`tests/group/referenc
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `rotateGroup`                                                   | Makes the key of the next epoch (highest held + 1; epoch 1 for an empty state) and one grant per trusted device |
 | `issueGrants`                                                   | Passes held keys (`current` or `all`) to trusted devices that lack them (a new device, a missed grant)          |
-| `acceptGrant`                                                   | Takes a grant: strict read, trusted sender, file opens, payload checks, state rules                             |
+| `acceptGrant`                                                   | Takes a grant: strict read, trusted sender, file opens, signature verifies, payload checks, state rules         |
 | `needsRotation`, `isRotationLead`                               | What the current key still needs after a removal or a join; which device should act (a hint)                    |
-| `sealRotationRequest`, `openRotationRequest`                    | Rotation by request: one trusted device asks another that holds the key                                         |
+| `sealRotationRequest`, `openRotationRequest`                    | Rotation by request: one trusted device asks another that holds the key (signed)                                |
 | `encryptGroup`, `decryptGroup`                                  | Opaque bytes under the key of an epoch; epoch, key id, app, data set and context bound in                       |
 | `GroupState`, `storeGroupState`, `readGroupState`, `pruneGroup` | The state as a plain storable value with a strict reader; retention                                             |
 
@@ -32,14 +33,22 @@ HKDF-derived key. An independent `node:crypto` derivation (`tests/group/referenc
   without revealing it and binds app, data set and epoch.
 - **Distribution.** A grant is an encrypted file (core `sealFile`) for ONE named device: sender and
   recipient ids and both static agreement keys are in the key derivation and the authenticated data of
-  the file, so only the named device opens it and the sender is authenticated by the static keys. The
-  recipients and their agreement keys come from `Trust.trusted` (a removed device is not in it). The file
-  bytes go over any channel the app has (a session message, an envelope payload, the relay).
+  the file, so only the named device opens it. The payload is **signed by the issuing device's signing
+  key** (the sender of the file): the signed text binds app, data set, epoch, key author, issuer,
+  recipient, key id (not the raw key) and audience, so a grant cannot be moved to another recipient,
+  data set, app or epoch. The recipients, their agreement keys and the issuer's signing key come from
+  `Trust.trusted` (`device`, `dh`, `sig`; a removed device is not in it). `GroupOwn` carries the device's
+  `signing` pair next to its `agreement` pair. The file bytes go over any channel the app has (a session
+  message, an envelope payload, the relay).
 - **Rotation on removal.** After the trust layer shows a removal, `needsRotation(state, trust)` lists
   `removedHolders` (removed devices that were given the current key). A device that holds the key calls
   `rotateGroup` with its own `Trust`: the new epoch goes to every trusted device and to nobody else.
-  `isRotationLead` names the holder with the lowest id so that the group does not rotate once per device.
-- **Rotation by request.** `sealRotationRequest` tells one holder the highest epoch the requester has;
+  **Who rotates after a removal is the app's choice.** The recommended default: any trusted holder that
+  notices a removal may rotate, and concurrent rotations converge (see below), so no election is needed
+  and a removal is never stuck waiting for one device. `isRotationLead` (the holder with the lowest id)
+  is only a hint that reduces duplicate rotations; an app may wait for the lead a while and then rotate
+  anyway, or ignore it.
+- **Rotation by request.** `sealRotationRequest` tells one holder (and signed for that holder) the highest epoch the requester has;
   `openRotationRequest` answers `stale: true` when that is below the holder's epoch (nothing to do).
   Whether to rotate is the app's decision.
 - **A device that joined** gets keys from a holder with `issueGrants`: `current` only (it reads data from
@@ -49,6 +58,11 @@ HKDF-derived key. An independent `node:crypto` derivation (`tests/group/referenc
   and the recipient are in it). It is the author's own claim, used to find honest mistakes (a removal
   that came after a rotation: the removed device is in the audience of the current key; a trusted device
   that was missed). It cannot find a device a compromised author gave the key to in secret.
+- **No key commitment in `gdata`.** A message carries no commitment to the key. Only holders of the
+  group key can produce a message, and a holder can already write any content under the key, so a
+  holder who crafts one ciphertext that opens under two keys with different plaintexts gains no power
+  it did not have; outsiders cannot produce a message at all. An app that wants more adds a
+  commitment of its own to the plaintext.
 - **Messages.** `encryptGroup` encrypts under `preferredKey`. Each message has a fresh 16-byte salt and
   its own AES-256-GCM key (`HKDF(group key, salt, info)`) with a constant nonce, so no nonce is ever
   reused and there is no per-key message limit to count. `info` is
@@ -99,17 +113,31 @@ All texts are compact JSON, members in this order, strings as `JSON.stringify` w
 accepts exactly this spelling (it re-encodes what it read and compares), canonical unpadded base64url,
 and refuses everything else, never throws.
 
-Grant payload (the plaintext of the encrypted file for one device):
+Grant payload (the plaintext of the encrypted file for one device; format version 3, signed):
 
 ```
-{"m":"<appId>-gkey:2","set":"<set>","epoch":<n>,"author":"<device>","key":"<32 bytes>","audience":["<device>",...]}
+{"m":"<appId>-gkey:3","set":"<set>","epoch":<n>,"author":"<device>","from":"<device>","to":"<device>","kid":"<16 bytes>","key":"<32 bytes>","audience":["<device>",...],"sig":"<64 bytes>"}
 ```
 
-Rotation request payload (also inside an encrypted file):
+The signature is the issuer's (`from`) over this text, the same members without `key` and `sig`:
 
 ```
-{"m":"<appId>-greq:2","set":"<set>","epoch":<n>}
+{"m":"<appId>-gkeysig:3","set":"<set>","epoch":<n>,"author":"<device>","from":"<device>","to":"<device>","kid":"<16 bytes>","audience":["<device>",...]}
 ```
+
+Rotation request payload (also inside an encrypted file; signed):
+
+```
+{"m":"<appId>-greq:3","set":"<set>","epoch":<n>,"from":"<device>","to":"<device>","sig":"<64 bytes>"}
+{"m":"<appId>-greqsig:3","set":"<set>","epoch":<n>,"from":"<device>","to":"<device>"}
+```
+
+The second text is what `from` signs. A signature is ECDSA P-256 / SHA-256 over the UTF-8 bytes of the
+text, 64 bytes (P1363), low-s only, canonical unpadded base64url (core `signText` / `verifyText`). The
+markers `gkey`, `greq`, `gkeysig` and `greqsig` carry version 3 (a version 2 grant, which had no
+signature, is refused as `bad-payload`); `gdata` and `gstate` stay at version 2. `from` must be the
+sender named in the file header and `to` the recipient, `from` and `to` differ, `kid` is the key id of
+`key`.
 
 Encrypted message:
 
@@ -133,6 +161,9 @@ mkey = H(ikm = key, salt = <message salt>, info = info, 32 bytes)       AES-256-
 AAD  = <info>|<n>:<context>                                              nonce = 12 zero bytes
 ```
 
+The text a signature covers contains the key id and not the key: the id is derived from the key, so the
+signature covers the key and an opened grant is checked by deriving the id again.
+
 `<n>:` is the UTF-8 byte length of the field after it (as everywhere in the package). A state read
 checks the key ids by deriving them again. Strictness: the audience is strictly increasing in UTF-8
 order and holds the author; keys are strictly increasing by (epoch, author); epochs are at least the
@@ -148,7 +179,8 @@ floor; there are at most `maxPerEpoch` keys per epoch and `maxKeys` in all.
 | `maxEpochJump`      | 1000                     | a grant more than this above the highest epoch held is refused (state not empty) |
 | `maxPlaintextBytes` | 1 048 576                | the largest plaintext of `encryptGroup`                                          |
 
-A grant file is read only up to `3 * maxGrantChars` payload bytes (about 160 kB at the defaults), a
+A grant file is read only up to `3 * maxGrantChars` payload bytes (about 160 kB at the defaults; a
+request payload at most 1900 characters), a
 message up to `ceil((maxPlaintextBytes + 16) * 4 / 3)` plus a header, a state up to `maxStateChars`;
 longer texts are refused before any WebCrypto call. The context is at most 512 characters.
 
@@ -157,9 +189,13 @@ longer texts are refused before any WebCrypto call. The context is at most 512 c
 `acceptGrant`: (1) the file is a file of this app within the size bound (strict reader, no crypto);
 (2) it is addressed to this device; (3) the sender is in `trust.trusted` and not in `trust.removed`
 (no crypto yet); (4) the file opens (two ECDH, one HKDF, one decrypt: the only expensive step, once per
-file); (5) the payload is a grant for this data set; (6) the author is not removed; (7) author, sender
-and this device are in the audience; (8) the key id is derived and the state's own rules apply (floor,
-epoch jump, one key per author and epoch, caps). A replayed grant of a held key changes nothing
+file); (5) the payload is read strictly as a grant whose `from` is the sender and whose `to` is this
+device (a grant meant for another device is `wrong-recipient`, one that names another issuer is
+`bad-payload`); (6) the key id is derived from the key (one HKDF) and must equal `kid`; (7) the sender's
+signature is verified with the signing key `Trust.trusted` lists for it (one key import, one
+verification): nothing is decided or stored before this passes (`bad-signature`); (8) the payload is for
+this data set; (9) the author is not removed; (10) author, sender and this device are in the audience;
+(11) the state's own rules apply (floor, epoch jump, one key per author and epoch, caps). A replayed grant of a held key changes nothing
 (`change: 'same'`). `tests/group/bounded.test.ts` counts WebCrypto calls.
 
 ## Refusal codes
@@ -172,9 +208,10 @@ epoch jump, one key per author and epoch, caps). A replayed grant of a held key 
 | `too-many-devices`                                                                             | the audience would exceed `maxAudience`                            |
 | `no-key`                                                                                       | nothing to pass on or encrypt with                                 |
 | `not-a-grant`, `not-a-request`                                                                 | the bytes are not a file of this app within the bound              |
-| `wrong-recipient`                                                                              | the file is for another device                                     |
+| `wrong-recipient`                                                                              | the file (or the signed payload) is for another device             |
 | `sender-not-trusted`                                                                           | the sender is not trusted or is removed                            |
 | `cannot-open`                                                                                  | the file does not open (damaged, wrong key, wrong app)             |
+| `bad-signature`                                                                                | the issuer's signature does not verify (wrong, forged or no key)   |
 | `bad-payload`                                                                                  | the opened payload is not exactly a grant (or request)             |
 | `wrong-data-set`                                                                               | it is for another data set                                         |
 | `author-removed`                                                                               | the key's author is removed                                        |
@@ -209,13 +246,22 @@ and `crypto-failure`.
   different valid state whose messages simply do not open.
 - **AES-GCM is not key-committing.** A device that holds two keys could craft one ciphertext that opens
   under both with different plaintexts; the epoch and key id in the text and the key derivation do not
-  prevent that. Members are trusted not to do this; an app that needs the property adds a commitment of
-  its own to the plaintext.
+  prevent that. This is accepted on purpose (no key commitment, see Model): only holders of the group key
+  can produce a message and a holder can already write anything, so a two-key collision gives it no extra
+  power. An app that needs the property adds a commitment of its own to the plaintext.
 - **No replay protection of messages**, no order, no freshness: the app (its change log) is idempotent.
   A message names its epoch and key id in clear (and the data set); sizes and timing show.
-- **Grants carry no signature**, only the static-key authentication of the encrypted file: a device whose
-  agreement key leaked can be impersonated towards its peers, and the holder of the recipient's agreement
-  key can forge a grant to it (see the file section of `docs/wire-format.md`).
+- **What signing gives, and what it does not.** A grant and a rotation request are signed by the issuing
+  device, so a leaked agreement key alone cannot forge a grant "from" that device (the forger would need
+  its signing key), and a grant cannot be replayed to another recipient, data set, app or epoch. It gives
+  **no forward secrecy** (a leaked group key still opens everything under it; the signature says who
+  issued a grant, it does not hide the key), and **a compromised signer can still issue grants**: whoever
+  holds a trusted device's signing key can hand any key to anyone as that device until the device is
+  removed. A signature proves the issuer, not that its claims about the key are true (the author and the
+  audience are the issuer's claims). There is no freshness: a genuine grant or request can be delivered
+  again to the same recipient (a replayed grant of a held key changes nothing; a repeated request only
+  asks again). The signature is checked against the signing key the trust layer lists; a wrong entry
+  there is the trust layer's failure.
 - A trusted device can make the group spend work (rotations, epoch jumps up to `maxEpochJump`, a full
   state): availability, not secrecy; remove it through the trust layer.
 - Never run against a real browser or a real relay; tests use real WebCrypto, the real trust layer and an
