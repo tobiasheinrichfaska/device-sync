@@ -132,3 +132,20 @@ export type {
   SessionOptions,
   Step,
 } from './protocol.ts';
+export {
+  REPLICA_AT_REST,
+  REPLICA_VERSION,
+  readReplica,
+  readReplicaText,
+  replicaToStored,
+  storeReplica,
+} from './readReplica.ts';
+export type {
+  ReadReplicaFailure,
+  ReadReplicaOptions,
+  ReadReplicaResult,
+  StoredReplica,
+  StoreReplicaResult,
+} from './readReplica.ts';
+export { rehome } from './rehome.ts';
+export type { RehomeResult } from './rehome.ts';
