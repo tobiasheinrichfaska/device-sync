@@ -103,7 +103,8 @@ export function merge(replica: Replica, incoming: readonly Change[]): MergeResul
         waitingForDevice.set(missing, list);
         break;
       }
-      // Extension point: a future `ApprovalHook` is asked here; a refused change is held.
+      // Approval (a hook that holds a change back) never happens here: `mergeApproved` decides
+      // before and passes on only what is to be applied (`approval.ts`).
       const position = log.length;
       const logged = apply(collections, edit, change);
       log.push(logged);

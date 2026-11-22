@@ -127,6 +127,11 @@ export interface Replica {
   readonly collections: Readonly<Record<string, Collection>>;
   /** Conflict notices this device found while merging (each device finds the same ones). */
   readonly notices: readonly Notice[];
+  /**
+   * Changes held back by an approval hook (`mergeApproved`); absent until a hook was ever used. They
+   * are NOT in `log` or `vector`, so no stand claims them.
+   */
+  readonly approval?: ApprovalState;
 }
 
 /** A write and what its author knew; `knew` missing = unknown. */
@@ -143,9 +148,33 @@ export interface MergeResult {
   readonly held: readonly Change[];
 }
 
+/** What an approval hook says of one incoming change (see `approval.ts`). */
+export type ApprovalDecision = 'apply' | 'hold' | 'reject';
+
 /**
- * Extension point (not used yet): a future merge option may ask this hook before it applies the
- * next change in line; `false` = hold the change back until someone approves it. The default is to
- * apply everything.
+ * Asked once per incoming change that is new to a replica (not applied, not already held back).
+ * `apply`: merge takes it as usual. `hold`: not applied, remembered in `Replica.approval` until the app
+ * approves or rejects it. `reject`: dropped for good, its number still counted (see `docs/approval.md`).
+ * `true` means `apply`, `false` means `hold`; a hook that throws or answers anything else holds.
+ * `replica` is the replica as it was when the call began (never the half merged one), so the answer
+ * cannot depend on the order inside one batch. For convergence between replicas answer from the
+ * change alone.
  */
-export type ApprovalHook = (change: Change, replica: Replica) => boolean;
+export type ApprovalHook = (change: Change, replica: Replica) => boolean | ApprovalDecision;
+
+/** `hold`: waits for the app. `approved` / `rejected`: decided, waits until it can be applied. */
+export type ApprovalStatus = 'hold' | 'approved' | 'rejected';
+
+/** One change the approval layer remembers. */
+export interface ApprovalEntry {
+  readonly change: Change;
+  readonly decision: ApprovalStatus;
+}
+
+/**
+ * The changes held back for approval: a plain value (JSON), sorted by device and number, stored
+ * with the replica and read back with `readApprovalState`.
+ */
+export interface ApprovalState {
+  readonly entries: readonly ApprovalEntry[];
+}

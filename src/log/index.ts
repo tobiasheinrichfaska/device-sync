@@ -1,5 +1,9 @@
 export type {
+  ApprovalDecision,
+  ApprovalEntry,
   ApprovalHook,
+  ApprovalState,
+  ApprovalStatus,
   Change,
   ChangeKind,
   Collection,
@@ -20,6 +24,24 @@ export { MAX_CLOCK_JUMP, concurrent, isNewer, seen, unionVector } from './vector
 export { changeCheckValue, changeLink } from './check.ts';
 export { changeAt, tipConflict, tipsOf } from './chain.ts';
 export { merge } from './merge.ts';
+export {
+  APPROVAL_LIMITS,
+  approve,
+  decide,
+  decidedWaiting,
+  mergeApproved,
+  pendingApproval,
+  readApprovalState,
+  reject,
+} from './approval.ts';
+export type {
+  ApprovalOptions,
+  ApprovalReadFailure,
+  ApprovalReadResult,
+  ApprovalReport,
+  ApprovedMergeResult,
+  ChangeRef,
+} from './approval.ts';
 export {
   changeSigningText,
   insertSignatures,

@@ -27,7 +27,8 @@ in) and testable without a UI. `transfer` is pure apart from its adapter over an
 - **Hooks**: a special case in signature checking, records that are never erased, the right to write
   (the receiver decides, `mayWrite`), whether a final deletion is allowed at all (`allowFinalDelete`, off
   by default), a per-author quota against a flooding member (`quota`; it ends the reading of a
-  session, it does not refuse it), holding a change back until someone approves it. The key source
+  session, it does not refuse it), holding a change back until someone approves it (`ApprovalHook`,
+  `mergeApproved`, `approve`, `reject`; `docs/approval.md`). The key source
   (`KeySource`) gives the key of a device who can be CHECKED (not who may write), optionally the
   collections that are never finally deleted (`neverErase`) and whether it verifies what it reads
   itself (`selfVerifying`).
@@ -37,6 +38,14 @@ in) and testable without a UI. `transfer` is pure apart from its adapter over an
 - **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.
+
+## Hold back until approved (log layer)
+
+An app hook decides per incoming change: apply, hold or reject (`docs/approval.md`). A held change
+lives in `Replica.approval`, outside the log and the version vector, so the gapless chain, the causal
+holds, the stand and `done` of a session are exactly what they were; a rejected write becomes an erased
+change that keeps its number; a final deletion can only be held or approved. The state is plain JSON
+with a strict reader and two bounds. Without a hook nothing changes.
 
 ## Session and encrypted file (core layer)
 

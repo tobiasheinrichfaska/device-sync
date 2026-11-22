@@ -1,6 +1,7 @@
 import { base64url, canonical, sha256Text } from '../core/index.ts';
 import { resolveLimits } from './limits.ts';
 import { tipConflict, tipsOf } from './chain.ts';
+import { mergeApproved, type ApprovalOptions, type ApprovalReport } from './approval.ts';
 import { merge } from './merge.ts';
 import { parseSyncMessage, type ParseOptions, type SyncMessage } from './parse.ts';
 import {
@@ -11,7 +12,7 @@ import {
   type JudgeOptions,
   type Reason,
 } from './signing.ts';
-import type { Change, DeviceId, Replica, VersionVector } from './types.ts';
+import type { Change, DeviceId, MergeResult, Replica, VersionVector } from './types.ts';
 import { seen } from './vector.ts';
 
 const utf8 = new TextEncoder();
@@ -114,6 +115,13 @@ export interface SessionOptions extends ParseOptions {
    * them). Plain, unjudged test sessions pass `false`.
    */
   readonly signedOnly?: boolean;
+  /**
+   * Hold back until approved (`docs/approval.md`): the changes this session takes in pass through
+   * the hook; held ones are kept in `Replica.approval`, not in the log, so the stand and `done` of
+   * this device never claim them. Without it a session behaves as before. Pass the same options for
+   * every message of a session.
+   */
+  readonly approval?: ApprovalOptions;
 }
 
 export interface Session {
@@ -169,6 +177,13 @@ export interface Session {
   readonly subjectDevice?: DeviceId;
   /** Why the session ended early at a limit of this device (see `truncated`), where the reason is not in `judging`. */
   readonly limit?: 'stand-devices';
+  /**
+   * With `SessionOptions.approval`: what the hook did with this session's changes so far (held back
+   * for approval, applied as erased changes after a rejection, not kept for want of room). Held
+   * changes are why the two fingerprints can differ although nothing was cut: compare again after
+   * they are decided.
+   */
+  readonly approvals?: ApprovalReport;
   /** Hash of the `stand` this session received (an identical repeat is ignored, a different one refused). */
   readonly standHash?: string;
   /** Hash of the `done` this session received (likewise). */
@@ -205,6 +220,7 @@ function prune(
   requireSig: boolean,
   deleteKeys: ReadonlySet<string>,
   vector: VersionVector,
+  unsendable: (change: Change) => boolean = () => false,
 ): Change[] {
   let sent = list;
   for (;;) {
@@ -222,6 +238,7 @@ function prune(
       // would hold it and nothing would be taken.
       if (
         (requireSig && !change.sig) ||
+        unsendable(change) ||
         (change.kind === 'redacted' && deleteKeys.has(key) && !present.has(key)) ||
         Object.entries(change.knew ?? {}).some(([device, n]) => n > reachOf(device))
       ) {
@@ -234,6 +251,13 @@ function prune(
     if (out.length === sent.length) return out;
     sent = out;
   }
+}
+
+/** An erased change whose record is not (finally) deleted here: only an approval rejection makes one. */
+function rejectedHere(replica: Replica): (change: Change) => boolean {
+  return (change) =>
+    change.kind === 'redacted' &&
+    replica.collections[change.collection]?.[change.id]?.deleted !== true;
 }
 
 /**
@@ -261,7 +285,10 @@ function answerFor(
   const limits = resolveLimits(options.limits);
   const missing = replica.log.filter((c) => c.seq > seen(vector, c.device));
   const deleteKeys = new Set(missing.filter((c) => c.kind === 'delete').map(recordKey));
-  const sendable = prune(missing, options.signedOnly !== false, deleteKeys, vector);
+  // A replica that uses an approval hook may hold an erased change of a record that is not deleted
+  // (a rejected one): peers would refuse it, so it and what follows it from its author stay here.
+  const unsendable = replica.approval ? rejectedHere(replica) : undefined;
+  const sendable = prune(missing, options.signedOnly !== false, deleteKeys, vector, unsendable);
   const withheld = missing.length - sendable.length;
   let size = 0;
   let count = 0;
@@ -271,7 +298,7 @@ function answerFor(
     count += 1;
   }
   if (count === sendable.length) return { changes: sendable, withheld, more: false };
-  let cut = prune(sendable.slice(0, count), false, deleteKeys, vector);
+  let cut = prune(sendable.slice(0, count), false, deleteKeys, vector, unsendable);
   if (cut.length === 0) {
     // The budget cut away every applicable change: take the shortest prefix that holds one (what an
     // applicable prefix holds only grows with its length, so a binary search finds it; `sendable`
@@ -280,10 +307,11 @@ function answerFor(
     let high = sendable.length;
     while (low < high) {
       const middle = (low + high) >> 1;
-      if (prune(sendable.slice(0, middle), false, deleteKeys, vector).length > 0) high = middle;
+      if (prune(sendable.slice(0, middle), false, deleteKeys, vector, unsendable).length > 0)
+        high = middle;
       else low = middle + 1;
     }
-    cut = prune(sendable.slice(0, low), false, deleteKeys, vector);
+    cut = prune(sendable.slice(0, low), false, deleteKeys, vector, unsendable);
   }
   return { changes: cut, withheld, more: cut.length < sendable.length };
 }
@@ -340,9 +368,21 @@ export function onSyncMessage(
     };
   }
   if (message.t === 'changes') {
-    const merged = merge(replica, message.changes);
+    const merged: MergeResult & { readonly approval?: ApprovalReport } = options.approval
+      ? mergeApproved(replica, message.changes, options.approval)
+      : merge(replica, message.changes);
+    const before = session.approvals;
     const next: Session = {
       ...session,
+      ...(merged.approval
+        ? {
+            approvals: {
+              held: (before?.held ?? 0) + merged.approval.held,
+              rejected: (before?.rejected ?? 0) + merged.approval.rejected,
+              dropped: (before?.dropped ?? 0) + merged.approval.dropped,
+            },
+          }
+        : {}),
       taken: session.taken + merged.applied,
       waiting: merged.held.length,
       allReceived: message.last,
