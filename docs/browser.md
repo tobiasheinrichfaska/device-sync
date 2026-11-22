@@ -15,17 +15,20 @@ sentence.
 
 ## What is built
 
-| Part                                               | What it does                                                                                                                       |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `openKeyStore(idb, { name })`                      | opens one IndexedDB database with one object store and returns a `KeyStore`                                                        |
-| `KeyStore`                                         | `getKeys`/`putKeys` (the device's key pairs), `getText`/`putText` (small named texts), `remove`, `wipe`, `close`, `isOpen`         |
-| `readRecord(value, kind)`                          | the strict reader of one stored value (exported so tests and migration code can use it)                                            |
-| `relayCredentialStore(store)`                      | the `CredentialStore` the `RelayClient` expects, on top of one text record                                                         |
-| `createSingleListener({ name, locks \| channel })` | one tab per app and device is "the listener": Web Locks when there are any, a heartbeat election over a channel when there are not |
-| `leaderStart`, `leaderTick`, `leaderMessage`, ...  | the pure state machine behind the channel election (no clock, timer or channel in it)                                              |
-| `streamSource`, `cameraSource`, `microphoneSource` | adapters over `MediaDevices` that map errors to codes and always stop every track                                                  |
-| `CameraSource`, `AudioSource`, `AudioSink`         | the narrow interfaces the later `transfer` layer will use (no QR or tone coding here)                                              |
-| `readCameraFrame`, `readSamples`                   | strict readers of a camera frame (RGBA, whole dimensions) and of audio samples (finite, in [-1, 1])                                |
+| Part                                               | What it does                                                                                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `openKeyStore(idb, { name })`                      | opens one IndexedDB database with one object store and returns a `KeyStore`                                                         |
+| `KeyStore`                                         | `getKeys`/`putKeys` (the device's key pairs), `getText`/`putText` (small named texts), `remove`, `wipe`, `close`, `isOpen`          |
+| `readRecord(value, kind)`                          | the strict reader of one stored value (exported so tests and migration code can use it)                                             |
+| `KeyStore` (group state)                           | `getWrapKey`/`putWrapKey` (a non-extractable AES-256-GCM key), `getSealed`/`putSealed` (a sealed text up to `sealedMax` characters) |
+| `generateWrapKey()`, `loadOrCreateWrapKey(store)`  | the wrap key of the group state: `extractable: false`, usages encrypt and decrypt, kept in the store                                |
+| `putGroupState`, `getGroupState`                   | seal and store, load and open the group state of one data set (one record per data set)                                             |
+| `relayCredentialStore(store)`                      | the `CredentialStore` the `RelayClient` expects, on top of one text record                                                          |
+| `createSingleListener({ name, locks \| channel })` | one tab per app and device is "the listener": Web Locks when there are any, a heartbeat election over a channel when there are not  |
+| `leaderStart`, `leaderTick`, `leaderMessage`, ...  | the pure state machine behind the channel election (no clock, timer or channel in it)                                               |
+| `streamSource`, `cameraSource`, `microphoneSource` | adapters over `MediaDevices` that map errors to codes and always stop every track                                                   |
+| `CameraSource`, `AudioSource`, `AudioSink`         | the narrow interfaces the later `transfer` layer will use (no QR or tone coding here)                                               |
+| `readCameraFrame`, `readSamples`                   | strict readers of a camera frame (RGBA, whole dimensions) and of audio samples (finite, in [-1, 1])                                 |
 
 ## Key storage
 
@@ -37,6 +40,8 @@ record. Every value is a plain object with a version member:
 - `{ v: 1, kind: 'text', text }`: a text of at most 8 192 characters (device id, relay credential, ...).
 - `{ v: 1, kind: 'keys', signing: { privateKey, publicKey }, agreement: { privateKey, publicKey } }`: the
   `DeviceKeys` of the core layer, stored as structured-cloned `CryptoKey` objects.
+- `{ v: 1, kind: 'sealed', text }`: a sealed text of at most 16 777 216 characters (the group state at rest).
+- `{ v: 1, kind: 'wrapkey', key }`: one non-extractable AES-256-GCM `CryptoKey`.
 
 Names are 1 to 100 characters of `A-Z a-z 0-9 . _ : -`, not starting with a punctuation character. The names
 this package's callers use are in `RECORD_NAMES`: `device-keys`, `device-id`, `relay-credential`.
@@ -74,8 +79,8 @@ key.
   keys for as long as the page runs: it can sign as the device and derive shared secrets. It cannot export
   them. Non-extractable is a barrier of the API, not a vault: the key material is in the browser's profile on
   disk, and malware with access to the profile or the logged-in session is out of scope.
-- **No encryption at rest by this layer.** The relay credential and the device id are texts in the same
-  database. The credential is an access token of a few hundred characters; whoever reads the origin's
+- **No encryption at rest by this layer, except for the group state** (see "The group state at rest"). The
+  relay credential and the device id are texts in the same database. The credential is an access token of a few hundred characters; whoever reads the origin's
   storage reads it. Keep it short-lived (the relay renews it) and rely on the device's own disk encryption.
 - **Other origins cannot read it**, subdomains included (IndexedDB is per origin).
 - **The browser may delete it.** Storage is "best effort" unless the app asks for persistence
@@ -84,6 +89,33 @@ key.
   (script-writable storage in Safari). The app must treat a store that is gone as normal.
 - **Private mode.** Some browsers refuse IndexedDB there or throw a `SecurityError`; the answer is
   `unavailable`. The app should say so instead of running without a store.
+
+### The group state at rest
+
+The group layer's state holds raw 32-byte keys (`docs/group.md`, "The state at rest"). The app does not store
+its text as plain text: `loadOrCreateWrapKey(store)` returns a non-extractable AES-256-GCM `CryptoKey`
+(`generateKey` with `extractable: false`, usages `encrypt` and `decrypt`; record `group-wrap-key`, kind
+`wrapkey`, structured-cloned like the device keys) and `putGroupState`/`getGroupState` seal and open the state
+with it. The sealed text is a record of kind `sealed` (`{ v: 1, kind: 'sealed', text }`, up to `sealedMax`
+characters), named `group-state:<hash of app and data set>`, one per data set. The reader of the key store is
+as strict as for the other kinds: an extractable key, another algorithm, an extra member, a record of another
+kind are `corrupt` or `wrong-kind`; `putWrapKey` refuses an extractable key (`extractable-private-key`) or
+another key (`bad-value`). Records of the new kinds are unknown to an older version of this layer (it calls
+them `corrupt`).
+
+- **Protects:** a copy of the origin's IndexedDB or of its storage files without the browser profile's access
+  to the key (a backup, a storage dump, a forensic copy of the database alone): the state is ciphertext and the
+  wrap key cannot be exported (`exportKey` fails; in a real browser the key is held by the profile's key
+  handling, not as bytes in the page).
+- **Does not protect:** a script of the origin (it decrypts exactly as the app does), malware with the
+  profile or the session, **a rollback** (an older sealed state is valid and opens: whoever can write the
+  database can put it back), and metadata (size, time).
+- **A vanished wrap key.** `loadOrCreateWrapKey` answers `created: true` when it made a new key. If a sealed
+  record of the app already exists, the old key is gone and that record never opens (`cannot-open`): treat it
+  as a lost key store for the group keys (delete the record, ask the other devices for grants again). This
+  layer never decides that for the app.
+- Tested on the in-memory IndexedDB (`tests/browser/groupstore.test.ts`) and on the real one, across a page
+  reload, with the wrap key refused for export (`tests/real-browser/browser.real.ts`).
 
 ### A vanished key store means "device lost"
 
@@ -207,21 +239,22 @@ the browser. A page that is not in a secure context gets `undefined` for `mediaD
   per specification, none observed.
 - The fake IndexedDB is small (one tick per event, last commit wins between overlapping transactions); it
   checks the cases in `tests/browser/fake-idb.test.ts`, not every rule of the specification.
-- No encryption at rest, no key backup, no persistent-storage request, no migration of other schemas
+- No encryption at rest (except the group state), no key backup, no persistent-storage request, no migration of other schemas
   (a database of another version is refused, not converted).
 - The credential is stored as text; the layer does not look inside.
 
 ## Limits
 
-| Name                 | Value     |
-| -------------------- | --------- |
-| `nameMax`            | 100       |
-| `textMax`            | 8_192     |
-| `schemaVersion`      | 1         |
-| `recordVersion`      | 1         |
-| `frameSideMax`       | 4_096     |
-| `samplesMax`         | 1_048_576 |
-| `frameIntervalMinMs` | 10        |
+| Name                 | Value      |
+| -------------------- | ---------- |
+| `nameMax`            | 100        |
+| `textMax`            | 8_192      |
+| `schemaVersion`      | 1          |
+| `recordVersion`      | 1          |
+| `sealedMax`          | 16_777_216 |
+| `frameSideMax`       | 4_096      |
+| `samplesMax`         | 1_048_576  |
+| `frameIntervalMinMs` | 10         |
 
 ## Leader defaults
 
@@ -246,4 +279,6 @@ source and every code the source writes is listed.
 | `createSingleListener`              | `bad-config` `no-mechanism` `locks-failed`                                                                                                  |
 | `onError` of the listener           | `locks-failed` `channel-failed` `callback-threw`                                                                                            |
 | `leaderConfigProblem`               | `bad-config`                                                                                                                                |
+| `generateWrapKey`                   | `unsupported` `failed`                                                                                                                      |
+| `putGroupState`, `getGroupState`    | every `KeyStore` code, and the sealing codes of `docs/group.md` (not `quota`-specific)                                                      |
 | `start` of a camera or audio source | `denied` `not-found` `in-use` `unsupported` `failed` `stopped` `bad-config`                                                                 |

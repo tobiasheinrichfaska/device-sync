@@ -277,6 +277,91 @@ describe('key store on the real IndexedDB', () => {
   });
 });
 
+describe('group state at rest on the real IndexedDB', () => {
+  it('survives a page reload, opens only with the stored wrap key, and the key cannot be exported', async () => {
+    const page = await openPage(context, site);
+    const first = await page.evaluate(async () => {
+      const { openKeyStore, loadOrCreateWrapKey, putGroupState, readGroupState, storeGroupState } =
+        window.ds;
+      const s = await openKeyStore(indexedDB, { name: 'ks-group-rest' });
+      if (!s.ok) return { step: 'open', reason: s.reason };
+      const wrap = await loadOrCreateWrapKey(s.value);
+      if (!wrap.ok) return { step: 'wrap', reason: wrap.reason };
+      const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      const text = storeGroupState('syncdemo', {
+        dataSet: 'main',
+        floor: 0,
+        keys: [{ epoch: 1, author: 'dev-a', key, audience: ['dev-a'], kid: '' }],
+      });
+      const state = await readGroupState('syncdemo', text);
+      if (!state) return { step: 'state' };
+      const put = await putGroupState(s.value, wrap.value.key, state, {
+        appId: 'syncdemo',
+        random: (n: number) => crypto.getRandomValues(new Uint8Array(n)),
+      });
+      let exported = 'refused';
+      for (const fmt of ['raw', 'jwk'] as const) {
+        try {
+          await crypto.subtle.exportKey(fmt, wrap.value.key);
+          exported = 'allowed';
+        } catch {
+          // expected
+        }
+      }
+      const rec = await s.value.getSealed(window.ds.groupStateRecordName('syncdemo', 'main'));
+      return {
+        step: 'done',
+        put,
+        created: wrap.value.created,
+        extractable: wrap.value.key.extractable,
+        exported,
+        keyVisibleInRecord: rec.ok && typeof rec.value === 'string' && rec.value.includes(key),
+        key,
+      };
+    });
+    expect(first).toMatchObject({
+      step: 'done',
+      put: { ok: true },
+      created: true,
+      extractable: false,
+      exported: 'refused',
+      keyVisibleInRecord: false,
+    });
+
+    await page.reload();
+    await page.waitForFunction(() => typeof window.ds === 'object');
+    const second = await page.evaluate(async (groupKey: string) => {
+      const { openKeyStore, loadOrCreateWrapKey, getGroupState, generateWrapKey } = window.ds;
+      const s = await openKeyStore(indexedDB, { name: 'ks-group-rest' });
+      if (!s.ok) return { step: 'open', reason: s.reason };
+      const wrap = await loadOrCreateWrapKey(s.value);
+      if (!wrap.ok) return { step: 'wrap', reason: wrap.reason };
+      const got = await getGroupState(s.value, wrap.value.key, 'main', { appId: 'syncdemo' });
+      // another wrap key (a profile without the stored one) does not open the stored text
+      const other = await generateWrapKey();
+      const wrong = other.ok
+        ? await getGroupState(s.value, other.value, 'main', { appId: 'syncdemo' })
+        : other;
+      return {
+        step: 'done',
+        created: wrap.value.created,
+        same: got.ok && got.value?.keys[0]?.key === groupKey,
+        wrong,
+      };
+    }, first.key as string);
+    expect(second).toEqual({
+      step: 'done',
+      created: false,
+      same: true,
+      wrong: { ok: false, reason: 'cannot-open' },
+    });
+    await page.close();
+  });
+});
+
 describe('one listener per tab on the real Web Locks', () => {
   type Probe = { events: string[]; l: { release(): void; isLeader(): boolean } };
   const install = async (

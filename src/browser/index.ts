@@ -15,9 +15,21 @@ export {
   readRecord,
   type KeyStore,
   type KeyStoreOptions,
+  type RecordKind,
   type StoreReason,
   type StoreResult,
 } from './keystore.ts';
+export {
+  generateWrapKey,
+  getGroupState,
+  groupStateRecordName,
+  loadOrCreateWrapKey,
+  putGroupState,
+  type LoadStateOptions,
+  type StoreStateOptions,
+  type SubtleHolderLike,
+  type WrapKeyReason,
+} from './groupstore.ts';
 export { KeyStoreError, relayCredentialStore } from './credential.ts';
 export {
   LEADER_DEFAULTS,
