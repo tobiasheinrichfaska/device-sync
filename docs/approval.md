@@ -49,8 +49,14 @@ sent again while it is held is not asked again.
   been applied. Rights can change before the approval: the app decides again at approval time;
 - bounded: at most `maxPending` changes and `maxChars` characters; what does not fit is not kept
   (`ApprovalReport.dropped`) and comes again;
-- while any change is held the fingerprints of two devices differ although nothing was cut
-  (`outcome().equal` is false, `complete` stays true). Compare again after the decisions.
+- while any change is held the fingerprints of two devices differ although nothing was cut:
+  `outcome().equal` is false, `complete` stays true (it only says nothing was cut) and
+  `outcome().held` counts the changes this replica holds back (waiting for a decision, or decided and
+  waiting to be applicable). An app that sees `complete && !equal && held > 0` decides and compares
+  again after the decisions; it does not repeat sessions on `!equal` alone (a second session brings
+  the same held changes again and changes nothing). `held` is 0 without a hook. It counts only this
+  side: the wire carries no hold of the peer, so `complete && !equal && held === 0` can still mean
+  that the PEER holds changes of ours (look at its `held`, on its side).
 
 **approve**: marks the held change decided and runs merge over everything decided. Merge applies it in
 a correct order (the number before it, the changes it names in `knew`, the clock); one that cannot

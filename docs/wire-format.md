@@ -490,6 +490,9 @@ A large honest history must never make a join impossible, so size limits do not 
   false when either side cut (`truncated`, `peerMore`, `sentMore`); run the next session. Sessions
   repeat until a session is complete. In a partial session an erased change without a deletion in
   sight is not a forgery but a cut: it waits (not refused).
+- **Held for approval** (`docs/approval.md`) is not a cut: `outcome(...).complete` stays true and the
+  fingerprints still differ; `outcome(...).held` counts this replica's held changes, so an app can tell
+  "decide first" (`held > 0`) from "run the next session" (`complete` false).
 - **Hostile input** is unchanged: forged, equivocating, unreadable, unexpected and not-allowed
   changes refuse the session at the piece that carries them. A hostile change AFTER the cut is not
   seen (reading had ended).

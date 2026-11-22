@@ -10,6 +10,7 @@ import {
   fingerprint,
   insertSignatures,
   merge,
+  outcome,
   pendingApproval,
   readApprovalState,
   receiveJudged,
@@ -113,6 +114,10 @@ describe('full stack with approval', () => {
     expect(first.sy.approvals).toEqual({ held: 6, rejected: 0, dropped: 0 });
     expect(first.x.vector).toEqual({ a: 6, b: 1 });
     expect(fingerprint(first.x)).not.toBe(fingerprint(first.y));
+    // the outcome says why: nothing was cut (complete), the fingerprints differ, b holds six changes.
+    // A device that sees `held > 0` decides and compares again instead of repeating the session.
+    expect(outcome(first.sy, first.y)).toMatchObject({ complete: true, equal: false, held: 6 });
+    expect(outcome(first.sx, first.x)).toMatchObject({ complete: true, equal: false, held: 0 });
     // the stand b sends next time still says a: nothing
     expect(startSession(first.y).send[0]).toMatchObject({ t: 'stand', vector: { b: 1 } });
 
@@ -120,6 +125,8 @@ describe('full stack with approval', () => {
     const again = await exchange(first.x, first.y, options);
     expect(pendingApproval(again.y)).toHaveLength(6);
     expect(again.sy.approvals?.held).toBe(0);
+    // still held, still unequal, still complete: a second session did not change that
+    expect(outcome(again.sy, again.y)).toMatchObject({ complete: true, equal: false, held: 6 });
 
     // the state survives storage, and approving needs nothing from a
     const stored = readApprovalState(json(again.y.approval));
@@ -132,6 +139,7 @@ describe('full stack with approval', () => {
     expect(final.sy.refusal).toBeUndefined();
     expect(fingerprint(final.x)).toBe(fingerprint(final.y));
     expect(pendingApproval(final.y)).toEqual([]);
+    expect(outcome(final.sy, final.y)).toMatchObject({ complete: true, equal: true, held: 0 });
   });
 
   it('a rejected change blocks nobody: later numbers apply, no peer refuses, the rejecter does not forward it', async () => {

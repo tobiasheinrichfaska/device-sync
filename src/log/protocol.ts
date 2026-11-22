@@ -556,6 +556,15 @@ export interface Outcome {
    * fingerprints are expected to differ and another session continues.
    */
   readonly complete: boolean;
+  /**
+   * Changes this replica holds back for approval right now (`Replica.approval`, `docs/approval.md`):
+   * waiting for a decision, or decided and waiting to be applicable. They are outside the log and the
+   * fingerprint, so while `held > 0` unequal fingerprints are expected although `complete` is true:
+   * decide them (`approve`, `reject`, `decide`), then compare again; do not run session after session
+   * on `!equal` alone. 0 without an approval hook. Only THIS side's holds are counted: the wire does
+   * not carry the peer's, so a peer that holds changes can still make `!equal && complete && held === 0`.
+   */
+  readonly held: number;
   readonly sent: number;
   readonly taken: number;
   readonly fingerprint: string;
@@ -569,6 +578,7 @@ export function outcome(session: Session, replica: Replica): Outcome | undefined
   return {
     equal: own === session.peer.fingerprint,
     complete: !session.truncated && !session.peerMore && !session.sentMore,
+    held: replica.approval?.entries.length ?? 0,
     sent: session.sent,
     taken: session.taken,
     fingerprint: own,
