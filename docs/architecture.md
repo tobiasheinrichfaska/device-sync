@@ -1,4 +1,4 @@
-# Architecture (plan, not yet built)
+# Architecture (built layer by layer; core, log, trust and post exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -48,8 +48,26 @@ a later leak of the static keys). The **file** is one message for one named reci
 recipient's static key, sender's static key). Both bind the app id and both identities into the key and
 the authenticated data, read every text strictly (one spelling) and answer refusals as codes. The payload is
 opaque bytes; the app decides what is in it. What they do NOT protect (metadata, truncation, replay of a
-file, forging by the holder of the recipient's key, no ratchet) is listed in `docs/wire-format.md`. The
-envelope (one message for several readers, sender hidden from the carrier) is a later piece.
+file, forging by the holder of the recipient's key, no ratchet) is listed in `docs/wire-format.md`.
+
+## Envelope and mailbox (core and post layers)
+
+`core/envelope.ts` seals one message for SEVERAL reader devices so that third devices can carry it:
+the content is encrypted once, its key is wrapped per reader with a fresh ephemeral key and the reader's
+agreement key (ECDH, HKDF, AES-GCM, zero nonce), the fan of slots is padded with random slots to a multiple
+of 8 (at most `maxFans`) and shuffled, and inside the AUTHOR signs app, sender, channel, day and content.
+A carrier sees an id, a day and a size; not the sender, the readers or their number (up to the padding).
+Opening needs the device's agreement key and a lookup of the author's signing key (`authorKey`, the trust
+layer's job); a device that is not a reader pays one ECDH, one derivation and at most one trial per slot.
+The content is opaque bytes: the app puts its stand and changes in it.
+
+`post/` is what a device does with envelopes it carries: a mailbox value (add, quota per delivering device
+and day, expiry after `postDays`, trimming to `maxEnvelopes` / `maxChars`, receipts), and the per-day
+exchange of two meeting devices (a check value per day, the ids of the days that differ, then what the
+other lacks) as strict message texts and an immutable, bounded session. All pure: "today", the delivering
+device and the decision who may acknowledge (`mayAcknowledge`) are parameters. The earlier implementations'
+receipt idea is kept generic: the mailbox drops only what a receipt of an allowed device covers. What the
+envelope and the mailbox protect and do not: `docs/wire-format.md`, "Wire format: envelope and mailbox".
 
 ## Trust derivation (trust layer)
 
@@ -70,8 +88,8 @@ is every device of the potential trust without a key conflict, trusted or not, s
 is held back for ever by changes it cannot check. The package does not revoke a removed device's ability to write; the
 app stops exchanging with it at the transport, treats data authored by removed devices as untrusted
 at presentation (`deviceStatus`), restricts writes with `mayWrite` / `allowFinalDelete` (hooks that
-look at state can differ between devices), and the encryption layer (session and file exist; group keys
-and the envelope do not) must rotate the group keys on removal. A removed device stays removed: coming back means a new device id.
+look at state can differ between devices), and the encryption layer (session, file and envelope exist; group keys
+do not) must rotate the group keys on removal. A removed device stays removed: coming back means a new device id.
 
 `derive.ts` holds one engine (a generator that asks for signature checks): `computeTrust` and
 `deviceKeySource` run it with real checks, `addDevice` and `removeDevice` run it on this device's own

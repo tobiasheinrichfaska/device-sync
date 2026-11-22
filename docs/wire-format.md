@@ -995,6 +995,302 @@ Not protected:
 - **Payload meaning**: bytes only. Whether they make sense (and what to do with a stale file) is for the app.
   What was said for the session about endpoint compromise, trust and P-256 holds here too.
 
+# Wire format: envelope and mailbox
+
+An **envelope** is one message for several reader devices that third devices can carry without learning
+who wrote it, who may read it or how many readers there are (up to a multiple of 8). The **mailbox** is
+what a device keeps of envelopes it carries for others, and the **per-day exchange** is how two devices
+that meet bring their mailboxes level. Implemented in `src/core/envelope.ts` and `src/post/`; the
+vectors in `tests/vectors/envelope.json` and `tests/vectors/mailbox.json` are checked by
+`tests/vectors-envelope.test.ts` against the code AND against an independent derivation written from this
+text with `node:crypto` (`tests/core/envelope-reference.ts`). The common rules of the end-to-end layer
+(primitives, length-prefixed fields, device ids, points, one spelling, refusals are codes) hold here too.
+
+## Envelope
+
+### Wire text
+
+UTF-8 (in fact ASCII) bytes of one compact JSON text, members in this order:
+
+```
+{"m":"<appId>-envelope:2","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}
+```
+
+- `day` is a real calendar day, `YYYY-MM-DD`, year 1970 to 9999 (`2026-02-30` is not one). A carrier drops
+  the envelope after a while (see the mailbox).
+- `eph` is a fresh ephemeral ECDH P-256 point per envelope (87 characters, canonical, first byte 4).
+- `iv` is the 12-byte nonce of the content (16 characters); `ct` is at least 16 bytes.
+- `k` is the **fan**: 8, 16, 24 ... up to `maxFans` slots, each exactly 48 bytes (64 characters, the
+  wrapped 32-byte content key plus the 16-byte tag). Some slots are real, the rest are random bytes of the
+  same size; their order is shuffled, so no slot can be told from another.
+- The whole text is at most `maxEnvelopeBytes` bytes (11 000), checked before parsing.
+- A reader parses the text, rebuilds the text from the parsed values and accepts only an exact match
+  (a second spelling, an unknown member, a `__proto__` member, a duplicate key, a non-canonical
+  base64url text, a fan that is not a multiple of 8, a wrong id: all refused; the answer is `undefined`,
+  never an exception).
+
+### Id
+
+`id` = base64url (22 characters) of the first 16 bytes of SHA-256 over this text, every member written as
+`<n>:<text>` with `<n>` the UTF-8 byte length (the count of slots is a plain decimal):
+
+```
+<appId>-envid:2|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...
+```
+
+A changed copy cannot pass under the id of the real envelope, and the id is the same on every device, so a
+carrier can compare boxes by ids. The same parts under another app id have another id.
+
+### Making an envelope
+
+The author passes its device id, its signing private key, the readers' agreement points (as the trust
+layer verified them), a `channel` (a device-id-like text: 1 to 200 units, no control or format character,
+no `|`), the `day`, the content (opaque bytes), a source of randomness and the limits. A reader listed
+twice is one reader. Steps:
+
+1. Sign (below), make a fresh ephemeral ECDH key `E` (WebCrypto), draw 32 random bytes as the **content
+   key** `CK`, 12 as `iv`, 48 for every padding slot and 4 per slot for the shuffle (all from the
+   `random(n)` the caller passes; sealing itself uses no clock and draws nothing else except `E`).
+2. Header text: `<appId>-envelope:2|header|<n>:<day>|<n>:<eph>` (the same text for every reader).
+3. For every reader with agreement point `dh`: `secret = ECDH(E, dh)` (the 32-byte X coordinate), key
+   encryption key `KEK = HKDF-SHA-256(ikm = secret, salt = SHA-256(header text), info =
+"<appId>-envelope:2|slot|<n>:<dh>")` (32 bytes), slot = AES-256-GCM(`KEK`, **zero nonce**, no additional
+   data, `CK`) = 48 bytes. A zero nonce is safe because `KEK` is unique per envelope and reader (fresh `E`,
+   `dh` in the info).
+4. Pad with random 48-byte slots to the next multiple of 8, then shuffle the list (Fisher-Yates from the
+   last element down, `j = u32(bytes[4i .. 4i+4]) mod (i + 1)`, big endian; the modulo bias is below
+   2^-26 per step).
+5. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
+6. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
+
+Making is refused with a code, changing nothing: `bad-author` (device id or signing key unusable),
+`bad-channel`, `bad-day`, `bad-input` (the content is not bytes), `bad-random` (the source is not a
+function, throws or gives the wrong number of bytes), `no-recipients`, `too-many-recipients` (more than
+`maxFans` readers listed), `bad-recipient` (not a point, or not on the curve), `too-large` (the content or
+the finished text is over the limit), `crypto-failure`. An invalid app id is an exception (programming error).
+
+### Inside and signature
+
+The inside (the plaintext of `ct`) is one compact JSON text, members in this order:
+
+```
+{"from":"<device id>","channel":"<channel>","sig":"<64 bytes>","body":"<base64url of the content>"}
+```
+
+The **author's signature** (ECDSA P-256 / SHA-256, low-s, 64 bytes, as the log layer signs) is over the
+UTF-8 text
+
+```
+<appId>-envsig:2|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>
+```
+
+so it binds the app, the author's device id, the channel, the day and the content. The recipients are not
+in it (they must stay hidden): any reader that holds the content can seal it again for others, with the
+author's signature still valid; a reader who passes the content on can also show a third party that the
+author wrote it (no deniability, see below). The "stand" and "changes" of a log exchange are part of the
+content (`body`), so the signature covers them; the package does not look inside the body.
+
+### Opening (refusals, in this order)
+
+The caller passes the app id, its agreement pair, the envelope (text or an envelope read here) and a
+function `authorKey(from)` that gives the author's signing public point as the trust layer knows it (or
+nothing). Refused with a code: `bad-own` (no usable agreement pair), `not-an-envelope` (not exactly the
+spelling above, another marker or app id, too long, wrong id), `bad-point` (the ephemeral point is not on
+the curve), `not-for-me` (no slot opens with this device's key: the answer for every stranger, and also for
+an envelope whose day or ephemeral key was changed), `damaged` (a slot opened but the content does not
+decrypt or its inside is not exactly the spelling above), `unknown-author` (`authorKey` gave nothing, a
+point that is not on the curve, or threw), `bad-signature`.
+
+Cost of an envelope that is **not for this device**: one point check, one ECDH, one HKDF derivation and at
+most `maxFans` small AES-GCM trials (one per slot); nothing else (the test counts the calls). Cost of one that
+is: the same, one decryption of the content, one `authorKey` call (made once, with the author found
+**inside**) and one signature check. The first slot that opens decides: a sealer that wraps the key for
+one reader in several slots cannot make the reader decrypt more than once.
+
+### Limits
+
+| Limit              | Default      | Meaning                                                                |
+| ------------------ | ------------ | ---------------------------------------------------------------------- |
+| `maxEnvelopeBytes` | 11 000 bytes | The whole wire text (one message of the exchange: it is cut at 12 000) |
+| `maxFans`          | 64 slots     | Readers plus padding; rounded down to a multiple of 8, 8 to 4 096      |
+
+A partial override (`resolveEnvelopeLimits`) takes own, safe, non-negative integers only; anything else keeps
+the default. The largest content that can fit is a little under 8 250 bytes (3/4 of the size limit, less
+the fixed members and the fan).
+
+### What the envelope hides, and what it does not
+
+Hidden from a carrier (a device that holds the text and no reader key):
+
+- **the sender**: the author's id and the channel are inside the encrypted content;
+- **the readers**: a slot is wrapped under a key only the reader and the sealer can compute; a carrier
+  that knows every reader's public key still cannot tell which slot is for whom;
+- **the number of readers**, up to the padding: 1 to 8 readers all give 8 slots (and the same size for the
+  same content), 9 to 16 give 16, and so on; the order of the slots is shuffled, so a reader's place
+  carries nothing (a chi-square test over 240 seeded envelopes);
+- **the content and its signature**.
+
+Not hidden:
+
+- **Size** (content length plus fixed overhead plus the number of slot groups), **the day**, **the id**,
+  **when and from whom a carrier got it**, and which carriers hold it. Two envelopes of the same author
+  have unrelated ephemeral keys, nonces and slots, so nothing repeats that links them.
+- **A reader's identity to the other readers** is not hidden from them: the author's id is inside the
+  content; a reader sees who wrote it, and nothing in the envelope tells it who else reads.
+- **The author is not deniable**: the signature over the content verifies with the author's public key, so
+  any reader can prove to a third party that the author wrote it. (Within the session and the file layer
+  nothing is signed; here something must be, because a carrier is in between.)
+- **Replay**: nothing remembers an envelope; a reader that is offered the same envelope twice opens it twice
+  (the app must be idempotent: the change log is; the mailbox dedupes by id).
+- **No forward secrecy against a reader's static key**: whoever gets it opens every envelope ever made for
+  it. The ephemeral secret of the envelope is thrown away right after sealing (it never leaves the
+  WebCrypto key, which JavaScript cannot wipe).
+- **A reader can re-seal** what it read for others (the signature stays valid) and a hostile reader that
+  holds the content key can build envelopes with any inside it likes: the author signature is what stops it
+  from putting words in the author's mouth.
+- **A carrier can drop, delay or multiply an envelope** (a changed copy has another id and is a different
+  envelope for carriers; it never opens). Removing slots or adding random ones costs readers nothing but the
+  envelope.
+- **Trust** is not decided here: `authorKey` and the readers' points must come from the trust layer. An
+  endpoint compromise, a compromised random generator and quantum attacks on P-256 are out of scope.
+
+## Mailbox
+
+### State
+
+```
+Mailbox = { items: [ { id, day, text } ], delivered?: { day, per: { <device id>: <count> } },
+            acknowledged?: [ { id, day } ] }
+```
+
+`items` are the carried envelopes in the order they came (the wire text is kept as it is); `delivered`
+counts the new envelopes each other device brought on one day; `acknowledged` remembers ids a receipt
+covered. Every operation is a pure function that returns a new value (or the very same object when
+nothing changed, so a watcher is not woken for nothing); "today" and the sending device are parameters.
+The state is plain JSON: `readMailbox` reads stored state back strictly (every envelope is read again, no
+unknown member, nothing over a limit, tables keyed by device ids are rebuilt without a prototype, so a
+device called `__proto__` or `toString` is a key like any other).
+
+### Which envelopes are carried
+
+An envelope with day `d` is carried today (`t`) when `-2 <= t - d < postDays` (so with the default 30
+days the day 29 days back is carried, 30 days back is not; up to two days ahead is carried, three are
+not: clocks differ). `addEnvelopes(mailbox, incoming, today, { from })` works in this order:
+
+1. refuse with a code, changing nothing: `bad-day` (today is not a day), `bad-supplier` (`from` is not a
+   device id), `bad-input` (`incoming` is not a list), `too-many` (more than `maxEnvelopes` in one call);
+2. drop what is too old or acknowledged from the mailbox (and acknowledgements older than `postDays`);
+3. for each incoming envelope: skip it if its id is already there or acknowledged, or its day is not
+   carried; count it as `invalid` if it is not an envelope of this app with exactly that id and day (an
+   object this package made or read is trusted; any other object is read again strictly);
+4. **quota**: with `from` (another device brought them: a session or a file) at most `maxPerSupplier` (400)
+   new envelopes per day from that device are taken, the newest days first (within a day in the order
+   given), the rest is refused and counted (`rejected`); a further device beyond `maxSuppliers` different
+   ones that day delivers nothing; envelopes sealed here have no `from` and no quota;
+5. **size**: if the mailbox is over `maxEnvelopes` or `maxChars` the newest days stay, walking from the
+   newest and stopping at the first envelope that does not fit; the order of what stays is kept. Every
+   step above is linear: the days are bucketed (at most about 32 different days are carried).
+
+`pruneMailbox` does steps 2 and 5. `keepNewest(mailbox, n)` keeps the newest n; `storeMailbox(write,
+mailbox)` writes with a callback and, when a write fails, halves the mailbox (newest stay) up to 8 times
+and tells how many envelopes did not fit (it never throws; the mailbox is nobody's data, only a carrier).
+
+### Receipts
+
+A receipt is `{ by, ids }`: the device `by` took these envelopes in. The package does not decide who may
+acknowledge: `applyReceipts(mailbox, receipts, mayAcknowledge, today)` asks the app's predicate once per
+`by` (a predicate that throws, or does not answer `true`, means no) and drops only what an allowed receipt
+covers. Receipts that are malformed or not allowed are ignored and counted (`refused`). The covered ids
+are remembered in `acknowledged` (with the envelope's day, or today for an id not held) so that a neighbour
+that still holds the envelope cannot hand it back; the memory is capped by `maxAcknowledged` (newest days
+stay) and forgotten with its day after `postDays`. At most `maxReceipts` receipts of at most
+`maxReceiptIds` ids each per call (`too-many` otherwise). A receipt cannot do more than its signer may: the
+app checks the signature and the right before it passes the receipt on. A compromised device that is
+allowed to acknowledge can make carriers drop envelopes early (a denial of service, nothing more).
+`readReceipts` reads receipts from untrusted data strictly (fresh copies).
+
+### Check values
+
+All values are base64url of the first 16 bytes of SHA-256 (22 characters, 128 bits), ids sorted by their
+characters and each written `<n>:<id>`:
+
+```
+day check:      <appId>-postday:2|<n>:<day>|<number of ids>|<n>:<id>|<n>:<id>|...
+mailbox check:  <appId>-postbox:2|<number of ids>|<n>:<id>|<n>:<id>|...
+announced stand (not empty mailbox): 32 hex digits of the first 16 bytes of SHA-256 over
+                <appId>-poststand:2|<n>:<fingerprint>|<n>:<mailbox check>
+```
+
+`announcedStand(fingerprint, mailbox)` is the fingerprint itself when the mailbox is empty. A device that
+got an envelope announces another stand, so the devices that met it meet it again.
+
+### Messages of the exchange
+
+Three messages, each one compact JSON text, members in this order, read strictly (one spelling, bounded
+before parsing: at most `max(pieceChars, maxEnvelopeBytes) + 512` characters):
+
+```
+{"m":"<appId>-post:2","t":"days","days":{"<day>":"<day check>", ...}}                 days in calendar order, at most 64
+{"m":"<appId>-post:2","t":"ids","ids":["<id>", ...],"last":<true|false>}              at most 400 ids
+{"m":"<appId>-post:2","t":"envelopes","envelopes":[{<envelope>}, ...],"last":<bool>}  each envelope as in "Wire text"
+```
+
+A piece is cut at `pieceChars` (12 000) characters and `maxPerMessage` (400) items; one envelope may exceed
+the piece alone. There is always at least one `ids` and one `envelopes` message (an empty one carries
+`last`).
+
+### The session
+
+1. Both devices send `days` (a check value per day of what they carry; `postStart` first drops what is too
+   old).
+2. On the other's `days` a device finds the days whose check values differ and sends the ids it holds of
+   those days in `ids` messages (the last one with `last: true`).
+3. On the other's last `ids` it sends the envelopes it holds of those days that the other did not list, in
+   `envelopes` messages (the last with `last: true`), and on the other's `envelopes` it takes them in
+   (`addEnvelopes` with `from` = the other device).
+4. Both are done when each sent what the other lacked and got the other's last `envelopes` message.
+
+The state machine is enforced: `days` once, `ids` only after `days` and up to the last, `envelopes` only
+after the other's last `ids` and until its last; anything else is the refusal `unexpected`, an unreadable
+message `bad-message`, more than `maxTheirIds` (4 000) announced ids `too-many-ids`, more than
+`maxEnvelopes` offered envelopes in one session `too-many-envelopes`, and `bad-day` / `bad-supplier` as
+above. A refusal changes nothing (the session and the mailbox are values); the caller ends the session. The
+ids of the other side are kept in a chain and turned into a set once, so a neighbour that sends thousands of
+one-id messages costs a linear amount, and the memory per session is bounded.
+
+### Limits
+
+| Limit             | Default           | Meaning                                                       |
+| ----------------- | ----------------- | ------------------------------------------------------------- |
+| `postDays`        | 30 days           | An envelope is carried for fewer days than this after its day |
+| `maxEnvelopes`    | 2 000 envelopes   | Most in one mailbox, and most in one call or one session      |
+| `maxChars`        | 8 000 000 chars   | Most wire characters in one mailbox                           |
+| `maxPerSupplier`  | 400 envelopes     | Most new envelopes per day from one other device              |
+| `maxSuppliers`    | 256 devices       | Most different other devices counted per day                  |
+| `maxAcknowledged` | 4 000 ids         | Most remembered acknowledged ids                              |
+| `maxReceipts`     | 256 receipts      | Most receipts one call takes                                  |
+| `maxReceiptIds`   | 400 ids           | Most ids in one receipt                                       |
+| `maxPerMessage`   | 400 items         | Most ids or envelopes in one message                          |
+| `maxDays`         | 64 days           | Most days in a `days` message                                 |
+| `pieceChars`      | 12 000 characters | A message is cut at this; one envelope may exceed it alone    |
+| `maxTheirIds`     | 4 000 ids         | Most ids the other side may announce in one session           |
+
+plus `maxEnvelopeBytes` and `maxFans` from the envelope. `resolvePostLimits` takes a partial override of
+own, safe, non-negative integers only; anything else keeps the default. Where several apps share one
+mailbox store, the app id keeps them apart: ids, check values and every message carry it.
+
+### What the mailbox protects, and what it does not
+
+- Memory and work per message, per session and per mailbox are bounded by the limits above; a hostile
+  neighbour (a trusted device that misbehaves) cannot fill the mailbox with junk in one session (the quota
+  per device and day) and cannot make a device spend more than linear work in the size of what it holds.
+- A carrier sees ids, days and sizes, and which neighbour brought what; it learns nothing from the
+  contents (see "What the envelope hides").
+- Not protected: a neighbour can still use up its own quota with junk (400 a day) and so push older real
+  envelopes out when the mailbox is full; a device that is allowed to acknowledge can drop envelopes early;
+  a carrier can keep an envelope and hand it on late (the day in it still ends it after `postDays`);
+  nothing proves to the sender that an envelope arrived (receipts are the app's).
+
 # Cross-language notes
 
 What another implementation (another language, another JSON library) must do to produce and accept
@@ -1069,3 +1365,13 @@ collection, id, kind, check[, prev]}`, a `redacted` change counting as `set`; `p
   both hellos, the transcript text, the four secrets, the salt, the two keys and four messages; `file.json`
   holds one file with the header text, the salt, the secret input and the key. A port derives the keys
   from the JWKs and must reproduce every hex value and decrypt every message.
+- Envelope and mailbox (`envelope.json`, `mailbox.json`): every text is the exact JSON spelling documented
+  in "Wire format: envelope and mailbox"; every variable field of a hashed, derived or signed text is
+  length-prefixed by its UTF-8 byte length; the fan slots are AES-GCM with a zero nonce under a key from
+  HKDF (salt = SHA-256 of the header text, info names the reader's point); the author signature is over
+  the `envsig` text. `envelope.json` holds the author's PUBLIC signing point and two readers' throw-away
+  private keys (JWK), the id's hashed text, the header text, the salt, each reader's key encryption key,
+  slot index and content key, the inside text and the signature, and variants that must be refused with
+  the code that is written down; `mailbox.json` holds three envelopes without crypto content, the check
+  value texts with their hashes, and one message of each kind. A port derives the keys from the JWKs and
+  must reproduce every hex value and open the envelope.
