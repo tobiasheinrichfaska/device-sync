@@ -7,11 +7,11 @@
 //
 //  - A leader's lease runs from the send time s of its latest beat to s + timeoutMs; it is a leader only
 //    while the clock is inside it. A follower takes over only when it has heard nothing for timeoutMs, and
-//    the claim then waits delayMs for a better claim. Because timeoutMs > heartbeatMs + delayMs, a follower
+//    the claim then waits delayMs for a better claim. Because timeoutMs > heartbeatMs + delayMs + lateMs, a follower
 //    that has not heard the latest beat has already heard one less than heartbeatMs older and so waits
 //    until that beat's lease is over: leases never overlap.
 //  - Claims are ordered by (time, id); a candidate that hears a better claim, or a beat, becomes a follower.
-//  - A new peer sends `hello` and may claim after 2 * delayMs of silence; a leader answers a hello with a beat.
+//  - A new peer waits a full timeoutMs of silence before it claims; a leader answers a claim with a beat.
 import { isName } from './limits.ts';
 
 export interface LeaderConfig {
@@ -23,10 +23,12 @@ export interface LeaderConfig {
   readonly timeoutMs: number;
   /** Largest delay of a message between two peers (ms). */
   readonly delayMs: number;
+  /** Largest lateness of a timer (ms): a timer set for t runs between t and t + lateMs. */
+  readonly lateMs: number;
 }
 
 export type LeaderMessage =
-  | { readonly t: 'hello' | 'beat' | 'bye'; readonly id: string }
+  | { readonly t: 'beat' | 'bye'; readonly id: string }
   | { readonly t: 'claim'; readonly id: string; readonly at: number };
 
 export interface LeaderState {
@@ -35,6 +37,9 @@ export interface LeaderState {
   readonly lastSeen: number;
   /** Follower: the leader named by the latest beat. */
   readonly leaderId: string | undefined;
+  /** Follower: the time a claim was last heard (somebody is already taking over), if ever. A beat does not
+   * cancel it: an older beat can arrive after a newer claim. */
+  readonly claimHeard: number | undefined;
   /** Candidate: the time of the claim. */
   readonly claimAt: number;
   /** Leader: the send time of the latest beat (start of the lease). */
@@ -50,14 +55,23 @@ export interface LeaderStep {
   readonly lost: boolean;
 }
 
-export const LEADER_DEFAULTS = { heartbeatMs: 2_000, timeoutMs: 6_000, delayMs: 2_000 } as const;
+export const LEADER_DEFAULTS = {
+  heartbeatMs: 1_000,
+  timeoutMs: 4_000,
+  delayMs: 1_000,
+  lateMs: 1_000,
+} as const;
 
 /** `bad-config` unless the id is a name and the times are positive integers with the needed margins. */
 export function leaderConfigProblem(c: LeaderConfig): 'bad-config' | undefined {
   const posInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0;
   if (!c || !isName(c.id)) return 'bad-config';
   if (!posInt(c.heartbeatMs) || !posInt(c.timeoutMs) || !posInt(c.delayMs)) return 'bad-config';
-  if (c.timeoutMs <= c.heartbeatMs + c.delayMs || c.timeoutMs <= 2 * c.delayMs) return 'bad-config';
+  if (!Number.isInteger(c.lateMs) || c.lateMs < 0) return 'bad-config';
+  if (c.timeoutMs <= c.heartbeatMs + c.delayMs + c.lateMs) return 'bad-config';
+  // The first beat of a new leader (sent up to delayMs + lateMs after its claim) must reach everybody before
+  // a follower that only heard the claim may claim itself.
+  if (c.timeoutMs <= 2 * c.delayMs + c.lateMs) return 'bad-config';
   return undefined;
 }
 
@@ -74,8 +88,7 @@ export function readLeaderMessage(data: unknown): LeaderMessage | undefined {
       return undefined;
     return { t, id: o['id'], at };
   }
-  if ((t === 'hello' || t === 'beat' || t === 'bye') && keys === 'id,t,v')
-    return { t, id: o['id'] };
+  if ((t === 'beat' || t === 'bye') && keys === 'id,t,v') return { t, id: o['id'] };
   return undefined;
 }
 
@@ -90,18 +103,23 @@ const step = (
   lost = false,
 ): LeaderStep => ({ state, send, wake, gained, lost });
 
-const follower = (now: number, leaderId: string | undefined): LeaderState => ({
+const follower = (now: number, leaderId: string | undefined, claimHeard?: number): LeaderState => ({
   role: 'follower',
   lastSeen: now,
   leaderId,
+  claimHeard,
   claimAt: 0,
   leaseFrom: 0,
 });
 
-/** A new peer: says hello and may claim after 2 * delayMs of silence. */
+/**
+ * A new peer starts as a follower that has just heard something: it claims only after a full timeout of
+ * silence. It cannot ask "is there a leader" and take a quick answer for granted: a leader that is paused
+ * would not answer, and its lease would still be running.
+ */
 export function leaderStart(cfg: LeaderConfig, now: number): LeaderStep {
-  const s = follower(now - cfg.timeoutMs + 2 * cfg.delayMs, undefined);
-  return step(s, [{ t: 'hello', id: cfg.id }], s.lastSeen + cfg.timeoutMs);
+  const s = follower(now, undefined);
+  return step(s, [], s.lastSeen + cfg.timeoutMs);
 }
 
 /** Whether this peer holds a lease at `now`. The one question an app asks before it acts as the leader. */
@@ -122,6 +140,11 @@ export function leaderTick(cfg: LeaderConfig, s: LeaderState, now: number): Lead
       }
       return step(s, [], s.lastSeen + cfg.timeoutMs);
     case 'candidate':
+      if (now > s.claimAt + cfg.delayMs + cfg.lateMs) {
+        // The timer ran far later than it may (a paused tab): what was heard meanwhile is not known to
+        // have been taken into account, so the claim is dropped.
+        return step(follower(now, undefined), [], now + cfg.timeoutMs);
+      }
       if (now >= s.claimAt + cfg.delayMs) {
         const l: LeaderState = { ...s, role: 'leader', leaseFrom: now };
         return { ...beat(cfg, l, now), gained: true };
@@ -148,22 +171,34 @@ export function leaderMessage(
   now: number,
 ): LeaderStep {
   if (m.id === cfg.id || s.role === 'released') return step(s, [], wakeOf(cfg, s));
+  if (s.role === 'leader' && now >= s.leaseFrom + cfg.timeoutMs) {
+    // A leader whose lease ran out (a paused tab) is a follower before it reads anything: a beat of the
+    // new leader must not renew a lease that is already over.
+    const d = leaderTick(cfg, s, now);
+    const r = leaderMessage(cfg, d.state, m, now);
+    return { ...r, send: [...d.send, ...r.send], lost: true };
+  }
   switch (s.role) {
     case 'follower':
-      if (m.t === 'beat') return step(follower(now, m.id), [], now + cfg.timeoutMs);
-      if (m.t === 'claim') return step(follower(now, s.leaderId), [], now + cfg.timeoutMs);
-      if (m.t === 'bye' && m.id === s.leaderId) {
-        // The leader let go: its lease is void, so claim at once.
+      if (m.t === 'beat') return step(follower(now, m.id, s.claimHeard), [], now + cfg.timeoutMs);
+      if (m.t === 'claim') return step(follower(now, s.leaderId, now), [], now + cfg.timeoutMs);
+      if (
+        m.t === 'bye' &&
+        m.id === s.leaderId &&
+        (s.claimHeard === undefined || now - s.claimHeard >= cfg.timeoutMs)
+      ) {
+        // The leader let go: its lease is void, so claim at once (unless somebody else already did:
+        // that claim decides, and a claim of mine would ignore it).
         return leaderTick(cfg, { ...s, lastSeen: now - cfg.timeoutMs, leaderId: undefined }, now);
       }
       return step(s, [], wakeOf(cfg, s));
     case 'candidate':
       if (m.t === 'beat') return step(follower(now, m.id), [], now + cfg.timeoutMs);
       if (m.t === 'claim' && better(m, { at: s.claimAt, id: cfg.id }))
-        return step(follower(now, undefined), [], now + cfg.timeoutMs);
+        return step(follower(now, undefined, now), [], now + cfg.timeoutMs);
       return step(s, [], wakeOf(cfg, s));
     case 'leader':
-      if (m.t === 'hello' || m.t === 'claim') return beat(cfg, s, now);
+      if (m.t === 'claim') return beat(cfg, s, now);
       if (m.t === 'beat') {
         // Two leaders: outside the assumptions. The lower id stays.
         if (m.id < cfg.id) return step(follower(now, m.id), [], now + cfg.timeoutMs, false, true);

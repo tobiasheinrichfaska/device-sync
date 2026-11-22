@@ -53,6 +53,7 @@ export interface SingleListenerOptions {
   readonly heartbeatMs?: number;
   readonly timeoutMs?: number;
   readonly delayMs?: number;
+  readonly lateMs?: number;
   /** This tab is the listener now. */
   readonly onGain: () => void;
   /** This tab is not the listener any more (called once after each `onGain`, also on `release`). */
@@ -143,6 +144,7 @@ function withChannel(
     heartbeatMs: o.heartbeatMs ?? LEADER_DEFAULTS.heartbeatMs,
     timeoutMs: o.timeoutMs ?? LEADER_DEFAULTS.timeoutMs,
     delayMs: o.delayMs ?? LEADER_DEFAULTS.delayMs,
+    lateMs: o.lateMs ?? LEADER_DEFAULTS.lateMs,
   };
   if (typeof o.clock !== 'function' || !o.timers || leaderConfigProblem(cfg))
     return fail('bad-config');
