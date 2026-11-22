@@ -144,13 +144,16 @@ truncated to seconds. A token is valid while `bis > now`.
 `z1.<app>.<device>.<bis>.<mac>`
 
 - `<bis>`: end time in seconds since 1970, 1 to 12 decimal digits, no leading zero.
-- `<mac>`: base64url (43 characters, canonical) of `HMAC-SHA-256(secret, UTF-8("zugang:" + head))`, where
+- `<mac>`: base64url (43 characters; clients and tests treat the canonical spelling as the only one, see open
+  point 12) of `HMAC-SHA-256(secret, UTF-8("zugang:" + head))`, where
   `head` is the text `z1.<app>.<device>.<bis>` and `secret` is the relay's secret (at least 32 random
   bytes). The relay keeps no device list for accesses: possession of a valid access is the credential.
 - Lifetime: 90 days (7 776 000 s) from the moment of issue, at enrolment and at every renewal.
 - A client renews when fewer than 30 days remain. An old access stays valid until its own end. After the
   end the device enrols again (it gets a new device id).
-- Compared in constant time. A new secret makes every access and invitation invalid at once.
+- Compared in constant time. A new secret makes every access and invitation invalid at once, unless the relay is
+  configured with a previous secret for a transition period: the existing relay then keeps accepting tokens
+  signed with the previous secret until their own end (open point 12).
 
 ### Invitation
 
@@ -339,7 +342,7 @@ no status of their own (they are inside a 200) and are marked `—`. The table i
 | `zugang-abgelaufen`           | `access-expired`           | 401    | reenrol | `bis` is in the past                                                                             |
 | `app-unbekannt`               | `app-unknown`              | 403    | fatal   | the app of the access or proof is not served                                                     |
 | `gesperrt`                    | `device-blocked`           | 403    | fatal   | the device id is on the app's blocked list                                                       |
-| `zu-viele-anfragen`           | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute                                                     |
+| `zu-viele-anfragen`           | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute (a server MAY add body-load limits, see "Overload") |
 | `beschaeftigt`                | `relay-busy`               | 503    | retry   | too many bodies on the way at the moment (server load)                                           |
 | `nachweis-ungueltig`          | `proof-malformed`          | 400    | fatal   | the proof or its payload is not shaped as written                                                |
 | `nachweis-nicht-eingerichtet` | `proof-not-set-up`         | 403    | fatal   | the app has no proof key                                                                         |
@@ -451,7 +454,11 @@ A refused event does not count (except the per-minute request counter, which cou
 that far).
 
 **Overload:** a relay MAY answer `beschaeftigt` (503) while it holds too many request bodies; the class is
-retry. Which bodies and how many is a server matter; the reference server never answers it.
+retry. Which bodies and how many is a server matter; the reference server never answers it. The existing
+relay also limits, per device and per app, the number and the bytes of request bodies that are on the way at
+the same time and the large-body bytes per minute (two bodies in flight per device, 32 MiB of large bodies per
+device and minute are its defaults) and answers `zu-viele-anfragen` (429) when a device exceeds them; these
+are load protections, not part of the protocol, and a client treats them like any other 429.
 
 ## Presence, waiting, ordering, the `mehr` flag
 
@@ -631,3 +638,19 @@ then a client and a conformance run MUST NOT rely on any particular answer.
     version in a header the version-1 client never sends).
 11. **A restart-proof device list** and the retention of known devices (the existing server drops a device
     nobody heard of for 90 days): not part of the protocol.
+12. **Spelling of the access MAC, and a previous secret.** The text above calls the MAC canonical base64url, but
+    the existing relay checks the pattern and compares the DECODED bytes, so spellings that differ only in the
+    unused bits of the last character are accepted too (probable, read from the source, not run). Whether a
+    port must refuse them is not decided; no conformance case depends on it. The existing relay can also be
+    given a previous secret (an environment variable) so that tokens signed with it stay valid until their end:
+    a new secret then does not invalidate everything at once.
+13. **A later revision (admission).** The existing relay implements more than version 1: extra members of
+    `einschreiben` and `erneuern` (device key, role, mandant, passwords of founders), extra endpoints
+    (device list, blocking, evaluation), the invitation family `e2`, certificates `c1` and `g1` and a set of
+    error kinds that belong to them (role not allowed, device unknown, blocked list full, developer password
+    and possession proofs). None of this is part of version 1; a relay MUST answer a version-1 request exactly
+    as written here whatever it adds, and the conformance cases test only version-1 behaviour.
+14. **Corrected finding (for the record).** A comparison of this specification with the server found that the
+    app named in a token is read before the signature is checked, so a foreign origin is refused with `herkunft`
+    before the token is judged; a first automated reading that claimed the opposite was wrong (the pattern
+    builds correctly).
