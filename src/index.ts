@@ -12,3 +12,4 @@ export * from './browser/index.ts';
 export * from './group/index.ts';
 export * from './lock/index.ts';
 export * from './sync/index.ts';
+export * from './channel/index.ts';
