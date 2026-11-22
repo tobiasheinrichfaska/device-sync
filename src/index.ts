@@ -7,3 +7,4 @@ export * from './trust/index.ts';
 export * from './post/index.ts';
 export * from './relay/index.ts';
 export * from './push/index.ts';
+export * from './browser/index.ts';
