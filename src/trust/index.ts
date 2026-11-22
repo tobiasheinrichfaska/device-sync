@@ -4,6 +4,7 @@ export type {
   Introduction,
   KnownDevice,
   ProtocolOptions,
+  RelayInvitationContext,
   Trust,
   TrustedDevice,
   TrustOptions,
@@ -11,7 +12,14 @@ export type {
   Validators,
   Voucher,
 } from './types.ts';
-export { DEVICE_ID, DEVICE_NAME, ROLE, newDeviceId, resolveValidators } from './ids.ts';
+export {
+  DEVICE_ID,
+  DEVICE_NAME,
+  MAX_RELAY_INVITATION,
+  ROLE,
+  newDeviceId,
+  resolveValidators,
+} from './ids.ts';
 export { vouchAll, vouchAnyRole, vouchRoles } from './voucher.ts';
 export { parseIntroduction } from './wire.ts';
 export {

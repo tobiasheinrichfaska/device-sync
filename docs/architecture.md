@@ -5,19 +5,19 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 
 ## Layers
 
-| Layer        | Content                                                                                                                      |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out                     |
-| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange                      |
-| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                                             |
-| **post**     | Mailbox for sealed envelopes carried by third devices                                                                        |
-| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring                                   |
-| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)                      |
-| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt                       |
-| **lock**     | Device lock: days without contact (peer or server time), operator orders, wipe instruction as a hook result (`docs/lock.md`) |
-| **sync**     | Driver: pull rounds of the log exchange over the relay, sealed per trusted device; removal enforced at the transport         |
-| **push**     | Web Push encryption and VAPID, ring request, service worker template                                                         |
-| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                                    |
+| Layer        | Content                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out                                    |
+| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange                                     |
+| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                                                            |
+| **post**     | Mailbox for sealed envelopes carried by third devices                                                                                       |
+| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring; admission (certificates, device list, blocking) |
+| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)                                     |
+| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt                                      |
+| **lock**     | Device lock: days without contact (peer or server time), operator orders, wipe instruction as a hook result (`docs/lock.md`)                |
+| **sync**     | Driver: pull rounds of the log exchange over the relay, sealed per trusted device; removal enforced at the transport                        |
+| **push**     | Web Push encryption and VAPID, ring request, service worker template                                                                        |
+| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                                                   |
 
 `core`, `log`, `trust`, `post`, `group` and `push` are pure: no clock, no randomness, no I/O (both are passed
 in) and testable without a UI. `transfer` is pure apart from its adapter over an injected WebRTC peer. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
@@ -160,8 +160,16 @@ open points a server owner still has to decide. The layer has five parts.
   through a hook; polling follows the documented cadence.
 - **`framing`**: the client's own convention for payloads larger than one message: versioned frames, strict
   reassembly with limits (parts, bytes, senders, hold time as parameters).
+- **Revision 2 (admission)**, written in `docs/relay-protocol.md` ("Revision 2"): `admission` (formats of
+  certificate `c1`, invitation `e2` and founder ticket `g1`, the two role rules, strict readers of every
+  answer of that revision), `possession` (the signed text, the header value, a signer over a WebCrypto key
+  pair, the names of the two headers as configuration), `RelayClient` with a `signer` (enrolment with the
+  device's own key, signed requests, `renew`, `upgrade`, `negotiate`, `invite`, `devices`, `block`), the
+  blocked mark in the credential store with the `onBlocked` hook, `blockplan` (the daily repetition of blocks,
+  pure), `invitationPart` (the validator for the relay part of an invitation link) and `inviteReply` (the
+  reply of a new device through the relay in clear text: bounded, paced, repeated until its end).
 - **`conformance`**: a runner that takes the language-neutral cases of
-  `tests/relay/conformance/cases.json` and a running server (exported as `device-sync/conformance`). The
+  `tests/relay/conformance/cases.json` (version 1) and `cases-r2.json` (revision 2) and a running server (exported as `device-sync/conformance`). The
   repository tests it against an in-memory reference server written from the document alone, and against
   deliberately broken variants of that server.
 

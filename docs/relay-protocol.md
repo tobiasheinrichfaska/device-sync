@@ -1,4 +1,4 @@
-# Relay protocol, version 1
+# Relay protocol, version 1 and revision 2 (admission)
 
 This is the exact protocol of a small store-and-forward message relay, written so that a server and any
 port of it (Node, PHP, other) can be implemented without reading code, and a client can be tested
@@ -7,7 +7,12 @@ conformance runner) and of the cases in `tests/relay/conformance/cases.json`.
 
 Words in capitals (MUST, MUST NOT, MAY, SHOULD) are meant as in RFC 2119.
 
-**Status: version 1 as the existing relay servers speak it.** The endpoint names, member names and error
+**Status: version 1 as the existing relay servers speak it, and revision 2 (admission), which the existing
+servers also speak and which adds to version 1 without taking anything away** (see "Revision 2: what changes";
+a client of version 1 keeps working against a relay of revision 2, and the cases of version 1 pass against one).
+Revision 2 was written from the written interface and the source of the existing server and checked by running
+the conformance cases against it (see "Verification against the existing relay"). The rest of this paragraph
+is about version 1. The endpoint names, member names and error
 kinds of version 1 are German words. They are the wire format and are written here exactly as they are
 sent; every identifier of the TypeScript API is English and the two are mapped by the tables in
 "English names in this package". Where the written interface document of the existing servers is silent
@@ -34,11 +39,12 @@ device id, and so can drop messages as any device and collect the messages of an
 therefore protect content and authenticity end to end and MUST treat every message as something that may
 arrive twice, late, out of order or not at all. The relay is no authority on who a device is.
 
-Not part of version 1 and not described here: the later admission revision of the existing servers (device
-certificates with a proof of possession on every request, groups, roles, listing and blocking of devices,
-an evaluation endpoint). Its tokens and endpoints are not accepted by a version-1 relay. The server may
-answer a version-1 client with refusals of that revision (`neue-fassung-noetig`, `gesperrt`,
-`aufnahme-geschlossen`, `geraete-voll`, and a refusal because the whole relay is full, see open point 9) which are listed in "Error kinds" where they have a wire word this document can write.
+The admission revision (device certificates with a proof of possession on every request, groups, roles,
+listing and blocking of devices, more ways to enrol) is revision 2, described in "Revision 2: what changes" and
+the sections after it. Its tokens and endpoints are not accepted by a relay of version 1. A relay of revision 2
+may answer a version-1 client with refusals of that revision (`neue-fassung-noetig`, `gesperrt`,
+`aufnahme-geschlossen`, `geraete-voll`, and a refusal because the whole relay is full, see open point 9), which
+are listed in "Error kinds".
 
 ## Transport rules
 
@@ -54,7 +60,8 @@ answer a version-1 client with refusals of that revision (`neue-fassung-noetig`,
   unless it is part of the origin). The answer then carries `Access-Control-Allow-Origin` with exactly that
   origin. A request without `Origin`, or with another one, is refused (`herkunft`, 403) **without** an
   `Access-Control-Allow-Origin` header. A client that is not a browser MUST send an allowed `Origin` itself.
-- **Access:** `Authorization: Bearer <access>` (an access of the form `z1...`, see "Tokens"). No cookies
+- **Access:** `Authorization: Bearer <access>` (an access of the form `z1...`, see "Tokens"; in revision 2 also a
+  certificate `c1...` together with a signature header, see "Revision 2: what changes"). No cookies
   are used or set; a browser client sends `credentials: 'omit'` and `redirect: 'error'` (the package client also
   refuses an answer that a fetch reports as `redirected` or whose `url` is not the relay's origin).
 - **Every answer** (every status, also refusals of the HTTP layer and the empty answer of a preflight)
@@ -79,12 +86,15 @@ answer a version-1 client with refusals of that revision (`neue-fassung-noetig`,
   kind. A client decides by `art` and never by `fehler`. `fehler` is at most 200 characters.
 - **Strictness:** unknown members, wrong types and oversize values are refused (the whole request), never
   trimmed or completed. Every success body has exactly the members listed here, no others.
-- **Version marker:** the version is the path prefix `/v1`. There is no version header (see open points).
+- **Version marker:** the version is the path prefix `/v1`; revision 2 keeps it. A client announces the revision it
+  speaks in an optional header and a relay says its own in the answers ("Negotiation"); a request without the
+  header is judged exactly as version 1 judges it.
 
 ## English names in this package
 
 The wire words in the first table are exact. `ENDPOINTS` and `WIRE_MEMBERS` in `src/relay/limits.ts`
-hold the same mapping (checked by `tests/relay/docs.test.ts`).
+hold the same mapping (checked by `tests/relay/docs.test.ts`). The two request headers of revision 2 are not
+members of a body; their names are configuration (open point 15).
 
 | API name  | Wire path/word |
 | --------- | -------------- |
@@ -92,48 +102,79 @@ hold the same mapping (checked by `tests/relay/docs.test.ts`).
 | `ping`    | `ping`         |
 | `renew`   | `erneuern`     |
 | `invite`  | `einladen`     |
+| `devices` | `geraete`      |
+| `block`   | `sperren`      |
 | `drop`    | `ablegen`      |
 | `collect` | `abholen`      |
 | `ring`    | `klingeln`     |
 | `health`  | `gesund`       |
 
-| API member   | Wire member     |
-| ------------ | --------------- |
-| `proof`      | `nachweis`      |
-| `invitation` | `einladung`     |
-| `device`     | `geraet`        |
-| `access`     | `zugang`        |
-| `until`      | `bis`           |
-| `to`         | `an`            |
-| `content`    | `inhalt`        |
-| `results`    | `ergebnisse`    |
-| `ok`         | `ok`            |
-| `present`    | `anwesend`      |
-| `messages`   | `nachrichten`   |
-| `from`       | `von`           |
-| `ageMs`      | `alterMs`       |
-| `more`       | `mehr`          |
-| `validForS`  | `gueltigS`      |
-| `endpoint`   | `endpunkt`      |
-| `vapid`      | `vapid`         |
-| `ttl`        | `ttl`           |
-| `urgency`    | `dringlichkeit` |
-| `service`    | `dienst`        |
-| `ms`         | `ms`            |
-| `error`      | `fehler`        |
-| `kind`       | `art`           |
+| API member     | Wire member        |
+| -------------- | ------------------ |
+| `proof`        | `nachweis`         |
+| `invitation`   | `einladung`        |
+| `device`       | `geraet`           |
+| `access`       | `zugang`           |
+| `until`        | `bis`              |
+| `to`           | `an`               |
+| `content`      | `inhalt`           |
+| `results`      | `ergebnisse`       |
+| `ok`           | `ok`               |
+| `present`      | `anwesend`         |
+| `messages`     | `nachrichten`      |
+| `from`         | `von`              |
+| `ageMs`        | `alterMs`          |
+| `more`         | `mehr`             |
+| `validForS`    | `gueltigS`         |
+| `endpoint`     | `endpunkt`         |
+| `vapid`        | `vapid`            |
+| `ttl`          | `ttl`              |
+| `urgency`      | `dringlichkeit`    |
+| `service`      | `dienst`           |
+| `ms`           | `ms`               |
+| `error`        | `fehler`           |
+| `kind`         | `art`              |
+| `certificate`  | `zertifikat`       |
+| `founder`      | `gruender`         |
+| `password`     | `passwort`         |
+| `group`        | `mandant`          |
+| `role`         | `rolle`            |
+| `deviceKey`    | `geraetSchluessel` |
+| `app`          | `app`              |
+| `revision`     | `v`                |
+| `abilities`    | `faehigkeiten`     |
+| `procedures`   | `verfahren`        |
+| `offered`      | `angeboten`        |
+| `preferred`    | `bevorzugt`        |
+| `enrolWays`    | `einschreiben`     |
+| `protocol`     | `p`                |
+| `deviceList`   | `geraete`          |
+| `maxDevices`   | `hoechstens`       |
+| `introducedBy` | `von`              |
+| `since`        | `seit`             |
+| `last`         | `zuletzt`          |
+| `procedure`    | `verfahren`        |
+| `blocked`      | `gesperrt`         |
+| `commit`       | `stand`            |
+| `oldOff`       | `altAbgeschaltet`  |
+| `intakeOpen`   | `aufnahmeOffen`    |
 
 ## Identifiers and values
 
-| Value      | Form                                                               | Who makes it                        |
-| ---------- | ------------------------------------------------------------------ | ----------------------------------- |
-| app id     | `^[a-z][a-z0-9]{1,15}$`                                            | the relay's configuration           |
-| device id  | `geraet-` followed by 32 lower-case hex digits (128 random bits)   | the relay, at enrolment             |
-| access     | `z1.<app>.<device>.<bis>.<mac>`                                    | the relay, at enrolment and renewal |
-| invitation | `e1.<app>.<bis>.<random>.<mac>`                                    | the relay, at `einladen`            |
-| proof      | `n1.<payload>.<signature>`                                         | the login script of a test zone     |
-| content    | base64url without `=`, canonical, 1 to 65 536 bytes after decoding | the app (already encrypted)         |
-| end day    | `YYYY-MM-DD`, UTC date of the end second of an access              | the relay                           |
+| Value          | Form                                                                          | Who makes it                              |
+| -------------- | ----------------------------------------------------------------------------- | ----------------------------------------- |
+| app id         | `^[a-z][a-z0-9]{1,15}$`                                                       | the relay's configuration                 |
+| device id      | `geraet-` followed by 32 lower-case hex digits (128 random bits)              | the relay, at enrolment                   |
+| access         | `z1.<app>.<device>.<bis>.<mac>`                                               | the relay, at enrolment and renewal       |
+| invitation     | `e1.<app>.<bis>.<random>.<mac>`                                               | the relay, at `einladen`                  |
+| proof          | `n1.<payload>.<signature>`                                                    | the login script of a test zone           |
+| content        | base64url without `=`, canonical, 1 to 65 536 bytes after decoding            | the app (already encrypted)               |
+| end day        | `YYYY-MM-DD`, UTC date of the end second of an access                         | the relay                                 |
+| certificate    | `c1.<app>.<group>.<device>.<role>.<key>.<bis>.<mac>` (revision 2)             | the relay, at enrolment and renewal       |
+| invitation e2  | `e2.<app>.<group>.<inviter>.<role>.<bis>.<random>.<mac>` (rev. 2)             | the relay, at `einladen`                  |
+| founder ticket | `g1.<app>.<group>.<bis>.<random>.<signature>` (revision 2)                    | the developer                             |
+| group          | `^(?!standard$)[a-z0-9-]{1,20}$`; `1` for everything old (revision 2)         | the relay's configuration, the invitation |
+| role           | `buero`, `ohne` or `lb:<id>` with `<id>` of 1 to 40 of `A-Za-z0-9_-` (rev. 2) | the inviter, the ticket                   |
 
 "Canonical base64url" means the characters `A-Z a-z 0-9 - _` only, no padding, and the text re-encodes to
 itself (so a value has one spelling; for example `AB` is not canonical because its last character has
@@ -324,6 +365,307 @@ service, which is passed on whatever it is. The relay waits at most 10 s for the
 answer. Refusals: `klingeln-ungueltig` (400: any member does not fit), `klingeln-zu-oft` (more than 60 per
 device and hour; counted by time only, never by target), `push-dienst` (502: not reached).
 
+## Revision 2: what changes (admission)
+
+Revision 2 adds to version 1; it takes nothing away. A relay of revision 2 answers every version-1 request
+exactly as written above (the version-1 conformance cases pass against it unchanged), and a client of
+version 1 keeps working against it. What revision 2 adds:
+
+- **Certificates.** At enrolment a device can give its own public key (`geraetSchluessel`) and get a
+  certificate (`c1...`) instead of, or beside, the old access. A certificate names the app, the group, the
+  device, the role and the key. Whoever takes it cannot use it without the key.
+- **Proof of possession.** Every request that carries a certificate is signed with the device's private key
+  (a header with `<t>.<signature>` over method, path, time, hash of the body and the certificate). A stolen
+  certificate is worth nothing without the key, and a signature is taken once.
+- **Groups and roles.** Devices, presence, mailboxes, the device list and blocks belong to a group of an app
+  (a school, a club: `mandant` on the wire). Every device has a role: `buero` (the office), `lb:<id>` (the
+  devices of one member) or `ohne` (none). The role is set by the invitation of the inviting device, by the
+  founder ticket and the developer password (always `buero`), or, with the old ways only, claimed by the
+  device itself, which the relay cannot check.
+- **More ways to enrol.** An invitation `e2` (made by a device with a certificate: it carries the group and
+  the role of the new device), a founder ticket `g1` (signed by the developer, makes the first device of a
+  group) and a developer password (the same, from a list of hashes in the relay's configuration).
+- **The device list and blocking.** `geraete` lists the devices of the caller's group as its role may see
+  them; `sperren` blocks a device. A blocked device is refused with `gesperrt` on every request, with a
+  certificate or an old access.
+- **Strict groups.** The relay can switch the old procedure off for a group, by hand, once every device of
+  it has a certificate (`neue-fassung-noetig`, 426).
+- **Negotiation.** A client finds out what the relay can do before it relies on it.
+- **An evaluation endpoint** `auswertung` for the developer alone (counts per group, never an id). It is not
+  used by a client and not described further.
+
+The words `mandant`, `rolle`, `gruender`, `passwort`, `zertifikat` and so on are the wire words of the
+existing relay servers, kept exactly (see "English names in this package").
+
+### Negotiation
+
+A client that wants to use revision 2 asks the relay what it can do. The relay says so in three members that
+a version-1 relay never sends:
+
+- `v`: the revision as an integer (2 for this document), `faehigkeiten`: a list of words (the existing relay
+  sends `mandant`, `zertifikat`, `besitznachweis`, `einladung2`, `gruender`, `sperren`, `geraete`; a client
+  treats a word it does not know as nothing) and `verfahren`: what the relay serves and prefers for the
+  group the answer is about:
+
+```json
+{
+  "angeboten": ["zugang", "zertifikat"],
+  "bevorzugt": "zertifikat",
+  "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+}
+```
+
+`angeboten` are the techniques of authentication: `zugang` is the old access (a bearer value, only in
+group `1`, and not where the group is strict), `zertifikat` the certificate with the proof of possession. In
+every group but `1`, and where the group is strict, only `["zertifikat"]`. `bevorzugt` is always
+`zertifikat`. `einschreiben` are the ways a device can enrol; where the old procedure is off only
+`einladung2`, `gruender` and `passwort`.
+
+They come in three places: `GET /gesund` (without access; for the first group `1` of the app of the request's
+origin, or for what the code serves at all when the origin is unknown), `ping` (with a certificate always,
+with an old access only when the request announces the revision in the version header) and the answers of
+enrolment and renewal that carry a certificate. A relay of version 1 sends none of them; a client that sees
+no `v` speaks version 1.
+
+The version header (open point 15 for its name) carries the revision the client speaks as 1 to 3 digits. It
+is optional; a relay of version 1 refuses an unknown header already at the preflight, which a browser shows as
+a network failure, so a client that announces it and fails that way MAY try once more without it. A client
+sends it with every request that carries a certificate. The relay notes the value per device (`p` in the
+device list).
+
+### Tokens of revision 2
+
+All times are whole seconds since 1970 as in "Tokens"; a token is valid while `bis > now`. Every MAC is
+`HMAC-SHA-256(secret, UTF-8(label + ":" + head))` in canonical base64url (43 characters), compared as text
+(open point 12), with the same secret as the access; a new secret makes every certificate and invitation
+invalid at once, unless a previous secret is configured.
+
+**Certificate** `c1.<app>.<group>.<device>.<role>.<key>.<bis>.<mac>`
+
+- `<group>`: `^(?!standard$)[a-z0-9-]{1,20}$`. `<role>`: `buero`, `ohne` or `lb:<id>` with `<id>` of 1 to 40
+  of `A-Z a-z 0-9 _ -`. `<key>`: the device's public key, the raw uncompressed P-256 point (65 bytes, the first
+  one 4), 87 characters of canonical base64url. `<bis>` and `<mac>` as for the access; the label is
+  `zertifikat` and the head is the text up to and including `<bis>`.
+- Lifetime: 60 days (5 184 000 s) from issue, at enrolment and at every renewal. A client renews when fewer
+  than 30 days remain (the same rule as for the access). A renewed certificate has the same key, group and
+  role; the old one stays valid until its own end.
+- It is judged like the access: head checks first (see "Order of checks, revision 2"), the proof of
+  possession with the body.
+
+**Proof of possession.** A request with a certificate carries `Authorization: Bearer <certificate>` and the
+possession header with `<t>.<signature>`:
+
+- `<t>`: whole seconds, 1 to 12 digits without a leading zero. It must differ from the relay's clock by at
+  most 120 seconds (`possessionSkewSeconds`), either way.
+- `<signature>`: base64url, 86 characters, of an ECDSA P-256 / SHA-256 signature in the IEEE P1363 form (64
+  bytes, as Web Crypto gives it) by the key in the certificate over the UTF-8 text
+
+```
+v1\n<method>\n<path>\n<t>\n<SHA-256 of the body, base64url>\n<certificate>
+```
+
+with `\n` a line feed, `<method>` as sent (`POST`), `<path>` the path of the address (for example
+`/v1/abholen`), the hash over the exact body bytes (the empty body gives `47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU`)
+and the certificate text exactly as in `Authorization`. ECDSA signatures are randomised, so two signatures of
+one request are two different values; the relay takes each `(device, signature)` once, until `<t>` plus 121
+seconds. The relay does not demand a low-s form.
+
+**Invitation** `e2.<app>.<group>.<inviter>.<role>.<bis>.<random>.<mac>`: the inviting device, the role the new
+device gets, `<random>` 16 random bytes (22 characters), the MAC label `einladung` over the head up to the
+random part. Valid while `now < bis <= now + 600`, taken once (`verbraucht`), invalid (`einladung-ungueltig`)
+once the inviter is blocked. Like `e1` it is single use by its random part until `bis`.
+
+**Founder ticket** `g1.<app>.<group>.<bis>.<random>.<signature>`: signed by the developer's private key with
+ECDSA P-256 / SHA-256 (P1363, 86 characters) over `g1.<app>.<group>.<bis>.<random>`; the relay holds only the
+public key. Valid while `now < bis <= now + 3660` (one hour plus 60 seconds of clock difference), taken once.
+
+### Enrolment, revision 2
+
+`POST /v1/einschreiben`, no access. The body has **exactly one** way, as before, and optional other members:
+
+| Member             | Meaning                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `nachweis`         | a proof (old way, group `1`)                                                            |
+| `einladung`        | an invitation `e1` (old way, group `1`) or `e2` (new)                                   |
+| `gruender`         | a founder ticket                                                                        |
+| `passwort`         | a developer password, then `app` and `mandant` too                                      |
+| `geraetSchluessel` | the device's public key (raw, 87 characters, a point on the curve); optional, see below |
+| `rolle`            | the role the device claims; only with `nachweis` or `einladung` `e1`; optional          |
+| `app`, `mandant`   | only with `passwort`: the app and the group; with any other way they are `unlesbar`     |
+
+- `geraetSchluessel` is optional in group `1` where the old access is still served and **required** (`unlesbar`
+  without it) in every other group, where the old procedure is strict and for `gruender` and `passwort`. A
+  value that is not exactly 87 characters of base64url or not a point of the curve is `unlesbar`.
+- `rolle` must be one of the three forms. With `e2`, `gruender` and `passwort` the role comes from the invitation
+  or is `buero`; a member `rolle` there is `unlesbar` (and uses nothing up). With the old ways it is a claim of
+  the new device that the relay cannot check (default `ohne`): a device with a claimed role gets no right
+  beyond what the role rules give it, so an app that needs a role it can trust enrols by `e2`.
+- A **password** is looked up by `(app, mandant)` in the relay's list (the existing relay keeps scrypt hashes
+  with an end time, a most number of uses and whether the group may already have devices). Refusals:
+  `entwickler-nicht-eingerichtet` (no passwords or no developer key at all), `entwickler-ungueltig` (no
+  entry matches), `entwickler-abgelaufen` (ended or used up), `entwickler-belegt` (the group already has devices
+  and the entry does not allow it); at most 20 tries per app and hour (`zu-viele-einschreibungen`). A founder
+  ticket gives `entwickler-nicht-eingerichtet`, `entwickler-ungueltig` (malformed or wrong signature) or
+  `entwickler-abgelaufen`.
+- The answer is `201`. Without a key it is the version-1 answer. With a key:
+
+```json
+{
+  "geraet": "geraet-3f2a...",
+  "zugang": "z1.alpha.geraet-3f2a....1802476800.<mac>",
+  "zertifikat": "c1.alpha.1.geraet-3f2a....ohne.<key>.1802476800.<mac>",
+  "mandant": "1",
+  "rolle": "ohne",
+  "v": 2,
+  "faehigkeiten": ["..."],
+  "verfahren": { "angeboten": ["..."], "bevorzugt": "zertifikat", "einschreiben": ["..."] },
+  "bis": "2027-01-21"
+}
+```
+
+`zugang` is there only in group `1` where the old access is still served; a client that has a certificate
+ignores it (the certificate rules). `bis` is the end day of the certificate. A client checks that the
+certificate is for its app, names the device the answer names, carries exactly the key it sent, that
+`mandant` and `rolle` are the ones in it and that `bis` is its end day, and otherwise treats the answer as
+unreadable.
+
+- The group of a new device is the one the invitation, ticket or password names; the old ways mean group
+  `1`. A group that is strict (below) refuses the old ways with `neue-fassung-noetig`.
+- **Intake:** an app may open at most as many groups as its configuration says (`groups`; `0` = no new
+  group). A device that would start a further group is refused with `aufnahme-geschlossen`, for every way and
+  **before** anything is used up, so a refused ticket or password works again once the limit is raised. A
+  group that exists keeps taking devices up to `devicesPerApp` (**per group**, `geraete-voll`); the relay as
+  a whole knows at most `devicesTotal` devices (the existing relay's word for that refusal is open point 9).
+  What the relay counts is what it has seen since it started.
+
+### Renewal, ping, invitation, revision 2
+
+- **`erneuern`.** Body `{}` with a certificate: `200 {"zertifikat", "bis"}` plus `v`, `faehigkeiten`, `verfahren`;
+  the same key, group and role, 60 days from now; any member in the request is `unlesbar`. With an old access the
+  body is `{}` as before, or `{"geraetSchluessel", "rolle"?}`: `rolle` only together with the key. Then the
+  answer holds the new access and the certificate (`{"zugang", "bis", "zertifikat", "mandant", "rolle", ...}`,
+  `bis` the end of the NEW access): the device has made the step to a certificate. A relay of version 1
+  refuses the unknown member (`unlesbar`) and keeps the access.
+- **`ping`.** Body `{}`. The answer is `{"geraet", "app", "bis"}`; with a certificate it also has `mandant` and
+  `rolle` and the three members of the negotiation; with an old access and the announced revision it has the
+  three members. `bis` is the end day of the access or certificate used.
+- **`einladen`.** Body `{}` or `{"rolle"}`. With a certificate the answer is an `e2` for the group of the
+  inviter; the role is the inviter's choice (`rolle`; default: `ohne` for the office, its own for a device of
+  the form `lb:<id>`): the office may give any role, a device `lb:<id>` only its own, a device with the role
+  `ohne` none (`rolle-nicht-erlaubt`). The order of the checks is: invitations on for the app
+  (`einladen-aus`), the form of `rolle`, the permission, the hourly limit. With an old access the answer is an
+  `e1` as before and any member is `unlesbar`.
+
+### The device list, `geraete`
+
+`POST /v1/geraete`, body `{}`, certificate only (an old access gets `rolle-nicht-erlaubt`). Answer `200`:
+
+```json
+{
+  "geraete": [
+    {
+      "geraet": "geraet-...",
+      "rolle": "buero",
+      "von": "alt",
+      "seit": "2026-11-22T10:00:00.000Z",
+      "zuletzt": "2026-11-22T10:05:00.000Z",
+      "verfahren": "neu",
+      "p": 2
+    }
+  ],
+  "hoechstens": 50
+}
+```
+
+The devices of the caller's group that its role may see: the office sees all, a device `lb:<id>` the ones with
+its own role, any other device only itself. `von` is `alt` (seen with an old access or first met as a request),
+`nachweis`, `entwickler` or the id of the inviting device. `seit` and `zuletzt` are `toISOString` times of the
+relay's clock; `verfahren` is `neu` (certificate) or `alt` (old access); `p` is the last revision the device
+announced, when it did. The list is what the relay has seen since its start. It holds at most twice
+`hoechstens` entries (the relay remembers up to twice `devicesPerApp` devices of a group).
+
+### Blocking, `sperren`
+
+`POST /v1/sperren`, body `{"geraet": "geraet-..."}` (exactly this member), certificate only (an old access gets
+`rolle-nicht-erlaubt`). Answer `200 {"geraet", "gesperrt": true}`.
+
+- **Who may block:** every device itself; the office every device of its group (also an id the relay does not
+  know); a device `lb:<id>` the devices of its own role it knows (itself included). Anything else:
+  `rolle-nicht-erlaubt`, and a device `lb:<id>` learns nothing about devices of other roles. The order is: the
+  form of the id (`unlesbar`), the permission, the hourly limit, the size of the list.
+- **Effect:** the blocked id is refused with `gesperrt` (403) on **every** request, with a certificate or an old
+  access, before any body is read; it cannot renew, and an invitation `e2` its device made is invalid. A block
+  is for the group of the blocker: the same id in another group is not blocked.
+- **Holding:** a block is kept in the relay's RAM for 90 days (`blockHoldDays`: the longest an old access
+  lives), at most 500 ids per group (`blocklistPerGroup`; blocking an id again is no new entry; a new one at the
+  limit is `sperrliste-voll`, 503) and at most 30 blocks per device and hour (`blocksPerHour`; the existing
+  relay answers `zu-viele-einladungen`, open point 18). A restart loses the list. A certificate lives only 60
+  days and a blocked device cannot renew, so whoever blocks **repeats the block**: once when blocking, then at
+  every start of the app and once a day, for 60 days (90 for a device that held an old access). `blockplan.ts`
+  keeps that plan. When exactly a block disappears is the relay's business and is not pinned by the cases.
+- The relay's static configuration may also list blocked ids per app (`gesperrt`), which hold for every group.
+
+### Strict groups
+
+A relay can switch the old procedure off for a group (`streng` in the existing relay's configuration; by hand,
+never automatically). There a request with an old access, a proof or an `e1` is refused `neue-fassung-noetig`
+(426), which is not `gesperrt`: the app must be updated or the device enrolled by invitation. `GET /gesund`
+says it with `altAbgeschaltet` (for group `1` of the app of the origin).
+
+### What the client does with it
+
+`RelayClient` (`src/relay/client.ts`) speaks revision 2 when it has a `signer` (its device key). Without a signer
+it speaks version 1 and nothing else. With it: `enrol` sends the key (and for the old ways the claimed role; a
+`unlesbar` answer makes it ask once more as version 1, for a relay that does not know the key), stores the
+certificate, signs every request of a certificate, `renew` and `renewIfDue` renew it, `upgrade` makes the step
+from an old access to a certificate, `negotiate` finds the revision, `invite`, `devices` and `block` are the new
+calls, and a certificate whose key is not the signer's is refused locally (`key-missing`, class `reenrol`).
+
+**Blocked.** A `gesperrt` answer to a request that carried this device's own current credential makes the
+client store a blocked mark in the credential store (it replaces the credentials) and call `onBlocked` once;
+the same when the relay confirms that this device blocked itself. It never happens for a network failure, a
+timeout, another refusal, a `gesperrt` that answers an enrolment (no credential was sent) or an answer to a
+credential that is no longer the stored one. With the mark stored the client refuses to enrol (`blocked-mark`)
+until `forget()`; the package wipes nothing (keys, data, screens are the app's, in the hook).
+
+**Invitation links and the reply (client conventions, not part of the protocol).** An invitation link of the
+trust layer may carry the relay's own invitation `e2` (`relayInvitation`): the new device takes it in at the
+relay and gets its role from it. A validator (`relayInvitationValidator`) refuses the whole link when the `e2` is
+not for this app, when its role is not the relay role of the link's role, or when the device that made it is not
+the inviter's relay id the link names; without a validator the member is never accepted. The new device answers
+the inviter through the relay with a message in clear text (`inviteReply.ts`: one JSON spelling, at most 2000
+characters, nothing secret: only the inviter can check the HMAC proof inside), at most one copy per 30 seconds
+(the relay holds a message that long), repeated until the invitation ends or the app says it arrived; the
+inviting device takes at most 5 replies per sender in 10 minutes and 20 per batch of collected messages.
+
+## Order of checks, revision 2
+
+This extends "Order of checks"; 1 to 7 are as written. For every endpoint except `einschreiben` and
+`auswertung`:
+
+8. The access. a. No `Bearer`: `zugang-fehlt`. b. A text that begins `c1.`, `e1.`, `e2.`, `z1.` or `g1.` and
+   names an app of the relay from another app's origin: `herkunft` (no CORS). c. A certificate: malformed or wrong
+   MAC `zugang-ungueltig`, `bis` in the past `zugang-abgelaufen`; the old access as before. d. The app is served
+   (`app-unbekannt`), the origin is its own (`herkunft`), the device (certificate, access) is not blocked
+   (`gesperrt`; also by the app's static list), an old access in a strict group (`neue-fassung-noetig`). e. The
+   request counter of the minute.
+9. The body is larger than the limit of the endpoint: `zu-gross`.
+10. **With a certificate:** the possession header. Missing `besitz-fehlt`; not `<t>.<86 characters>` or the
+    signature does not verify (also for another body, another path, another certificate, another key)
+    `besitz-ungueltig`; `<t>` more than 120 s from the clock `besitz-zeit`; the same signature of the device
+    seen before `besitz-ungueltig`. A signature is remembered only when all of this passed.
+11. The body is not JSON: `unlesbar`.
+12. The device is noted as known (with its role, procedure and announced revision).
+13. The endpoint's own rules. For `einschreiben`: the members and the form of key and role (`unlesbar`); the app
+    the text names is judged against the origin (`herkunft`); the text itself (proof, `e1`, `e2` as before; a
+    founder ticket: shape, `entwickler-nicht-eingerichtet`, signature `entwickler-ungueltig`, time
+    `entwickler-abgelaufen`, then the key is required `unlesbar`; a password: `entwickler-nicht-eingerichtet`,
+    the try counter, `entwickler-ungueltig`, `entwickler-abgelaufen`, `entwickler-belegt`), the blocked inviter
+    of an `e2` (`einladung-ungueltig`), `einladen-aus` for the invitation ways; then the app must be served and the
+    origin its own, the old way in a strict group `neue-fassung-noetig`, the key where it is required
+    (`unlesbar`), the single-use mark (`verbraucht`), `aufnahme-geschlossen`, the relay-wide limit,
+    `geraete-voll`; the counter of the hour last, so a refused attempt uses up nothing.
+
 ## Error kinds
 
 Each row: the wire word (`art`), the name in this package, the HTTP status, the class a client acts on, and
@@ -333,44 +675,54 @@ no for now; retrying at once is useless, the caller decides). The refusals of on
 no status of their own (they are inside a 200) and are marked `—`. The table is data in
 `src/relay/kinds.ts` (`RELAY_KINDS`); `tests/relay/kinds.test.ts` keeps both in step.
 
-| Wire word                     | Name                       | Status | Class   | When                                                                                               |
-| ----------------------------- | -------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------- |
-| `unbekannt`                   | `unknown-endpoint`         | 404    | fatal   | the path is not `/gesund` or `/v1/<endpoint>`                                                      |
-| `methode`                     | `wrong-method`             | 405    | fatal   | not POST (GET for `/gesund`)                                                                       |
-| `herkunft`                    | `origin-refused`           | 403    | fatal   | no or foreign `Origin`; a token naming another app; also a refused preflight                       |
-| `typ`                         | `wrong-content-type`       | 415    | fatal   | not `application/json`                                                                             |
-| `zu-gross`                    | `body-too-large`           | 413    | fatal   | the body (announced or read) is over the limit of the endpoint                                     |
-| `zu-langsam`                  | `body-too-slow`            | 408    | retry   | the body did not arrive within 14 s                                                                |
-| `unlesbar`                    | `unreadable`               | 400    | fatal   | address with `?`, body not JSON, not an object, unknown or missing member, wrong type, bad value   |
-| `zugang-fehlt`                | `access-missing`           | 401    | fatal   | no `Authorization: Bearer ...`                                                                     |
-| `zugang-ungueltig`            | `access-invalid`           | 401    | reenrol | the access is malformed or its MAC is wrong                                                        |
-| `zugang-abgelaufen`           | `access-expired`           | 401    | reenrol | `bis` is in the past                                                                               |
-| `app-unbekannt`               | `app-unknown`              | 403    | fatal   | the app of the access or proof is not served                                                       |
-| `gesperrt`                    | `device-blocked`           | 403    | fatal   | the device id is on the app's blocked list                                                         |
-| `zu-viele-anfragen`           | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute (a server MAY add body-load limits, see "Overload")   |
-| `beschaeftigt`                | `relay-busy`               | 503    | retry   | too many bodies on the way at the moment (server load)                                             |
-| `relay-voll`                  | `relay-full`               | 503    | refused | the relay already knows its maximum number of devices (`devicesTotal`); a new enrolment is refused |
-| `nachweis-ungueltig`          | `proof-malformed`          | 400    | fatal   | the proof or its payload is not shaped as written                                                  |
-| `nachweis-nicht-eingerichtet` | `proof-not-set-up`         | 403    | fatal   | the app has no proof key                                                                           |
-| `nachweis-unterschrift`       | `proof-signature`          | 403    | fatal   | no key of the app verifies the signature                                                           |
-| `nachweis-abgelaufen`         | `proof-expired`            | 403    | fatal   | `bis` in the past or more than 360 s ahead                                                         |
-| `einladung-ungueltig`         | `invitation-invalid`       | 403    | fatal   | malformed, wrong MAC, or `bis` more than 600 s ahead                                               |
-| `einladung-abgelaufen`        | `invitation-expired`       | 403    | fatal   | `bis` in the past                                                                                  |
-| `einladen-aus`                | `invitations-off`          | 403    | fatal   | invitations are off for the app                                                                    |
-| `verbraucht`                  | `already-used`             | 409    | fatal   | the proof or invitation was used before                                                            |
-| `zu-viele-einschreibungen`    | `enrol-rate-limited`       | 429    | refused | more than 120 enrolments with a proof or 60 with an invitation per app and hour                    |
-| `zu-viele-einladungen`        | `invite-rate-limited`      | 429    | refused | more than 10 invitations per device and hour                                                       |
-| `klingeln-ungueltig`          | `ring-invalid`             | 400    | fatal   | a ring request that does not fit                                                                   |
-| `klingeln-zu-oft`             | `ring-rate-limited`        | 429    | refused | more than 60 rings per device and hour                                                             |
-| `push-dienst`                 | `push-service-unreachable` | 502    | retry   | the push service did not answer within 10 s                                                        |
-| `neue-fassung-noetig`         | `client-update-needed`     | 426    | fatal   | the old procedure is switched off for the app (later admission revision)                           |
-| `geraete-voll`                | `devices-full`             | 409    | refused | the app already has 50 known devices                                                               |
-| `aufnahme-geschlossen`        | `admission-closed`         | 403    | fatal   | the app may not start a (further) group of devices                                                 |
-| `intern`                      | `internal`                 | 500    | retry   | an internal error (the text never quotes the request)                                              |
-| `voll`                        | `storage-full`             | —      | retry   | drop, one recipient: the relay's total waiting bytes are full                                      |
-| `app-voll`                    | `app-full`                 | —      | retry   | drop, one recipient: the app's waiting bytes are full                                              |
-| `absender-voll`               | `sender-full`              | —      | refused | drop, one recipient: the sender already has too much waiting                                       |
-| `empfaenger-voll`             | `recipient-full`           | —      | refused | drop, one recipient: its mailbox holds 100 messages or 2 MiB                                       |
+| Wire word                       | Name                       | Status | Class   | When                                                                                               |
+| ------------------------------- | -------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `unbekannt`                     | `unknown-endpoint`         | 404    | fatal   | the path is not `/gesund` or `/v1/<endpoint>`                                                      |
+| `methode`                       | `wrong-method`             | 405    | fatal   | not POST (GET for `/gesund`)                                                                       |
+| `herkunft`                      | `origin-refused`           | 403    | fatal   | no or foreign `Origin`; a token naming another app; also a refused preflight                       |
+| `typ`                           | `wrong-content-type`       | 415    | fatal   | not `application/json`                                                                             |
+| `zu-gross`                      | `body-too-large`           | 413    | fatal   | the body (announced or read) is over the limit of the endpoint                                     |
+| `zu-langsam`                    | `body-too-slow`            | 408    | retry   | the body did not arrive within 14 s                                                                |
+| `unlesbar`                      | `unreadable`               | 400    | fatal   | address with `?`, body not JSON, not an object, unknown or missing member, wrong type, bad value   |
+| `zugang-fehlt`                  | `access-missing`           | 401    | fatal   | no `Authorization: Bearer ...`                                                                     |
+| `zugang-ungueltig`              | `access-invalid`           | 401    | reenrol | the access is malformed or its MAC is wrong                                                        |
+| `zugang-abgelaufen`             | `access-expired`           | 401    | reenrol | `bis` is in the past                                                                               |
+| `app-unbekannt`                 | `app-unknown`              | 403    | fatal   | the app of the access or proof is not served                                                       |
+| `gesperrt`                      | `device-blocked`           | 403    | fatal   | the device id is blocked (the app's list, or by `sperren` in revision 2; any request of it)        |
+| `zu-viele-anfragen`             | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute (a server MAY add body-load limits, see "Overload")   |
+| `beschaeftigt`                  | `relay-busy`               | 503    | retry   | too many bodies on the way at the moment (server load)                                             |
+| `relay-voll`                    | `relay-full`               | 503    | refused | the relay already knows its maximum number of devices (`devicesTotal`); a new enrolment is refused |
+| `nachweis-ungueltig`            | `proof-malformed`          | 400    | fatal   | the proof or its payload is not shaped as written                                                  |
+| `nachweis-nicht-eingerichtet`   | `proof-not-set-up`         | 403    | fatal   | the app has no proof key                                                                           |
+| `nachweis-unterschrift`         | `proof-signature`          | 403    | fatal   | no key of the app verifies the signature                                                           |
+| `nachweis-abgelaufen`           | `proof-expired`            | 403    | fatal   | `bis` in the past or more than 360 s ahead                                                         |
+| `einladung-ungueltig`           | `invitation-invalid`       | 403    | fatal   | malformed, wrong MAC, or `bis` more than 600 s ahead                                               |
+| `einladung-abgelaufen`          | `invitation-expired`       | 403    | fatal   | `bis` in the past                                                                                  |
+| `einladen-aus`                  | `invitations-off`          | 403    | fatal   | invitations are off for the app                                                                    |
+| `verbraucht`                    | `already-used`             | 409    | fatal   | the proof or invitation was used before                                                            |
+| `zu-viele-einschreibungen`      | `enrol-rate-limited`       | 429    | refused | more than 120 enrolments with a proof or 60 with an invitation per app and hour                    |
+| `zu-viele-einladungen`          | `invite-rate-limited`      | 429    | refused | more than 10 invitations per device and hour                                                       |
+| `klingeln-ungueltig`            | `ring-invalid`             | 400    | fatal   | a ring request that does not fit                                                                   |
+| `klingeln-zu-oft`               | `ring-rate-limited`        | 429    | refused | more than 60 rings per device and hour                                                             |
+| `push-dienst`                   | `push-service-unreachable` | 502    | retry   | the push service did not answer within 10 s                                                        |
+| `neue-fassung-noetig`           | `client-update-needed`     | 426    | fatal   | the old procedure is switched off for the group (revision 2, `streng`): update the app             |
+| `geraete-voll`                  | `devices-full`             | 409    | refused | the app already has 50 known devices                                                               |
+| `aufnahme-geschlossen`          | `admission-closed`         | 403    | fatal   | the app may not start a (further) group of devices                                                 |
+| `intern`                        | `internal`                 | 500    | retry   | an internal error (the text never quotes the request)                                              |
+| `besitz-fehlt`                  | `possession-missing`       | 401    | fatal   | revision 2: a certificate without the possession header                                            |
+| `besitz-ungueltig`              | `possession-invalid`       | 401    | fatal   | revision 2: the header is malformed, the signature does not verify, or it was taken before         |
+| `besitz-zeit`                   | `possession-time`          | 401    | fatal   | revision 2: the signed time is more than 120 s from the relay's clock (check the device's clock)   |
+| `rolle-nicht-erlaubt`           | `role-not-allowed`         | 403    | fatal   | revision 2: the role of the device does not allow it (invite, block, list; an old access)          |
+| `geraet-unbekannt`              | `device-unknown`           | 404    | fatal   | revision 2: in the existing relay's table, never sent (open point 18)                              |
+| `sperrliste-voll`               | `blocklist-full`           | 503    | refused | revision 2: the group's list of blocks already holds 500 ids                                       |
+| `entwickler-nicht-eingerichtet` | `developer-not-set-up`     | 403    | fatal   | revision 2: no developer key or no password is configured                                          |
+| `entwickler-ungueltig`          | `developer-invalid`        | 403    | fatal   | revision 2: a founder ticket that is malformed or wrongly signed, or no password matches           |
+| `entwickler-abgelaufen`         | `developer-expired`        | 403    | fatal   | revision 2: a founder ticket out of time, or a password that has ended or is used up               |
+| `entwickler-belegt`             | `developer-group-taken`    | 403    | fatal   | revision 2: the group of the password already has devices                                          |
+| `voll`                          | `storage-full`             | —      | retry   | drop, one recipient: the relay's total waiting bytes are full                                      |
+| `app-voll`                      | `app-full`                 | —      | retry   | drop, one recipient: the app's waiting bytes are full                                              |
+| `absender-voll`                 | `sender-full`              | —      | refused | drop, one recipient: the sender already has too much waiting                                       |
+| `empfaenger-voll`               | `recipient-full`           | —      | refused | drop, one recipient: its mailbox holds 100 messages or 2 MiB                                       |
 
 A client that reads a wire word it does not know on a status below 500 (other than 429) treats the answer as
 unreadable (`malformed`, fatal): it MUST NOT guess a meaning. On 429 or 5xx it treats it as `unavailable`
@@ -417,42 +769,50 @@ one. The conformance cases pin only the pairs they name.
 One table; `RELAY_LIMITS` in `src/relay/limits.ts` has exactly these names and values (checked by
 `tests/relay/docs.test.ts`). Byte values are exact.
 
-| Name                 | Value      | Meaning                                                        |
-| -------------------- | ---------- | -------------------------------------------------------------- |
-| `waitMs`             | 30_000     | a message waits at most this long (RAM only)                   |
-| `presenceMs`         | 30_000     | a device counts as present this long after its last collect    |
-| `maxContentBytes`    | 65_536     | one message, bytes after decoding                              |
-| `maxRecipients`      | 50         | recipients in one drop                                         |
-| `maxPresenceAsk`     | 200        | device ids a collect may ask presence for                      |
-| `collectBytes`       | 2_097_152  | content bytes one collect hands out at most                    |
-| `mailboxMessages`    | 100        | messages waiting for one recipient                             |
-| `mailboxBytes`       | 2_097_152  | weighted bytes waiting for one recipient                       |
-| `minMessageWeight`   | 1_024      | every message weighs at least this in the byte limits          |
-| `senderBytes`        | 4_194_304  | weighted bytes waiting from one sender                         |
-| `appBytes`           | 33_554_432 | weighted bytes waiting for one app                             |
-| `totalBytes`         | 67_108_864 | weighted bytes waiting in the relay                            |
-| `maxBodyBytes`       | 16_384     | request body of every endpoint except `ablegen` and `klingeln` |
-| `maxBodyRing`        | 8_192      | request body of `klingeln`                                     |
-| `maxBodyDrop`        | 6_291_456  | request body of `ablegen`                                      |
-| `requestsPerMinute`  | 300        | requests per device and minute                                 |
-| `ringPerHour`        | 60         | rings per device and hour                                      |
-| `invitePerHour`      | 10         | invitations per device and hour                                |
-| `enrolProofPerHour`  | 120        | enrolments with a proof per app and hour                       |
-| `enrolInvitePerHour` | 60         | enrolments with an invitation per app and hour                 |
-| `devicesPerApp`      | 50         | known devices per app                                          |
-| `devicesTotal`       | 300        | known devices in all                                           |
-| `accessDays`         | 90         | lifetime of an access                                          |
-| `renewBelowDays`     | 30         | a client renews when fewer days remain                         |
-| `invitationSeconds`  | 600        | lifetime of an invitation                                      |
-| `proofMaxSeconds`    | 300        | longest lifetime of a proof ...                                |
-| `proofSkewSeconds`   | 60         | ... plus this much for clocks that differ                      |
-| `headTimeoutMs`      | 10_000     | time for the head of a request                                 |
-| `bodyTimeoutMs`      | 14_000     | time for the body                                              |
-| `requestTimeoutMs`   | 30_000     | time for the whole request                                     |
-| `ringEndpointMax`    | 900        | longest push endpoint, characters                              |
-| `ringVapidMax`       | 1_024      | longest push authorisation header, characters                  |
-| `ringContentMax`     | 4_096      | longest encrypted push, bytes                                  |
-| `ringTtlMax`         | 86_400     | longest push TTL, seconds                                      |
+| Name                    | Value      | Meaning                                                        |
+| ----------------------- | ---------- | -------------------------------------------------------------- |
+| `waitMs`                | 30_000     | a message waits at most this long (RAM only)                   |
+| `presenceMs`            | 30_000     | a device counts as present this long after its last collect    |
+| `maxContentBytes`       | 65_536     | one message, bytes after decoding                              |
+| `maxRecipients`         | 50         | recipients in one drop                                         |
+| `maxPresenceAsk`        | 200        | device ids a collect may ask presence for                      |
+| `collectBytes`          | 2_097_152  | content bytes one collect hands out at most                    |
+| `mailboxMessages`       | 100        | messages waiting for one recipient                             |
+| `mailboxBytes`          | 2_097_152  | weighted bytes waiting for one recipient                       |
+| `minMessageWeight`      | 1_024      | every message weighs at least this in the byte limits          |
+| `senderBytes`           | 4_194_304  | weighted bytes waiting from one sender                         |
+| `appBytes`              | 33_554_432 | weighted bytes waiting for one app                             |
+| `totalBytes`            | 67_108_864 | weighted bytes waiting in the relay                            |
+| `maxBodyBytes`          | 16_384     | request body of every endpoint except `ablegen` and `klingeln` |
+| `maxBodyRing`           | 8_192      | request body of `klingeln`                                     |
+| `maxBodyDrop`           | 6_291_456  | request body of `ablegen`                                      |
+| `requestsPerMinute`     | 300        | requests per device and minute                                 |
+| `ringPerHour`           | 60         | rings per device and hour                                      |
+| `invitePerHour`         | 10         | invitations per device and hour                                |
+| `enrolProofPerHour`     | 120        | enrolments with a proof per app and hour                       |
+| `enrolInvitePerHour`    | 60         | enrolments with an invitation per app and hour                 |
+| `devicesPerApp`         | 50         | known devices per app (per group in revision 2)                |
+| `devicesTotal`          | 300        | known devices in all                                           |
+| `accessDays`            | 90         | lifetime of an access                                          |
+| `renewBelowDays`        | 30         | a client renews when fewer days remain                         |
+| `invitationSeconds`     | 600        | lifetime of an invitation                                      |
+| `proofMaxSeconds`       | 300        | longest lifetime of a proof ...                                |
+| `proofSkewSeconds`      | 60         | ... plus this much for clocks that differ                      |
+| `headTimeoutMs`         | 10_000     | time for the head of a request                                 |
+| `bodyTimeoutMs`         | 14_000     | time for the body                                              |
+| `requestTimeoutMs`      | 30_000     | time for the whole request                                     |
+| `certificateDays`       | 60         | revision 2: lifetime of a certificate                          |
+| `possessionSkewSeconds` | 120        | revision 2: largest difference of the signed time              |
+| `founderMaxSeconds`     | 3_600      | revision 2: longest lifetime of a founder ticket ...           |
+| `founderSkewSeconds`    | 60         | ... plus this much for clocks that differ                      |
+| `blocksPerHour`         | 30         | revision 2: blocks per device and hour                         |
+| `blocklistPerGroup`     | 500        | revision 2: blocked ids held per group                         |
+| `blockHoldDays`         | 90         | revision 2: how long a block is held                           |
+| `passwordTriesPerHour`  | 20         | revision 2: developer password tries per app and hour          |
+| `ringEndpointMax`       | 900        | longest push endpoint, characters                              |
+| `ringVapidMax`          | 1_024      | longest push authorisation header, characters                  |
+| `ringContentMax`        | 4_096      | longest encrypted push, bytes                                  |
+| `ringTtlMax`            | 86_400     | longest push TTL, seconds                                      |
 
 **Rate counters** are sliding windows over the relay's clock: the events of the last window length count;
 an event is refused when the count already equals the limit. They use only times, never content or targets.
@@ -584,6 +944,20 @@ device limits. When `reset` exists the runner calls it before every case.
   local connection. An answer that does arrive must match; the step counts as passed otherwise.
 - A `control` step member is `{ "advanceTime": ms }`, `{ "setLimits": {...} }` or `{ "setPushResult": ... }`.
 
+**Revision 2** has its own file, `tests/relay/conformance/cases-r2.json` (the same format; every case's `spec`
+begins `Revision 2`, every case needs `reset`, two need `limits`). Its fixture adds `developerKeys` (key pairs
+by name: `main` is the one the server holds the public half of, `other` a wrong one), `developerPasswords` (the
+passwords the server must hold: app, group, text, end, most uses, whether the group may have devices), `headers`
+(the two header names; for a server that spells them differently the caller changes this member) and, per app,
+`strictGroups`. More placeholders: `devicekey:NAME` (the raw public key of a key pair the runner made; the
+private half never leaves the runner), `certificate:APP:GROUP:DEVICE:ROLE:KEY:OFFSET:SECRET[:NAME]` and
+`invitation2:APP:GROUP:INVITER:ROLE:OFFSET:SECRET:NAME` (in a role `~` stands for `:`),
+`founder:APP:GROUP:OFFSET:DEVELOPERKEY:NAME` and `header:possession` or `header:version`. A request may carry
+`possession: { key, certificate, offset?, name?, signPath?, signBody? }` (the runner signs the request it sends,
+or another one, and adds the header; a `name` makes the value once and reuses it, a replay), and
+`version: N` (the version header). An expectation may add `headersInclude` (every token is in a list-valued
+header). The runner needs nothing from the server for any of it.
+
 `runConformance(baseUrl, fetch, { cases, control?, now?, only?, timeoutMs? })` returns per case `pass`,
 `fail` (with reasons) or `skip`. It is exported from `device-sync/conformance`. In this repository CI runs
 it against the in-memory reference server in `tests/relay/reference-server.ts`, which implements exactly
@@ -627,11 +1001,20 @@ open points 5, 6 and 12 below said "probable" or guessed; they now say what the 
 12 had guessed wrong). One difference is the
 real server's, not the document's: the wire word for "the relay is full" (open point 9).
 
+**Revision 2 against the real server (2026-11-22).** The 55 cases of `cases-r2.json` pass against the real
+server through the same harness (HTTP layer, checks, tokens, certificates, possession, counters and block list
+are the real code; apps, developer key and passwords from the fixture; header names read from the server's
+own source): 55 of 55, none skipped. The reference server passes the same cases and the runner fails eight
+broken variants of it. The package's client was run against the real server for revision 2 as well (see
+`tests/relay-real/admission.real.test.ts`). The cases were written from the interface document and the source,
+and the real server agreed with them without a change of the document; the points where the source and the
+interface document were silent are open points 15 to 25.
+
 What is still NOT verified: a PHP port (none exists yet), the real push services (the stand-in answers; the
 real server's own call to a push service was not exercised), a real browser (CORS is checked by headers, not
 by a browser), the deployed instance behind its CDN, the behaviour under real load and the overload answer
-`beschaeftigt` (not provoked), the server's restart behaviour, and the later admission revision (not part of
-version 1).
+`beschaeftigt` (not provoked), the server's restart behaviour, and, for revision 2, the restart behaviour,
+the expiry of a block after 90 days, the possession memory after a restart and the evaluation endpoint.
 
 ## Provenance of the rules
 
@@ -654,10 +1037,10 @@ without Node (decision pending there). Points 2, 3, 4 and 8 matter only for such
 to 7 apply to the existing one. Neither the written document nor the server source settles these; a server owner decides them, and until
 then a client and a conformance run MUST NOT rely on any particular answer.
 
-1. **Version negotiation.** There is no version header and no negotiation. How a later version 2 shares an
-   address with version 1, and whether a client may rely on the `v` member of `/gesund`, are undecided. The
-   members of the later admission revision in `/gesund` are optional here only because the existing servers
-   send them.
+1. **Version negotiation.** Version 1 has no version header and no negotiation. Revision 2 negotiates by the
+   members `v`, `faehigkeiten`, `verfahren` and an optional request header (see "Negotiation"); how a still
+   later revision shares the address `/v1` with these is undecided (a new path prefix is the likely answer),
+   and so is whether a client may rely on the members other than `v`.
 2. **A server without shared memory (for example PHP).** The protocol requires counters, single-use marks,
    mailboxes and presence to behave as if there were one process with shared state, and a message to be
    handed to at most one collect. How a stateless web server achieves this (a shared store, locks, one
@@ -707,13 +1090,63 @@ then a client and a conformance run MUST NOT rely on any particular answer.
     depends on it. The existing relay can also be
     given a previous secret (an environment variable) so that tokens signed with it stay valid until their end:
     a new secret then does not invalidate everything at once.
-13. **A later revision (admission).** The existing relay implements more than version 1: extra members of
-    `einschreiben` and `erneuern` (device key, role, mandant, passwords of founders), extra endpoints
-    (device list, blocking, evaluation), the invitation family `e2`, certificates `c1` and `g1` and a set of
-    error kinds that belong to them (role not allowed, device unknown, blocked list full, developer password
-    and possession proofs). None of this is part of version 1; a relay MUST answer a version-1 request exactly
-    as written here whatever it adds, and the conformance cases test only version-1 behaviour.
+13. **The admission revision.** The existing relay implements more than version 1: extra members of
+    `einschreiben` and `erneuern` (device key, role, group, passwords of founders), extra endpoints (device
+    list, blocking, evaluation), the invitation family `e2`, certificates `c1` and tickets `g1`, and the error
+    kinds that belong to them. It is written down as revision 2 above and its open points are listed after
+    this section (15 to 25). A relay MUST answer a version-1 request exactly as written for version 1 whatever
+    it adds; the cases of `cases.json` test only version 1 and pass against a relay of revision 2.
 14. **Corrected finding (for the record).** A comparison of this specification with the server found that the
     app named in a token is read before the signature is checked, so a foreign origin is refused with `herkunft`
     before the token is judged; a first automated reading that claimed the opposite was wrong (the pattern
     builds correctly).
+
+## Open points of revision 2
+
+For the owner of the existing relay servers. Like those of version 1 they are NOT decided here; until they are, a
+client and a conformance run MUST NOT rely on a particular answer. What this document does say about revision 2 is
+what the existing server does (read from its source and its written interface, and checked by 55 conformance
+cases against the running server, see "Verification against the existing relay").
+
+15. **Names of the two headers.** The existing servers name the possession header and the version header after
+    their own product (`x-<name>-signatur` and `x-<name>-p` in lower case, listed in their preflight answer), and
+    that name cannot be written in this public repository. This document proposes the neutral
+    `x-relay-signature` and `x-relay-protocol` (`DEFAULT_HEADER_NAMES`) and the client takes the two names as
+    configuration (`headers`), so it can talk to either. A server that accepts both, or whichever its owner
+    decides, makes a port possible. The conformance fixture names them too (`headers`).
+16. **Roles of the old ways are claims.** With a proof or an `e1` the device names its own role and the relay cannot
+    check it (the existing relay says so in its interface document). Such a device can invite devices of its own
+    role and block devices of that role and can be listed. In group `1` that is the case until `streng` is set. An
+    app that cannot accept it enrols by `e2` or `gruender`.
+17. **Blocks are RAM only.** A restart of the relay loses the list of blocks, the device list, the single-use marks
+    and the possession memory, so a block stands again only when it is reported again (hence the daily report).
+    After a restart an `lb:<id>` device cannot block a device of its role until the relay has seen that device
+    (`rolle-nicht-erlaubt`), while the office can. Whether a block must survive a restart (a dedicated store, or
+    signed blocks that need none) is not decided; neither is exactly when a block ends after 90 days (the existing
+    relay removes it at its next tidy-up, so not at a precise instant), which the cases do not pin.
+18. **Wire words reused or unused.** The hourly limit of `sperren` answers `zu-viele-einladungen` (429) in the
+    existing relay: a block limit with its own word would be clearer. `geraet-unbekannt` (404) is in the existing
+    relay's table of refusals and is never sent; a client treats it like `rolle-nicht-erlaubt` for the block plan.
+19. **Possession details.** (a) The relay remembers `(device, signature)` only until `t + 121` seconds and loses
+    it at a restart, so a recorded request can be replayed within its time window after a restart (the same
+    class as open point 3). (b) The relay checks the signature before the time, so a client with a wrong
+    clock sees `besitz-ungueltig` only for a bad signature and `besitz-zeit` only when the signature was good. (c) The
+    signed path is the request's path as the server sees it; a deployment that rewrites the path in front of
+    the relay breaks every signature. (d) No signature form beyond P1363 is accepted; a relay need not demand low-s.
+20. **What the answers say about the relay.** Whether `faehigkeiten` and `verfahren` are part of the contract, or
+    only `v`, and whether an answer to `ping` of an old access without the header may carry them (the existing
+    relay sends them only to a client that announces a revision); the list of abilities and of enrolment ways
+    is the existing relay's today (negotiation above).
+21. **Groups.** How many devices a group has, and how many groups an app has, derive from what the relay has seen
+    since its start, as in open point 9. The group name `standard` is refused (`^(?!standard$)`), the group of
+    everything issued before groups existed is `1`; both are decisions of the existing relay.
+22. **A ticket beside the certificate.** In group `1` an answer to a keyed enrolment still holds the old access. It
+    is meant for devices that migrate; whether a later revision drops it is not decided. A client ignores it.
+23. **Password storage.** The existing relay keeps scrypt hashes with an end time, a most number of uses and a flag
+    in an environment variable; a port may keep them anywhere. The reference server of this repository keeps the
+    text (it is a test server).
+24. **The evaluation endpoint** `auswertung`: a ticket `a1...` signed by the developer, no origin needed, counts
+    per group (`laufzeitS`, devices, new, old, blocked, `altLetzteVorS`, `streng`, intake figures). It is the
+    developer's tool, not a client call, and is not covered by the cases.
+25. **Further load protections** of the existing relay (bodies on the way, large bodies per minute) apply to
+    certificates as to accesses; a client treats the answers like any other 429 or 503.

@@ -1,4 +1,4 @@
-import type { Validators } from './types.ts';
+import type { RelayInvitationContext, Validators } from './types.ts';
 
 /** Default device id: `device-` and 32 lower-case hex digits (128 random bits). */
 export const DEVICE_ID = /^device-[0-9a-f]{32}$/;
@@ -7,6 +7,8 @@ export const DEVICE_NAME = /^[\p{L}\p{N} ._-]{1,40}$/u;
 /** Default role: starts with a lower-case letter, then up to 79 of `a-z 0-9 : _ -`. */
 export const ROLE = /^[a-z][a-z0-9:_-]{0,79}$/;
 const CONTROL = /\p{Cc}/u;
+/** The longest relay invitation text an invitation link carries (an `e2` is about 250 characters). */
+export const MAX_RELAY_INVITATION = 400;
 
 /** A new device id from 16 random bytes (the caller supplies the randomness). */
 export function newDeviceId(random: Uint8Array): string {
@@ -41,5 +43,13 @@ export function resolveValidators(given?: Partial<Validators>): Validators {
       false,
     ),
     privateRoles: safe(given?.privateRoles ?? (() => true), false),
+    relayInvitation: (s: string, context: RelayInvitationContext): boolean => {
+      if (typeof s !== 'string' || s.length === 0 || s.length > MAX_RELAY_INVITATION) return false;
+      try {
+        return (given?.relayInvitation ?? (() => false))(s, context) === true;
+      } catch {
+        return false;
+      }
+    },
   };
 }

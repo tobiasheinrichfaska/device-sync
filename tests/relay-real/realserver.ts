@@ -21,13 +21,26 @@ export interface RealServer {
 
 export const realPath = (): string | undefined => process.env['RELAY_REAL_PATH'];
 
-export async function startReal(): Promise<RealServer> {
+/** `fixture`: the case file whose fixture configures the server (`r2` = the admission revision's apps, developer key and passwords). */
+export async function startReal(fixture: 'v1' | 'r2' = 'v1'): Promise<RealServer> {
   const root = realPath();
   if (!root) throw new Error('set RELAY_REAL_PATH to the directory of the real relay server');
   const child: ChildProcess = spawn(
     process.execPath,
     [new URL('./harness.ts', import.meta.url).pathname],
-    { env: { ...process.env, RELAY_REAL_PATH: root }, stdio: ['ignore', 'pipe', 'inherit'] },
+    {
+      env: {
+        ...process.env,
+        RELAY_REAL_PATH: root,
+        ...(fixture === 'r2'
+          ? {
+              RELAY_REAL_CASES: new URL('../relay/conformance/cases-r2.json', import.meta.url)
+                .pathname,
+            }
+          : {}),
+      },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    },
   );
   const ports = await new Promise<{ relay: number; control: number }>((ok, fail) => {
     let text = '';

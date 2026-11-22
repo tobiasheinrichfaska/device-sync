@@ -12,6 +12,7 @@ export function realAppsJson(fixture: any): string {
           einladen: a.invitations,
           gesperrt: a.blockedDevices ?? [],
           mandanten: a.groups,
+          streng: a.strictGroups ?? [],
         },
       ]),
     ),

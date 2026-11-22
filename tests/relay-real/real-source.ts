@@ -32,3 +32,18 @@ export function envNames(root: string): { apps: string; secret: string } {
     throw new Error('cannot find the environment variable names in the start module');
   return { apps, secret };
 }
+
+/**
+ * The two request headers of revision 2 as the real server spells them, read from the preflight
+ * answer in its source (the names carry its own product name, which this public package does not write).
+ */
+export function realHeaderNames(root: string): { possession: string; version: string } {
+  const dir = join(root, 'src');
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.ts'))) {
+    const m = /'authorization, content-type, (x-[a-z]+-[a-z]+), (x-[a-z]+-[a-z]+)'/.exec(
+      readFileSync(join(dir, name), 'utf8'),
+    );
+    if (m?.[1] && m[2]) return { possession: m[1], version: m[2] };
+  }
+  throw new Error('cannot find the header names in the real server source');
+}

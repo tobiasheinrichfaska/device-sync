@@ -66,6 +66,17 @@ export const RELAY_KINDS: readonly RelayKind[] = [
   k('geraete-voll', 'devices-full', 409, 'refused'),
   k('aufnahme-geschlossen', 'admission-closed', 403, 'fatal'),
   k('intern', 'internal', 500, 'retry', 5_000),
+  // Revision 2 (admission), docs/relay-protocol.md "Revision 2".
+  k('besitz-fehlt', 'possession-missing', 401, 'fatal'),
+  k('besitz-ungueltig', 'possession-invalid', 401, 'fatal'),
+  k('besitz-zeit', 'possession-time', 401, 'fatal'),
+  k('rolle-nicht-erlaubt', 'role-not-allowed', 403, 'fatal'),
+  k('geraet-unbekannt', 'device-unknown', 404, 'fatal'),
+  k('sperrliste-voll', 'blocklist-full', 503, 'refused', 300_000),
+  k('entwickler-nicht-eingerichtet', 'developer-not-set-up', 403, 'fatal'),
+  k('entwickler-ungueltig', 'developer-invalid', 403, 'fatal'),
+  k('entwickler-abgelaufen', 'developer-expired', 403, 'fatal'),
+  k('entwickler-belegt', 'developer-group-taken', 403, 'fatal'),
   // Refusals of ONE recipient inside the 200 answer of a drop (nothing was stored for it).
   k('voll', 'storage-full', null, 'retry', 3_000),
   k('app-voll', 'app-full', null, 'retry', 3_000),
@@ -95,6 +106,10 @@ export const LOCAL_KINDS = {
   /** A gateway or proxy answered (408, 429, 5xx) without a protocol body. */
   unavailable: { class: 'retry', retryAfterMs: 5_000 },
   'no-credentials': { class: 'reenrol', retryAfterMs: null },
+  /** A certificate is stored but the device key that signs for it is missing, unusable or another key: the device is lost, enrol again. */
+  'key-missing': { class: 'reenrol', retryAfterMs: null },
+  /** This device was told it is blocked (the blocked mark is stored): it does not enrol itself back. Forget the mark to start again. */
+  'blocked-mark': { class: 'fatal', retryAfterMs: null },
   /** The credential store refused to read or write. */
   storage: { class: 'fatal', retryAfterMs: null },
   'bad-argument': { class: 'fatal', retryAfterMs: null },

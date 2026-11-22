@@ -33,11 +33,13 @@
       "types": "./dist/relay/conformance.d.ts",
       "import": "./dist/relay/conformance.js"
     },
-    "./conformance/cases.json": "./tests/relay/conformance/cases.json"
+    "./conformance/cases.json": "./tests/relay/conformance/cases.json",
+    "./conformance/cases-r2.json": "./tests/relay/conformance/cases-r2.json"
   },
   "files": [
     "dist",
     "tests/relay/conformance/cases.json",
+    "tests/relay/conformance/cases-r2.json",
     "docs/relay-protocol.md"
   ],
   "dependencies": {
