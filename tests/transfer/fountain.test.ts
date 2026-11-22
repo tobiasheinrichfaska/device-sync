@@ -365,6 +365,7 @@ describe('boundaries and limits', () => {
     v.setUint32(end, crcWithDomain(f.subarray(0, end)));
     expect(parseFrame(APP, f)).toEqual({ ok: false, reason: 'bad-blocks' });
     v.setUint32(11, L.payloadMax);
+    v.setUint16(9, 512);
     v.setUint32(end, crcWithDomain(f.subarray(0, end)));
     expect(parseFrame(APP, f).ok).toBe(true);
   });
