@@ -1,0 +1,5819 @@
+{
+  "format": "relay-conformance/1",
+  "fixture": {
+    "secrets": {
+      "main": "uo0siQbPucl1zSlB5eDA5Ep09tfkgHyEVY8lWU7UsmY",
+      "other": "NKvVRV5SyVCi5PEkanP0qIZoDFfHkzIRIUPHzV7Zbd4"
+    },
+    "proofKeys": {
+      "main": {
+        "publicRaw": "BNSMxkJEegzKuwF17nKfAuiXvAVNbfnVqWIcc59yzKES8Ky23O680HWMgtCiR-nU3TXycPeU6zxHFJ_lXoh1X5A",
+        "privateJwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "1IzGQkR6DMq7AXXucp8C6Je8BU1t-dWpYhxzn3LMoRI",
+          "y": "8Ky23O680HWMgtCiR-nU3TXycPeU6zxHFJ_lXoh1X5A",
+          "d": "4mJTp0frZRH4M3Mglt1s40rU72WjmrBt0cwtPxzh8Ww"
+        }
+      },
+      "other": {
+        "publicRaw": "BGp0YnIhOcqHkVheh-gfurto3EFXTUQsVPw5VxGaJ_QN7QGsVFugM5BC6okmP1QlxUjsCubXuWbJwE0JImz-Gh4",
+        "privateJwk": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "anRiciE5yoeRWF6H6B-6u2jcQVdNRCxU_DlXEZon9A0",
+          "y": "7QGsVFugM5BC6okmP1QlxUjsCubXuWbJwE0JImz-Gh4",
+          "d": "HSBRl7hIbPY1jKN40Xv7lGiHFDC5RdlnZbtNR1lliIk"
+        }
+      }
+    },
+    "developerKeys": {
+      "main": {
+        "publicRaw": "BIMQN1YIqrVnlU1JPEybqT8VpUQp_LYBYdz-nmDYdunPBdNC9y2ArAOwVNX3nyavl_FOLyDPp2-n6-3czcG_Lis",
+        "privateJwk": {
+          "kty": "EC",
+          "x": "gxA3VgiqtWeVTUk8TJupPxWlRCn8tgFh3P6eYNh26c8",
+          "y": "BdNC9y2ArAOwVNX3nyavl_FOLyDPp2-n6-3czcG_Lis",
+          "crv": "P-256",
+          "d": "M0cVtlcUakOJCbOYut9FMImWrW75_p4YBniiZD4C0CM"
+        }
+      },
+      "other": {
+        "publicRaw": "BH6XryzGzVxP3XoF59CaM3GyNFenMOB5VFD3Yf0HqY99UXFneG-P-z8ccKBenzwNsrdLRmqMX4q542nwE3P4L64",
+        "privateJwk": {
+          "kty": "EC",
+          "x": "fpevLMbNXE_degXn0JozcbI0V6cw4HlUUPdh_Qepj30",
+          "y": "UXFneG-P-z8ccKBenzwNsrdLRmqMX4q542nwE3P4L64",
+          "crv": "P-256",
+          "d": "B4kHxKCJ30hPsJumhbqbvFSFY71H59xt-1y3S7AuuVY"
+        }
+      }
+    },
+    "developerPasswords": [
+      {
+        "app": "multi",
+        "group": "2",
+        "password": "correct horse",
+        "until": 4102444800,
+        "max": 2,
+        "alsoWithDevices": false
+      },
+      {
+        "app": "multi",
+        "group": "3",
+        "password": "repeat horse",
+        "until": 4102444800,
+        "max": 2,
+        "alsoWithDevices": true
+      },
+      {
+        "app": "multi",
+        "group": "4",
+        "password": "old horse",
+        "until": 1000000000,
+        "max": 5,
+        "alsoWithDevices": false
+      }
+    ],
+    "headers": {
+      "possession": "x-relay-signature",
+      "version": "x-relay-protocol"
+    },
+    "apps": {
+      "alpha": {
+        "origins": ["https://alpha.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      },
+      "beta": {
+        "origins": ["https://beta.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      },
+      "gamma": {
+        "origins": ["https://gamma.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      },
+      "delta": {
+        "origins": ["https://delta.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      },
+      "nokey": {
+        "origins": ["https://nokey.example"],
+        "proofKey": null,
+        "invitations": true,
+        "groups": 1
+      },
+      "noinvite": {
+        "origins": ["https://noinvite.example"],
+        "proofKey": "main",
+        "invitations": false,
+        "groups": 1
+      },
+      "closed": {
+        "origins": ["https://closed.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 0
+      },
+      "full": {
+        "origins": ["https://full.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      },
+      "blocked": {
+        "origins": ["https://blocked.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1,
+        "blockedDevices": ["geraet-00000000000000000000000000000001"]
+      },
+      "multi": {
+        "origins": ["https://multi.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 3
+      },
+      "strict": {
+        "origins": ["https://strict.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 2,
+        "strictGroups": ["1"]
+      },
+      "solo": {
+        "origins": ["https://solo.example"],
+        "proofKey": "main",
+        "invitations": true,
+        "groups": 1
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "health names the revision, the abilities and the procedures",
+      "spec": "Revision 2 / negotiation",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": "/gesund",
+            "headers": {
+              "Origin": "https://alpha.example"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "ok": true,
+              "stand": {
+                "$type": "string",
+                "maxLength": 64
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              },
+              "app": "alpha",
+              "altAbgeschaltet": false,
+              "aufnahmeOffen": {
+                "$type": "boolean"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "health of an app whose group 1 is strict says the old access is off",
+      "spec": "Revision 2 / negotiation",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": "/gesund",
+            "headers": {
+              "Origin": "https://strict.example"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "ok": true,
+              "stand": {
+                "$type": "string",
+                "maxLength": 64
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              },
+              "app": "strict",
+              "altAbgeschaltet": true,
+              "aufnahmeOffen": {
+                "$type": "boolean"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the ping of an old access without the version header is answered as in version 1",
+      "spec": "Revision 2 / negotiation",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the ping of an old access that announces its revision also says what the relay can do",
+      "spec": "Revision 2 / negotiation",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "version": 2
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the preflight lists the two headers of revision 2",
+      "spec": "Revision 2 / transport",
+      "steps": [
+        {
+          "request": {
+            "method": "OPTIONS",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Access-Control-Request-Method": "POST"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "empty": true,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "headersInclude": {
+              "access-control-allow-headers": [
+                "authorization",
+                "content-type",
+                "{{header:possession}}",
+                "{{header:version}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "enrol with a proof and a key: a certificate for exactly that key, and in group 1 also the old access",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zugang": {
+                "$type": "string",
+                "pattern": "^z1\\.alpha\\.geraet-[0-9a-f]{32}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          },
+          "capture": {
+            "c": "/zertifikat"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{var:c}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "ohne",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a role named with a proof is in the certificate",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "lb:art"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "lb:art",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zugang": {
+                "$type": "string",
+                "pattern": "^z1\\.alpha\\.geraet-[0-9a-f]{32}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a role is refused with an invitation e2, a founder ticket and a password; a malformed role everywhere",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "role with e2",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:lb~art:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "lb:art"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "role with founder",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:main:f1}}",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "buero"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "role with password",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "app": "multi",
+                "mandant": "2",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "buero"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "malformed role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "Buero"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "empty lb id",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "lb:"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a key that is not a canonical P-256 point is refused as unreadable, and nothing is used up",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "not on the curve",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "too short",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "not text",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": 5
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "the same proof still works",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zugang": {
+                "$type": "string",
+                "pattern": "^z1\\.alpha\\.geraet-[0-9a-f]{32}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation e2 gives the group and the role it names; outside group 1 only a certificate",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:lb~art:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.lb:art\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "lb:art",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation e2 works once",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 409,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "verbraucht"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation e2 of a blocked inviter is invalid",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://blocked.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:blocked:1:geraet-00000000000000000000000000000001:ohne:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://blocked.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "einladung-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation e2: time, MAC and the app named",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "more than 600 s ahead",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:700:main:late}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "einladung-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "in the past",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:-5:main:old}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "einladung-abgelaufen"
+            }
+          }
+        },
+        {
+          "name": "wrong MAC",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:600:other:forged}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "einladung-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "another app's invitation from this origin",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:beta:1:inv:ohne:600:main:foreign}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": null
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "herkunft"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation e2 for a group other than 1 needs the key",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:600:main:i1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "the same invitation then works with a key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:multi:2:inv:ohne:600:main:i1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a founder ticket makes the first device of a group, role office; it needs the key and works once",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "no key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:main:f1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "with the key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:main:f1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.buero\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "buero",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "again",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:main:f1}}",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 409,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "verbraucht"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a founder ticket: signature, time and origin",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "signed with another key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:other:bad}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "in the past",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:-5:main:old}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-abgelaufen"
+            }
+          }
+        },
+        {
+          "name": "more than an hour ahead",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:4000:main:far}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-abgelaufen"
+            }
+          }
+        },
+        {
+          "name": "another app's ticket from this origin",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:beta:2:600:main:foreign}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": null
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "herkunft"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a developer password makes the first device of a group while the group has no device",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "first use",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "app": "multi",
+                "mandant": "2",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.buero\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "buero",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "the group already has a device",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "app": "multi",
+                "mandant": "2",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-belegt"
+            }
+          }
+        },
+        {
+          "name": "wrong password",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "wrong horse",
+                "app": "multi",
+                "mandant": "2",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a developer password has a count and an end",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "first",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "repeat horse",
+                "app": "multi",
+                "mandant": "3",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.3\\.geraet-[0-9a-f]{32}\\.buero\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "3",
+              "rolle": "buero",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "second",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "repeat horse",
+                "app": "multi",
+                "mandant": "3",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.3\\.geraet-[0-9a-f]{32}\\.buero\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "3",
+              "rolle": "buero",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "used up",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "repeat horse",
+                "app": "multi",
+                "mandant": "3",
+                "geraetSchluessel": "{{devicekey:k3}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-abgelaufen"
+            }
+          }
+        },
+        {
+          "name": "ended",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "old horse",
+                "app": "multi",
+                "mandant": "4",
+                "geraetSchluessel": "{{devicekey:k4}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "entwickler-abgelaufen"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a developer password needs app, group and key and takes no role",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "no app and group",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "no key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "app": "multi",
+                "mandant": "2"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "the group `standard` does not exist",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "passwort": "correct horse",
+                "app": "multi",
+                "mandant": "standard",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "app only belongs to the password",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:multi:120:main:p1}}",
+                "app": "multi",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an app takes at most as many groups as it may open",
+      "spec": "Revision 2 / enrol",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "group 1",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://solo.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:solo:120:main:p1}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://solo.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.solo\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zugang": {
+                "$type": "string",
+                "pattern": "^z1\\.solo\\.geraet-[0-9a-f]{32}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "a second group",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://solo.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:solo:2:600:main:f1}}",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://solo.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "aufnahme-geschlossen"
+            }
+          }
+        },
+        {
+          "name": "an app with three groups takes group 2",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "gruender": "{{founder:multi:2:600:main:f2}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.multi\\.2\\.geraet-[0-9a-f]{32}\\.buero\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "2",
+              "rolle": "buero",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a strict group refuses the old ways with `neue-fassung-noetig` and takes a certificate by invitation",
+      "spec": "Revision 2 / strict",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "proof without key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://strict.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:strict:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 426,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "neue-fassung-noetig"
+            }
+          }
+        },
+        {
+          "name": "proof with key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://strict.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:strict:120:main:p2}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 426,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "neue-fassung-noetig"
+            }
+          }
+        },
+        {
+          "name": "e2 without key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://strict.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:strict:1:inv:ohne:600:main:i1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "e2 with key: a certificate and no old access",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://strict.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{invitation2:strict:1:inv:ohne:600:main:i2}}",
+                "geraetSchluessel": "{{devicekey:k1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.strict\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "ohne",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an old access in a strict group is refused on every request",
+      "spec": "Revision 2 / strict",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://strict.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{access:strict:d1:86400:main}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 426,
+            "headers": {
+              "access-control-allow-origin": "https://strict.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "neue-fassung-noetig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a request with a certificate needs the possession header",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-fehlt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a possession header that is not `<t>.<signature>` is invalid",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "no dot",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "{{header:possession}}": "abc"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "short signature, time zero",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "{{header:possession}}": "0.AAAA"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "a signature of the right length that does not verify",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "{{header:possession}}": "1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a valid possession header is accepted; the same signature is taken once",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "first",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "name": "s1"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "buero",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "replayed",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "name": "s1"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "a fresh signature of the same request",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "buero",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a signature made with another key than the certificate's is invalid",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a signature for another body or another path is invalid",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "body",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "signBody": "{\"x\":1}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "path",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "signPath": "/v1/abholen"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a signature is bound to its certificate",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c1}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dB:buero:k1:86400:main:c2}}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the signed time may differ from the relay's clock by 120 seconds",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "100 s ahead",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "offset": 100
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "buero",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "100 s behind",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "offset": -100
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "buero",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        },
+        {
+          "name": "140 s ahead",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "offset": 140
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-zeit"
+            }
+          }
+        },
+        {
+          "name": "140 s behind",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}",
+              "offset": -140
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-zeit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the possession is judged before the body is read as JSON",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "bad signature, bad JSON",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "text": "{"
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "besitz-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "good signature, bad JSON",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "text": "{"
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an expired certificate is refused before its proof is looked at",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:-10:main:c}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "zugang-abgelaufen"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a certificate with a wrong MAC is invalid, a malformed one too",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "wrong MAC",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:other:c}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "zugang-ungueltig"
+            }
+          }
+        },
+        {
+          "name": "malformed",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer c1.alpha.1.nonsense"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 401,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "zugang-ungueltig"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a certificate of another app is refused without CORS",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:beta:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": null
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "herkunft"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a certificate of a blocked device is refused with `gesperrt` before its proof",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://blocked.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:blocked:1:geraet-00000000000000000000000000000001:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://blocked.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a drop and a collect work with certificates",
+      "spec": "Revision 2 / possession",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ablegen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:ca}}"
+            },
+            "body": {
+              "json": {
+                "an": [
+                  {
+                    "geraet": "{{device:dB}}",
+                    "inhalt": "AQID"
+                  }
+                ]
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:ca}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "ergebnisse": [
+                {
+                  "geraet": "{{device:dB}}",
+                  "ok": true,
+                  "anwesend": {
+                    "$type": "boolean"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/abholen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dB:ohne:k2:86400:main:cb}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dB:ohne:k2:86400:main:cb}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "nachrichten": [
+                {
+                  "von": "{{device:dA}}",
+                  "inhalt": "AQID",
+                  "alterMs": {
+                    "$type": "integer",
+                    "min": 0,
+                    "max": 30000
+                  }
+                }
+              ],
+              "anwesend": [],
+              "mehr": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a certificate renews itself: same key, group and role",
+      "spec": "Revision 2 / renew",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:lb~art:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:lb~art:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a certificate cannot name a key or a role when it renews",
+      "spec": "Revision 2 / renew",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an old access renewed with a key becomes a certificate",
+      "spec": "Revision 2 / renew",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {
+                "geraetSchluessel": "{{devicekey:k1}}",
+                "rolle": "lb:art"
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "lb:art",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          },
+          "capture": {
+            "c": "/zertifikat"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{var:c}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "mandant": "1",
+              "rolle": "lb:art",
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an old access renewed with a role but no key, or a bad key, is unreadable",
+      "spec": "Revision 2 / renew",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang"
+          }
+        },
+        {
+          "name": "role without key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "buero"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "bad key",
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {
+                "geraetSchluessel": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "plain renewal as in version 1",
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the office invites: an e2 with its group, the role it chooses, none by default",
+      "spec": "Revision 2 / invite",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "default",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "name": "a member's role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "lb:art"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "name": "the office",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "buero"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.buero\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "name": "malformed role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "Buero"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a device of a member's role invites only its own role; a device without role nobody",
+      "spec": "Revision 2 / invite",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "default is its own",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "name": "its own",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "lb:art"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "name": "the office",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "buero"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "name": "another member",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "lb:other"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:lb~art:k1:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "name": "a device without role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an old access invites as in version 1 and names no role",
+      "spec": "Revision 2 / invite",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e1\\.alpha\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "buero"
+              }
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation a device made is taken by the new device with the role the inviter chose",
+      "spec": "Revision 2 / invite",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            },
+            "body": {
+              "json": {
+                "rolle": "lb:art"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dA:buero:k1:86400:main:c}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          },
+          "capture": {
+            "i": "/einladung"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{var:i}}",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zertifikat": {
+                "$type": "string",
+                "pattern": "^c1\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.lb:art\\.[A-Za-z0-9_-]{87}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "mandant": "1",
+              "rolle": "lb:art",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "zugang": {
+                "$type": "string",
+                "pattern": "^z1\\.alpha\\.geraet-[0-9a-f]{32}\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "v": {
+                "$type": "integer",
+                "min": 2,
+                "max": 99
+              },
+              "faehigkeiten": {
+                "$type": "array"
+              },
+              "verfahren": {
+                "angeboten": ["zugang", "zertifikat"],
+                "bevorzugt": "zertifikat",
+                "einschreiben": ["nachweis", "einladung", "einladung2", "gruender", "passwort"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the device list: the office sees its group, a member's device its role, others only themselves",
+      "spec": "Revision 2 / devices",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "version": 2
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k2:86400:main:l}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k2:86400:main:l}}"
+            },
+            "version": 2
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dN:ohne:k3:86400:main:n}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dN:ohne:k3:86400:main:n}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "name": "the office",
+          "request": {
+            "method": "POST",
+            "path": "/v1/geraete",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraete": {
+                "$type": "array",
+                "length": 3
+              },
+              "hoechstens": 50
+            }
+          }
+        },
+        {
+          "name": "a member's device",
+          "request": {
+            "method": "POST",
+            "path": "/v1/geraete",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k2:86400:main:l}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k2:86400:main:l}}"
+            },
+            "version": 2
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraete": [
+                {
+                  "geraet": "{{device:dL}}",
+                  "rolle": "lb:art",
+                  "von": "alt",
+                  "seit": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "zuletzt": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "verfahren": "neu",
+                  "p": 2
+                }
+              ],
+              "hoechstens": 50
+            }
+          }
+        },
+        {
+          "name": "a device without role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/geraete",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dN:ohne:k3:86400:main:n}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dN:ohne:k3:86400:main:n}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraete": [
+                {
+                  "geraet": "{{device:dN}}",
+                  "rolle": "ohne",
+                  "von": "alt",
+                  "seit": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "zuletzt": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "verfahren": "neu"
+                }
+              ],
+              "hoechstens": 50
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the device list shows only the group of the certificate",
+      "spec": "Revision 2 / devices",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:2:dA:buero:k1:86400:main:a}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:multi:2:dA:buero:k1:86400:main:a}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:3:dB:buero:k2:86400:main:b}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:multi:3:dB:buero:k2:86400:main:b}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/geraete",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:2:dA:buero:k1:86400:main:a}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:multi:2:dA:buero:k1:86400:main:a}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraete": [
+                {
+                  "geraet": "{{device:dA}}",
+                  "rolle": "buero",
+                  "von": "alt",
+                  "seit": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "zuletzt": {
+                    "$type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                  },
+                  "verfahren": "neu"
+                }
+              ],
+              "hoechstens": 50
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the device list and blocking need a certificate",
+      "spec": "Revision 2 / devices",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang",
+            "id": "/geraet"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/geraete",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{var:id}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the office blocks a device of its group: it is refused on every request afterwards",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dT}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:dT}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "with proof",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        },
+        {
+          "name": "without proof: the block comes first",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        },
+        {
+          "name": "collect",
+          "request": {
+            "method": "POST",
+            "path": "/v1/abholen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        },
+        {
+          "name": "no renewal",
+          "request": {
+            "method": "POST",
+            "path": "/v1/erneuern",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dT:lb~art:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a block also holds for a device on an old access, and for no other device",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p1}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t": "/zugang",
+            "id": "/geraet"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "nachweis": "{{proof:alpha:120:main:p2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "zugang": {
+                "$type": "string"
+              },
+              "bis": {
+                "$type": "string"
+              }
+            }
+          },
+          "capture": {
+            "t2": "/zugang"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{var:id}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "the blocked one",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        },
+        {
+          "name": "another device",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{var:t2}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": {
+                "$type": "string",
+                "pattern": "^geraet-[0-9a-f]{32}$"
+              },
+              "app": "alpha",
+              "bis": {
+                "$type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a block is for the group of the blocker",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:3:dT:buero:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:multi:3:dT:buero:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "name": "blocking the id in group 2",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:2:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dT}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:multi:2:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "geraet": "{{device:dT}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "the device of group 3 is not blocked",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://multi.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:multi:3:dT:buero:k2:86400:main:t}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:multi:3:dT:buero:k2:86400:main:t}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://multi.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a member's device blocks only devices of its own role, and itself",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dM:lb~art:k2:86400:main:m}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dM:lb~art:k2:86400:main:m}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "name": "an office device",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dO}}"
+              }
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "name": "a device the relay does not know",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dUnknown}}"
+              }
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "name": "a device of its role",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dM}}"
+              }
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:dM}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "itself",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dL}}"
+              }
+            },
+            "possession": {
+              "key": "k3",
+              "certificate": "{{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:dL}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "and then it is refused",
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dL:lb~art:k3:86400:main:l}}"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "gesperrt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "every device may block itself, a device without role nobody else",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/ping",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "$open": true
+            }
+          }
+        },
+        {
+          "name": "another",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dO}}"
+              }
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "rolle-nicht-erlaubt"
+            }
+          }
+        },
+        {
+          "name": "itself",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dN}}"
+              }
+            },
+            "possession": {
+              "key": "k2",
+              "certificate": "{{certificate:alpha:1:dN:ohne:k2:86400:main:n}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:dN}}",
+              "gesperrt": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a block request must name exactly one well-formed device id",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "name": "malformed id",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "geraet-xyz"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "another member",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dT}}",
+                "grund": "x"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        },
+        {
+          "name": "no id",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "unlesbar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the list of blocks of a group is bounded",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset", "limits"],
+      "steps": [
+        {
+          "control": {
+            "setLimits": {
+              "blocklistPerGroup": 2
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d1}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:d1}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d2}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:d2}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "the same again is no new entry",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d1}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:d1}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "name": "a third",
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d3}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 503,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "sperrliste-voll"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a device may block only so often per hour",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset", "limits"],
+      "steps": [
+        {
+          "control": {
+            "setLimits": {
+              "blocksPerHour": 2
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d1}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:d1}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d2}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:d2}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:d3}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 429,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "zu-viele-einladungen"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invitation of an inviter that was blocked is no longer valid",
+      "spec": "Revision 2 / blocking",
+      "needs": ["reset"],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einladen",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {}
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "einladung": {
+                "$type": "string",
+                "pattern": "^e2\\.alpha\\.1\\.geraet-[0-9a-f]{32}\\.ohne\\.[1-9][0-9]{0,11}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}$"
+              },
+              "gueltigS": 600
+            }
+          },
+          "capture": {
+            "i": "/einladung"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sperren",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            },
+            "body": {
+              "json": {
+                "geraet": "{{device:dO}}"
+              }
+            },
+            "possession": {
+              "key": "k1",
+              "certificate": "{{certificate:alpha:1:dO:buero:k1:86400:main:o}}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "geraet": "{{device:dO}}",
+              "gesperrt": true
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/einschreiben",
+            "headers": {
+              "Origin": "https://alpha.example",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "json": {
+                "einladung": "{{var:i}}",
+                "geraetSchluessel": "{{devicekey:k2}}"
+              }
+            }
+          },
+          "expect": {
+            "status": 403,
+            "headers": {
+              "access-control-allow-origin": "https://alpha.example"
+            },
+            "body": {
+              "fehler": {
+                "$type": "string",
+                "maxLength": 200
+              },
+              "art": "einladung-ungueltig"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

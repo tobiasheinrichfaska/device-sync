@@ -965,7 +965,11 @@ describe('polling', () => {
     );
     await flaky.client.poll(() => undefined, { signal: controller.signal });
     expect(waits.slice(0, 3)).toEqual([2_000, 4_000, 8_000]);
-    const fatal = harness({ store: base.store, maxAttempts: 1 }, base.server, () =>
+    // `gesperrt` makes the client store the blocked mark in its store: the device that learns it
+    // is blocked gets a store of its own here, so the expired-access check below still has its access.
+    const blockedStore = memoryStore();
+    blockedStore.value = base.store.value;
+    const fatal = harness({ store: blockedStore, maxAttempts: 1 }, base.server, () =>
       errorFetch(403, 'gesperrt'),
     );
     const stop = await fatal.client.poll(() => undefined, { signal: new AbortController().signal });

@@ -16,12 +16,14 @@ import { loadCore, loadModule } from './real-source.ts';
 
 const root = process.env['RELAY_REAL_PATH'];
 if (!root) throw new Error('RELAY_REAL_PATH is not set');
-const [{ serverAnlegen }, { appsLesen }, { GRENZEN }, core] = await Promise.all([
-  loadModule(root, 'http'),
-  loadModule(root, 'konfiguration'),
-  loadModule(root, 'grenzen'),
-  loadCore(root),
-]);
+const [{ serverAnlegen }, { appsLesen, entwicklerLesen }, { GRENZEN }, zulassung, core] =
+  await Promise.all([
+    loadModule(root, 'http'),
+    loadModule(root, 'konfiguration'),
+    loadModule(root, 'grenzen'),
+    loadModule(root, 'zulassung'),
+    loadCore(root),
+  ]);
 
 const fixture = JSON.parse(
   readFileSync(
@@ -29,6 +31,23 @@ const fixture = JSON.parse(
     'utf8',
   ),
 ).fixture;
+
+// The developer's public key and passwords of revision 2 (the real server holds scrypt hashes of the passwords).
+const entwickler = entwicklerLesen(
+  fixture.developerKeys?.main?.publicRaw,
+  fixture.developerPasswords
+    ? JSON.stringify(
+        fixture.developerPasswords.map((p: any) => ({
+          app: p.app,
+          mandant: p.group,
+          hash: zulassung.passwortHash(p.password),
+          bis: p.until,
+          hoechstens: p.max,
+          auchMitGeraeten: p.alsoWithDevices === true,
+        })),
+      )
+    : undefined,
+);
 
 const appsText = realAppsJson(fixture);
 const apps = appsLesen(appsText);
@@ -55,6 +74,9 @@ const LIMIT_NAMES: Record<string, string> = {
   enrolInvitePerHour: 'einschreibenEinladungJeStunde',
   devicesPerApp: 'geraeteJeMandant',
   devicesTotal: 'geraeteGesamt',
+  blocksPerHour: 'sperrenJeStunde',
+  blocklistPerGroup: 'sperrlisteJeMandant',
+  passwordTriesPerHour: 'passwortVersucheJeStunde',
 };
 
 let offsetMs = 0;
@@ -68,6 +90,8 @@ const COUNTERS = new Set([
   'einladenJeStunde',
   'einschreibenJeStunde',
   'einschreibenEinladungJeStunde',
+  'sperrenJeStunde',
+  'passwortVersucheJeStunde',
 ]);
 let pushResult: number | 'unreachable' = 201;
 const pushes: unknown[] = [];
@@ -79,6 +103,7 @@ const build = (): any =>
   core.create({
     schluessel,
     apps,
+    entwickler,
     jetzt: now,
     takt: clock,
     stand: 'a'.repeat(40),

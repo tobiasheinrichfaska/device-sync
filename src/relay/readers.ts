@@ -3,20 +3,19 @@
 // protocol, a member of the wrong type, a text that is not canonical base64url where the protocol
 // says so, a duplicate key or a size over the documented limit makes the whole answer unreadable.
 // What a hostile or buggy relay can make a client allocate is bounded by RELAY_LIMITS.
-import { hasDuplicateKeys } from '../core/json.ts';
-import { decodeUtf8, isPlain, parseJson, readBytes } from '../core/secure.ts';
+import { decodeUtf8, isPlain, readBytes } from '../core/secure.ts';
+import { readInfo, readInvitationR2, type Procedures, readCertificate } from './admission.ts';
 import { DROP_REFUSAL_TOKENS } from './kinds.ts';
 import { RELAY_LIMITS } from './limits.ts';
+import { isCalendarDay, isDevice, isInt, members, object } from './strict.ts';
 
-export const RELAY_DEVICE_ID = /^geraet-[0-9a-f]{32}$/;
+export { isCalendarDay, RELAY_DEVICE_ID } from './strict.ts';
 const APP_ID = /^[a-z][a-z0-9]{1,15}$/;
 const ACCESS =
   /^z1\.([a-z][a-z0-9]{1,15})\.(geraet-[0-9a-f]{32})\.([1-9][0-9]{0,11})\.([A-Za-z0-9_-]{43})$/;
 const INVITATION =
   /^e1\.([a-z][a-z0-9]{1,15})\.([1-9][0-9]{0,11})\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{43})$/;
-const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const WORD = /^[a-z][a-z-]{1,39}$/;
-const SHORT_WORD = /^[a-z0-9-]{1,30}$/;
 const MAX_MESSAGE_TEXT = 200;
 
 /** Most characters of a collect answer: every possible message in base64url plus the framing. */
@@ -24,46 +23,6 @@ export const MAX_COLLECT_TEXT =
   Math.ceil((RELAY_LIMITS.collectBytes * 4) / 3) + RELAY_LIMITS.mailboxMessages * 200 + 2_000;
 /** Most characters of every other answer. */
 export const MAX_SMALL_TEXT = 20_000;
-
-/** A JSON object from text, once: bounded, no duplicate key, plain. */
-function object(text: unknown, maxChars: number): Record<string, unknown> | undefined {
-  if (typeof text !== 'string' || text.length > maxChars) return undefined;
-  const value = parseJson(text);
-  if (!isPlain(value)) return undefined;
-  try {
-    if (hasDuplicateKeys(text)) return undefined;
-  } catch {
-    return undefined;
-  }
-  return value;
-}
-
-/** Every key is allowed, every required key is there. */
-function members(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = [],
-): boolean {
-  const keys = Object.keys(value);
-  return (
-    keys.every((key) => required.includes(key) || optional.includes(key)) &&
-    required.every((key) => keys.includes(key))
-  );
-}
-
-const isDevice = (v: unknown): v is string => typeof v === 'string' && RELAY_DEVICE_ID.test(v);
-const isInt = (v: unknown, min: number, max: number): v is number =>
-  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
-
-/** A calendar day `YYYY-MM-DD` that exists. */
-export function isCalendarDay(v: unknown): v is string {
-  if (typeof v !== 'string') return false;
-  const m = DAY.exec(v);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = new Date(Date.UTC(y, mo - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
-}
 
 /** An access `z1.<app>.<device>.<end>.<mac>`: its parts, or undefined (the MAC must be canonical). */
 export function readAccess(
@@ -120,7 +79,7 @@ export function readRenewAnswer(
   return { access: zugang, until: bis };
 }
 
-/** Answer of `ping` (200): `{ geraet, app, bis }`. */
+/** Answer of `ping` (200) in version 1: `{ geraet, app, bis }`, the device and app of the access and its end day. */
 export function readPingAnswer(
   text: unknown,
 ): { readonly device: string; readonly app: string; readonly until: string } | undefined {
@@ -133,17 +92,35 @@ export function readPingAnswer(
   return { device: geraet, app, until: bis };
 }
 
-/** Answer of `einladen` (201): `{ einladung, gueltigS }`, an invitation for this app. */
-export function readInviteAnswer(
-  text: unknown,
-  appId: string,
-): { readonly invitation: string; readonly validForS: number } | undefined {
+export interface InviteAnswer {
+  readonly invitation: string;
+  readonly validForS: number;
+  /** Revision 2 (`e2`): the group, the inviting device and the role the invited device gets. */
+  readonly group?: string;
+  readonly inviter?: string;
+  readonly role?: string;
+}
+
+/** Answer of `einladen` (201): `{ einladung, gueltigS }`, an invitation `e1` or (revision 2) `e2` for this app. */
+export function readInviteAnswer(text: unknown, appId: string): InviteAnswer | undefined {
   const o = object(text, MAX_SMALL_TEXT);
   if (!o || !members(o, ['einladung', 'gueltigS'])) return undefined;
   const { einladung, gueltigS } = o;
+  if (!isInt(gueltigS, 1, 3_600) || typeof einladung !== 'string') return undefined;
+  if (einladung.startsWith('e2.')) {
+    const e = readInvitationR2(einladung);
+    if (!e || e.app !== appId) return undefined;
+    return {
+      invitation: einladung,
+      validForS: gueltigS,
+      group: e.group,
+      inviter: e.inviter,
+      role: e.role,
+    };
+  }
   const inv = readInvitation(einladung);
-  if (!inv || inv.app !== appId || !isInt(gueltigS, 1, 3_600)) return undefined;
-  return { invitation: einladung as string, validForS: gueltigS };
+  if (!inv || inv.app !== appId) return undefined;
+  return { invitation: einladung, validForS: gueltigS };
 }
 
 // ── drop ──────────────────────────────────────────────────────────────────────────────────────────
@@ -276,7 +253,11 @@ export interface HealthAnswer {
   /** Revision members, present when the relay is of the later admission revision. */
   readonly revision?: number;
   readonly abilities?: readonly string[];
+  /** The techniques the relay serves and prefers (for the first group when no app is known). */
+  readonly procedures?: Procedures;
   readonly app?: string;
+  /** True: the old access is switched off for the first group of this app (`altAbgeschaltet`). */
+  readonly oldOff?: boolean;
   readonly adminOpen?: boolean;
 }
 
@@ -289,35 +270,24 @@ export function readHealthAnswer(text: unknown): HealthAnswer | undefined {
   const o = object(text, MAX_SMALL_TEXT);
   const optional = ['v', 'faehigkeiten', 'verfahren', 'app', 'altAbgeschaltet', 'aufnahmeOffen'];
   if (!o || !members(o, ['ok', 'stand'], optional) || o['ok'] !== true) return undefined;
-  const { stand, v, faehigkeiten, verfahren, app, altAbgeschaltet, aufnahmeOffen } = o;
+  const { stand, app, altAbgeschaltet, aufnahmeOffen } = o;
   if (typeof stand !== 'string' || stand.length < 1 || stand.length > 64) return undefined;
-  if (v !== undefined && !isInt(v, 1, 99)) return undefined;
-  let abilities: string[] | undefined;
-  if (faehigkeiten !== undefined) {
-    if (!Array.isArray(faehigkeiten) || faehigkeiten.length > 20) return undefined;
-    if (!faehigkeiten.every((a) => typeof a === 'string' && SHORT_WORD.test(a))) return undefined;
-    abilities = [...(faehigkeiten as string[])];
-  }
-  if (verfahren !== undefined) {
-    if (!isPlain(verfahren) || !members(verfahren, ['angeboten', 'bevorzugt', 'einschreiben'])) {
-      return undefined;
-    }
-    const { angeboten, bevorzugt, einschreiben } = verfahren;
-    const words = (x: unknown): boolean =>
-      Array.isArray(x) &&
-      x.length <= 10 &&
-      x.every((w) => typeof w === 'string' && SHORT_WORD.test(w));
-    if (!words(angeboten) || !words(einschreiben)) return undefined;
-    if (typeof bevorzugt !== 'string' || !SHORT_WORD.test(bevorzugt)) return undefined;
-  }
+  const info = readInfo(o);
+  if (info === null) return undefined;
   if (app !== undefined && (typeof app !== 'string' || !APP_ID.test(app))) return undefined;
   if (altAbgeschaltet !== undefined && typeof altAbgeschaltet !== 'boolean') return undefined;
   if (aufnahmeOffen !== undefined && typeof aufnahmeOffen !== 'boolean') return undefined;
   return {
     commit: stand,
-    ...(v === undefined ? {} : { revision: v }),
-    ...(abilities === undefined ? {} : { abilities }),
+    ...(info === undefined
+      ? {}
+      : {
+          revision: info.revision,
+          abilities: info.abilities,
+          ...(info.procedures ? { procedures: info.procedures } : {}),
+        }),
     ...(app === undefined ? {} : { app }),
+    ...(altAbgeschaltet === undefined ? {} : { oldOff: altAbgeschaltet }),
     ...(aufnahmeOffen === undefined ? {} : { adminOpen: aufnahmeOffen }),
   };
 }
@@ -325,25 +295,81 @@ export function readHealthAnswer(text: unknown): HealthAnswer | undefined {
 // ── stored credentials ────────────────────────────────────────────────────────────────────────────
 
 export interface StoredCredentials {
+  /** This device's id at the relay. */
   readonly device: string;
+  /** What the requests carry as Bearer: the access `z1...` or, in revision 2, the certificate `c1...`. */
   readonly access: string;
+  /** End day `YYYY-MM-DD` of the access or certificate. */
   readonly until: string;
+  /** Certificate only: the group and the role in it. */
+  readonly group?: string;
+  readonly role?: string;
 }
 
-/** The text the client keeps in its credential store: `{"v":1,"device":…,"access":…,"until":…}`. */
+/** What the credential store holds: credentials, or the mark that this device was told it is blocked. */
+export type StoredState =
+  | { readonly kind: 'credentials'; readonly credentials: StoredCredentials }
+  | { readonly kind: 'blocked'; readonly device: string; readonly day: string };
+
+/** The text the client keeps in its credential store: `{"v":1,...}` for an access, `{"v":2,...}` for a certificate. */
 export function writeStoredCredentials(c: StoredCredentials): string {
+  if (c.group !== undefined && c.role !== undefined) {
+    return JSON.stringify({
+      v: 2,
+      device: c.device,
+      access: c.access,
+      until: c.until,
+      group: c.group,
+      role: c.role,
+    });
+  }
   return JSON.stringify({ v: 1, device: c.device, access: c.access, until: c.until });
 }
 
-/** Strict reader of the stored text; the access must name this app and the stored device. */
+/** The text that replaces the credentials once the relay said this device is blocked. */
+export function writeBlockedMark(device: string, day: string): string {
+  return JSON.stringify({ v: 2, blocked: device, day });
+}
+
+/**
+ * Strict reader of the stored text; the access must name this app and the stored device. A
+ * certificate must also agree with the stored group, role and end day.
+ */
 export function readStoredCredentials(text: unknown, appId: string): StoredCredentials | undefined {
+  const s = readStoredState(text, appId);
+  return s?.kind === 'credentials' ? s.credentials : undefined;
+}
+
+/** Strict reader of everything the store may hold. */
+export function readStoredState(text: unknown, appId: string): StoredState | undefined {
   const o = object(text, 2_000);
-  if (!o || !members(o, ['v', 'device', 'access', 'until']) || o['v'] !== 1) return undefined;
-  const { device, access, until } = o;
-  if (!isDevice(device) || !isCalendarDay(until) || typeof access !== 'string') return undefined;
-  const a = readAccess(access);
-  if (!a || a.app !== appId || a.device !== device) return undefined;
-  return { device, access, until };
+  if (!o) return undefined;
+  if (o['v'] === 2 && 'blocked' in o) {
+    if (!members(o, ['v', 'blocked', 'day'])) return undefined;
+    if (!isDevice(o['blocked']) || !isCalendarDay(o['day'])) return undefined;
+    return { kind: 'blocked', device: o['blocked'], day: o['day'] };
+  }
+  if (o['v'] === 1) {
+    if (!members(o, ['v', 'device', 'access', 'until'])) return undefined;
+    const { device, access, until } = o;
+    if (!isDevice(device) || !isCalendarDay(until) || typeof access !== 'string') return undefined;
+    const a = readAccess(access);
+    if (!a || a.app !== appId || a.device !== device) return undefined;
+    return { kind: 'credentials', credentials: { device, access, until } };
+  }
+  if (o['v'] === 2) {
+    if (!members(o, ['v', 'device', 'access', 'until', 'group', 'role'])) return undefined;
+    const { device, access, until, group, role } = o;
+    const c = readCertificate(access);
+    if (!c || c.app !== appId || c.device !== device || !isDevice(device)) return undefined;
+    if (group !== c.group || role !== c.role || !isCalendarDay(until)) return undefined;
+    if (until !== new Date(c.endS * 1000).toISOString().slice(0, 10)) return undefined;
+    return {
+      kind: 'credentials',
+      credentials: { device, access: access as string, until, group: c.group, role: c.role },
+    };
+  }
+  return undefined;
 }
 
 /** UTF-8 text of response bytes (strict), or undefined. */
