@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push and browser exist)
+# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push, browser and group exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -13,10 +13,11 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 | **post**     | Mailbox for sealed envelopes carried by third devices                                                    |
 | **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring               |
 | **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)  |
+| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt   |
 | **push**     | Web Push encryption and VAPID, ring request, service worker template                                     |
 | **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
 
-`core`, `log`, `trust`, `post` and `push` are pure: no clock, no randomness, no I/O (both are passed
+`core`, `log`, `trust`, `post`, `group` and `push` are pure: no clock, no randomness, no I/O (both are passed
 in) and testable without a UI. `transfer` is pure apart from its adapter over an injected WebRTC peer. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
 
 ## Parameters instead of constants
@@ -213,3 +214,15 @@ the timer type and the sample limit.
   messages with limits, and a thin adapter over an injected peer (inbox from the first moment, queued sends with
   backpressure, `drain`, protocol violations close the connection). Network helpers keep the kind of an address,
   never the address.
+
+## Group keys (group layer)
+
+`group/` gives an app one symmetric key per data set, in epochs. A key is handed to each trusted device as
+an encrypted file for that device (core layer) with the recipients taken from the trust layer's `Trust`;
+after a removal `needsRotation` shows that a removed device was given the current key and `rotateGroup`
+makes the next epoch for the trusted devices only. Concurrent rotations converge by one rule (highest epoch,
+then lowest author id in UTF-8 order) and no candidate key is dropped. Messages are opaque bytes under a
+per-message key derived from the epoch key, with epoch, key id, data set and the app's context
+authenticated. The state is a plain value with a strict reader. A removed device keeps every key it
+already held; there is no forward secrecy and no post-compromise security beyond rotation
+(`docs/group.md`).
