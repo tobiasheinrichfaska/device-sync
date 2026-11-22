@@ -643,6 +643,11 @@ describe('tamper sweeps', () => {
   });
 });
 
+/** The text with its sixth character replaced by a different one (a fixed 'B' is sometimes the same). */
+function changeChar(text: string): string {
+  return `${text.slice(0, 5)}${text[5] === 'B' ? 'C' : 'B'}${text.slice(6)}`;
+}
+
 describe('ids', () => {
   it('are stable, depend on every member and on the app, and do not collide in a sample', async () => {
     const e = await seal(A, [B1.dh]);
@@ -651,10 +656,10 @@ describe('ids', () => {
     expect(envelopeId('other', p)).not.toBe(e.id);
     const variants: EnvelopeParts[] = [
       { ...p, day: '2026-11-11' },
-      { ...p, eph: `${p.eph.slice(0, 5)}B${p.eph.slice(6)}` },
-      { ...p, iv: `${p.iv.slice(0, 5)}B${p.iv.slice(6)}` },
-      { ...p, kc: `${p.kc.slice(0, 5)}B${p.kc.slice(6)}` },
-      { ...p, ct: `${p.ct.slice(0, 5)}B${p.ct.slice(6)}` },
+      { ...p, eph: changeChar(p.eph) },
+      { ...p, iv: changeChar(p.iv) },
+      { ...p, kc: changeChar(p.kc) },
+      { ...p, ct: changeChar(p.ct) },
       { ...p, k: p.k.slice(1) },
       { ...p, k: [...p.k].reverse() },
     ];
