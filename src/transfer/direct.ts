@@ -39,12 +39,13 @@ export interface DataChannelLike extends EventTargetLike {
   binaryType: string;
   readonly bufferedAmount: number;
   bufferedAmountLowThreshold: number;
-  send(data: Uint8Array): void;
+  send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
 }
 
 export interface DescriptionLike {
-  readonly type?: string;
+  /** The same words as `RTCSdpType`, so a real `RTCPeerConnection` fits `PeerLike` without a cast. */
+  readonly type?: 'offer' | 'answer' | 'pranswer' | 'rollback';
   readonly sdp?: string;
 }
 

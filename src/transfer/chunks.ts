@@ -12,13 +12,13 @@ const DATA = L.chunkBytes - L.chunkHeaderBytes;
 export function chunkMessage(
   messageId: number,
   message: Uint8Array,
-): TransferResult<Uint8Array[], ChunkReason> {
+): TransferResult<Uint8Array<ArrayBuffer>[], ChunkReason> {
   if (!Number.isInteger(messageId) || messageId < 0 || messageId > 0xffffffff)
     return fail('bad-id');
   if (!(message instanceof Uint8Array)) return fail('bad-message');
   if (message.length > L.messageBytesMax) return fail('too-large');
   const count = Math.max(1, Math.ceil(message.length / DATA));
-  const out: Uint8Array[] = [];
+  const out: Uint8Array<ArrayBuffer>[] = [];
   for (let i = 0; i < count; i++) {
     const part = message.subarray(i * DATA, (i + 1) * DATA);
     const chunk = new Uint8Array(L.chunkHeaderBytes + part.length);

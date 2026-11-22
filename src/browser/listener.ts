@@ -24,10 +24,16 @@ export interface LockManagerLike {
   ): Promise<unknown>;
 }
 
+/**
+ * The handler type is bivariant on purpose: the DOM's `BroadcastChannel.onmessage` takes a `MessageEvent`,
+ * and a real channel must fit `ChannelLike` without a cast (`tests/browser/types.test.ts`).
+ */
+type MessageHandler = { bivarianceHack(ev: { data: unknown }): void }['bivarianceHack'];
+
 /** A `BroadcastChannel`, as far as it is used here. */
 export interface ChannelLike {
   postMessage(data: unknown): void;
-  onmessage: ((ev: { data: unknown }) => void) | null;
+  onmessage: MessageHandler | null;
   close(): void;
 }
 
