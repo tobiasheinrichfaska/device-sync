@@ -1,0 +1,70 @@
+{
+  "description": "Group layer vectors: key ids, encrypted messages, one grant payload and one stored state. All keys here are throw-away.",
+  "appId": "vecapp",
+  "dataSet": "set-one",
+  "keys": [
+    {
+      "epoch": 1,
+      "author": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key": "AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o",
+      "keyId": "DNXoIJ7j3YpauMPFvXFRyA",
+      "audience": [
+        "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+    },
+    {
+      "epoch": 2,
+      "author": "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "key": "WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM",
+      "keyId": "fDa-XquI1tFlEgO52r4xzg",
+      "audience": [
+        "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"key\":\"WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+    },
+    {
+      "epoch": 2,
+      "author": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key": "qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM",
+      "keyId": "6Td7bc2wtgWOB6nCy6qNBA",
+      "audience": [
+        "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "grant": "{\"m\":\"vecapp-gkey:2\",\"set\":\"set-one\",\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}"
+    }
+  ],
+  "messages": [
+    {
+      "epoch": 1,
+      "author": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "context": "",
+      "plaintext": "",
+      "salt": "AwoRGB8mLTQ7QklQV15lbA",
+      "text": "{\"m\":\"vecapp-gdata:2\",\"set\":\"set-one\",\"epoch\":1,\"kid\":\"DNXoIJ7j3YpauMPFvXFRyA\",\"salt\":\"AwoRGB8mLTQ7QklQV15lbA\",\"ct\":\"Ys85bGr1dD3la71q8dG1KQ\"}"
+    },
+    {
+      "epoch": 1,
+      "author": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "context": "record-1",
+      "plaintext": "hello",
+      "salt": "KC82PURLUllgZ251fIOKkQ",
+      "text": "{\"m\":\"vecapp-gdata:2\",\"set\":\"set-one\",\"epoch\":1,\"kid\":\"DNXoIJ7j3YpauMPFvXFRyA\",\"salt\":\"KC82PURLUllgZ251fIOKkQ\",\"ct\":\"TLAckQCJds60kg0xVggeEiPpNyI6\"}"
+    },
+    {
+      "epoch": 2,
+      "author": "device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "context": "ünï/çøde ✓",
+      "plaintext": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "salt": "TVRbYmlwd36FjJOaoaivtg",
+      "text": "{\"m\":\"vecapp-gdata:2\",\"set\":\"set-one\",\"epoch\":2,\"kid\":\"6Td7bc2wtgWOB6nCy6qNBA\",\"salt\":\"TVRbYmlwd36FjJOaoaivtg\",\"ct\":\"aY77nDUE8XXpI6Lb_nkTcrJWx8Nw4gCvEudlVxm-PwlMMVBKMceza4NtdRkrZB0FSekOv64FYAxpTwq5O05PI4WaVRCjiZs722XMYgevvIxAi_eDSoceTrRrRGNvq4Fy2uyxd7P46P1oYL8-3FxzC2Vs9xk\"}"
+    }
+  ],
+  "state": {
+    "floor": 0,
+    "text": "{\"m\":\"vecapp-gstate:2\",\"set\":\"set-one\",\"floor\":0,\"keys\":[{\"epoch\":1,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]},{\"epoch\":2,\"author\":\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"key\":\"qrG4v8bN1Nvi6fD3_gUMExohKC82PURLUllgZ251fIM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]},{\"epoch\":2,\"author\":\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"key\":\"WmFob3Z9hIuSmaCnrrW8w8rR2N_m7fT7AgkQFx4lLDM\",\"audience\":[\"device-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"device-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}]}"
+  }
+}
