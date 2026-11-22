@@ -42,15 +42,19 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
 
 Trust is never stored; it is derived from the log and the devices met in person, and the result is a
 function of the set of changes (not of any order): potential trust by vouching from the met devices,
-a rank per device (distance from the met devices), removals processed in the order rank then device
-id (a removed device removes nobody; equal-rank mutual removals go to the smaller id), a key
-consistency rule among the vouchers that were not removed (a voucher cannot replace another device's
-keys; what a removed device wrote carries no authority), and reachability from the met devices. The
-exact rules are in `docs/wire-format.md`, "Trust derivation".
+a rank per device (distance from the met devices), removals processed rank by rank (all devices of a
+rank act at once; no tie-break by device id: equal-rank mutual removals remove both; a removal
+persists after its maker is removed by an equal or higher rank), a key consistency rule among the
+vouchers that were not removed (a voucher cannot replace another device's keys; what a removed device
+wrote carries no authority for conflicts), and reachability from the met devices. The exact rules
+are in `docs/wire-format.md`, "Trust derivation".
 
 **What a removal means.** It ends a device's standing as a voucher and as introduced through the
 chain. The device stays checkable: its signed changes, earlier and later, still verify and the
-signature layer accepts them. The package does not revoke a removed device's ability to write; the
+signature layer accepts them. So does every device whose key was ever validly vouched for and that
+fell out of trust without being removed itself (vouched only through a removed device): checkable
+is every device of the potential trust without a key conflict, trusted or not, so no honest device
+is held back for ever by changes it cannot check. The package does not revoke a removed device's ability to write; the
 app stops exchanging with it at the transport, treats data authored by removed devices as untrusted
 at presentation (`deviceStatus`), restricts writes with `mayWrite` / `allowFinalDelete` (hooks that
 look at state can differ between devices), and the encryption layer (not built yet) must rotate the
@@ -64,11 +68,16 @@ chain of introductions in one round.
 
 ## Hash chain (log layer)
 
-Every change after a device's first carries `prev`, the check value of the same device's previous
-change, inside the signed head; an erased change keeps it. A `stand` carries `tips` (per device the
-link of the change at its vector position), so two devices holding different versions of one number
-refuse each other at the first session (`equivocation`, naming the author) instead of staying
-different for ever without a signal.
+Every change after a device's first carries `prev`, the LINK of the same device's previous change
+(a hash of its whole signed head, so a version that differs in any signed member has another link),
+inside the signed head; an erased change keeps it. A `stand` carries `tips` (per device the link of
+the change at its vector position), so two devices holding different versions of one number end the
+first session (`diverged`, `tip-mismatch`) instead of staying different for ever without a signal.
+A tip is an unproven claim, so that reason names no culprit; the one proof an app may act on is two
+signed changes of one device and number (`proveEquivocation`, with `changeAt` as the evidence
+accessor). Two limits keep a long history joinable: a vector has its own, larger limit
+(`maxStandDevices`), and an answer to a stand always holds at least one applicable group of
+changes, even if that group is larger than the session budget.
 
 ## Who may vouch (trust layer)
 
@@ -83,8 +92,8 @@ strategies like this:
 - "A private device never holds the highest role" (a rule of one earlier implementation) = the
   `privateRoles` predicate (the roles a private device may hold); the package knows no highest role.
 
-Left to the app: everything a removed device may still do (it stays checkable, so its signed changes,
-earlier and later, verify; the app restricts it with `mayWrite`, stops exchanging with it, and rotates
+Left to the app: everything a removed or untrusted device may still do (it stays checkable, so its
+signed changes, earlier and later, verify; the app restricts it with `mayWrite`, stops exchanging with it, and rotates
 the group keys once the encryption layer exists), the device lock after days without contact, and
 which person a device belongs to.
 

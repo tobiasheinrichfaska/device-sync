@@ -18,7 +18,7 @@ export type {
 } from './types.ts';
 export { MAX_CLOCK_JUMP, concurrent, isNewer, seen, unionVector } from './vector.ts';
 export { changeCheckValue, changeLink } from './check.ts';
-export { tipConflict, tipsOf } from './chain.ts';
+export { changeAt, tipConflict, tipsOf } from './chain.ts';
 export { merge } from './merge.ts';
 export {
   changeSigningText,
@@ -26,6 +26,7 @@ export {
   judgeChange,
   judgeChanges,
   judgeDetailed,
+  proveEquivocation,
   readChanges,
   signChange,
   signOwnChanges,

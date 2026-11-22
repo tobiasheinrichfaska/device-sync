@@ -109,16 +109,17 @@ describe('N4: a number signed twice is seen at the first session (hash chain and
     return { va, vb, base };
   }
 
-  it('two honest devices holding the two versions refuse each other at the stand, naming the author', async () => {
+  it('two honest devices holding the two versions end the session at the stand without naming a culprit (tip-mismatch)', async () => {
     const { va, vb } = await twoVersions();
     const h1 = merge(emptyReplica('h'), va.log).replica;
     const h2 = merge(emptyReplica('k'), vb.log).replica;
     expect(h1.vector).toEqual(h2.vector); // equal stands: nothing would be sent
     const r = await session(h1, h2, judgeFor('h'), judgeFor('k'));
     for (const side of [r.a, r.b]) {
-      expect(side.session.refusal).toBe('forged');
-      expect(side.session.refusalReason).toBe('equivocation');
-      expect(side.session.refusalDevice).toBe('x');
+      expect(side.session.refusal).toBe('diverged');
+      expect(side.session.refusalReason).toBe('tip-mismatch');
+      expect(side.session.subjectDevice).toBe('x');
+      expect(side.session.refusalDevice).toBeUndefined();
     }
     // nothing changed on either side
     expect(r.a.replica.log).toEqual(h1.log);
@@ -134,9 +135,10 @@ describe('N4: a number signed twice is seen at the first session (hash chain and
       h2,
       startSession(h1).send[0] as SyncMessage,
     );
-    expect(step.session.refusalReason).toBe('equivocation');
+    expect(step.session.refusalReason).toBe('tip-mismatch');
     const viaReceive = receive(startSession(h2).session, h2, json(startSession(h1).send[0]));
-    expect(viaReceive.session.refusalDevice).toBe('x');
+    expect(viaReceive.session.subjectDevice).toBe('x');
+    expect(viaReceive.session.refusalDevice).toBeUndefined();
   });
 
   it('two devices holding the same version are never refused', async () => {
@@ -221,7 +223,9 @@ describe('N4: a number signed twice is seen at the first session (hash chain and
     expect(erased.prev).toBe(changeLink(at(x, 'x', 1)));
     expect(erased.prev).toBe(before.prev);
     expect(at(x, 'x', 3).prev).toBe(changeLink(erased));
-    expect(changeLink(erased)).toBe(erased.check);
+    // the link covers the whole signed head: it is not the check value of the content
+    expect(changeLink(erased)).not.toBe(erased.check);
+    expect(changeLink(erased)).toHaveLength(43);
     const j = await judgeDetailed(context(emptyReplica('h')), [...x.log]);
     expect(j.map((v) => v.verdict)).toEqual(['checked', 'checked', 'checked']);
     // the parser keeps it, too
@@ -282,7 +286,8 @@ describe('N4: a number signed twice is seen at the first session (hash chain and
       Array.from({ length: LIMITS.maxDevices + 1 }, (_, i) => [`d${i}`, 'p'.repeat(43)]),
     );
     const vector = Object.fromEntries(Object.keys(many).map((k) => [k, 1]));
-    expect(parseSyncMessage(stand(many, vector))).toBeUndefined();
+    // more than the concurrent heads of a `knew` is fine in a stand (its own, larger limit)
+    expect(parseSyncMessage(stand(many, vector))).toBeDefined();
   });
 
   it('honest randomized simulation: 3000 runs of several devices, writes, soft and final deletions, random sessions never refuse', async () => {

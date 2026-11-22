@@ -353,7 +353,7 @@ describe('vouching with any role (roles name persons that must exist)', () => {
     const ra = merge(bei(a.id, rb), (await drop(b, rb, c, OA)).log).replica;
     const both = await computeTrust(ra, [known(b, ROLF)], OA);
     expect(names(both.trusted)).toEqual(['B']);
-    expect(names(both.checkable)).toEqual(['B', 'C']);
+    expect(names(both.checkable)).toEqual(['B', 'C', 'D']); // D was vouched for by C: its key is checkable, D is not trusted
     expect(both.removed).toEqual([c.id]);
     expect((await computeTrust(bei(a.id, rb), [known(b, ROLF)], OA)).removed).toEqual([]);
     expect(both.checkable.find((x) => x.name === 'C')?.sig).toBe(c.intro.sig);

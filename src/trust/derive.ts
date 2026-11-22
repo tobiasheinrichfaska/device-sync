@@ -25,6 +25,12 @@ import type {
 
 /** Default name of the reserved collection that holds the device list. */
 export const DEVICE_COLLECTION = 'device';
+/**
+ * The most signing keys one entry's own writes are tried under (the newest distinct ones that counting
+ * writes gave it). A voucher can write any number of keys into an entry; without a bound the cost of
+ * checking an entry's writes would be keys times writes.
+ */
+export const MAX_CANDIDATE_KEYS = 8;
 /** The fields of an entry that say who the device is. */
 const IDENTITY = ['name', 'sig', 'dh', 'role', 'relayId', 'private'] as const;
 const FIELDS = [...IDENTITY, 'removed'] as const;
@@ -133,6 +139,8 @@ interface Ctx {
   readonly direct: readonly KnownDevice[];
   readonly directById: ReadonlyMap<string, KnownDevice>;
   readonly memo: Map<Change, Map<string, boolean>>;
+  /** Per set of candidate keys the one that verified last: tried first next time. */
+  readonly lastHit: Map<ReadonlySet<string>, string>;
 }
 
 function* verified(ctx: Ctx, write: Write, sigKey: string): Gen<boolean> {
@@ -146,8 +154,16 @@ function* verified(ctx: Ctx, write: Write, sigKey: string): Gen<boolean> {
 }
 
 /** Whether the write verifies under any of the keys. */
-function* verifiedBy(ctx: Ctx, write: Write, keys: Iterable<string>): Gen<boolean> {
-  for (const key of keys) if (yield* verified(ctx, write, key)) return true;
+function* verifiedBy(ctx: Ctx, write: Write, keys: ReadonlySet<string>): Gen<boolean> {
+  const first = ctx.lastHit.get(keys);
+  if (first !== undefined && (yield* verified(ctx, write, first))) return true;
+  for (const key of keys) {
+    if (key === first) continue;
+    if (yield* verified(ctx, write, key)) {
+      ctx.lastHit.set(keys, key);
+      return true;
+    }
+  }
   return false;
 }
 
@@ -257,7 +273,9 @@ function* evaluate(ctx: Ctx, members: Members, t: string): Gen<Found | undefined
   }
   const learned = ctx.directById.get(t);
   if (!learned) {
-    return logEntry ? { entry: logEntry, logEntry, keys: new Set(sigs) } : undefined;
+    return logEntry
+      ? { entry: logEntry, logEntry, keys: new Set(sigs.slice(0, MAX_CANDIDATE_KEYS)) }
+      : undefined;
   }
   // A device met in person keeps the keys learned in person; a role it lacks may come from the log.
   let entry = learnedEntry(ctx, learned);
@@ -357,22 +375,23 @@ function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
 const NONE: ReadonlySet<string> = new Set();
 
 /**
- * Rule 2 and 3: the effective removals, in a fixed total order, on the potential trust. Every device
- * of the potential trust that is reachable from the met devices (and this device) gets a RANK, its
- * distance in the vouching graph (met devices and this device: 0). Devices act in the order rank
- * ascending, then device id ascending. A device that is not removed when its turn comes, that vouches
- * and that is reachable by a chain that does not pass through the target removes every device it
- * wrote a verified `removed: true` into. A device that is already removed at its turn removes nobody,
- * so a removal by a device of lower rank cannot be neutralised by the removed one, and two devices of
- * one rank that remove each other are decided by the smaller id (deliberate, deterministic). This
- * device itself never loses the right to remove (it holds its own log).
+ * Rule 2 and 3: the effective removals, rank by rank, on the potential trust. Every device of the
+ * potential trust that is reachable from the met devices (and this device) gets a RANK, its distance
+ * in the vouching graph (met devices and this device: 0). The ranks act in ascending order, and all
+ * devices of one rank act at the same time. A device acts when it is not removed by a device of a
+ * STRICTLY lower rank, when it vouches and when it is reachable by a chain that does not pass through
+ * the target: it removes every device it wrote a verified `removed: true` into. There is no
+ * tie-break by device id (a joining device chooses its own id): two devices of one rank that remove
+ * each other are both removed. A removal persists after the remover itself is removed by a device of
+ * the same or a higher rank; only a device of lower rank can undo it (by removing the remover first).
+ * This device itself never loses the right to remove (it holds its own log).
  */
 function* removalsOf(ctx: Ctx, members: Members): Gen<Set<string>> {
   const adjacent = new Map<string, string[]>();
   const reaches = new Map<string, Set<string>>();
   const vouches = (id: string): boolean => id === ctx.own || members.get(id)?.voucher === true;
   const wroteBy = function* (u: string, write: Write): Gen<boolean> {
-    return u === ctx.own || (yield* verifiedBy(ctx, write, members.get(u)?.keys ?? []));
+    return u === ctx.own || (yield* verifiedBy(ctx, write, members.get(u)?.keys ?? NONE));
   };
 
   /** The entries a voucher wrote (verified) identity fields of, that are in the potential trust. */
@@ -447,24 +466,33 @@ function* removalsOf(ctx: Ctx, members: Members): Gen<Set<string>> {
   }
 
   const removed = new Set<string>();
-  const order = [...(yield* walk(undefined))].sort((a, b) =>
-    a[1] !== b[1] ? a[1] - b[1] : a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0,
-  );
-  for (const [r] of order) {
-    if (r !== ctx.own && removed.has(r)) continue;
-    if (!vouches(r)) continue;
-    for (const [t, writes] of claims.get(r) ?? []) {
-      if (removed.has(t)) continue;
-      let said = false;
-      // Only a verified write counts: an unverifiable newer one does not shadow a verified older one.
-      for (const w of writes) {
-        if (yield* wroteBy(r, w)) {
-          said = true;
-          break;
+  const byRank = new Map<number, string[]>();
+  for (const [id, rank] of yield* walk(undefined)) {
+    const list = byRank.get(rank);
+    if (list) list.push(id);
+    else byRank.set(rank, [id]);
+  }
+  for (const level of [...byRank.keys()].sort((a, b) => a - b)) {
+    // All devices of one rank act at once: what they remove takes effect after the whole rank was
+    // looked at, so no device of this rank is stopped by another one of the same rank.
+    const effective: string[] = [];
+    for (const r of (byRank.get(level) as string[]).sort()) {
+      if (r !== ctx.own && removed.has(r)) continue;
+      if (!vouches(r)) continue;
+      for (const [t, writes] of claims.get(r) ?? []) {
+        if (removed.has(t)) continue;
+        let said = false;
+        // Only a verified write counts: an unverifiable newer one does not shadow a verified older one.
+        for (const w of writes) {
+          if (yield* wroteBy(r, w)) {
+            said = true;
+            break;
+          }
         }
+        if (said && (yield* reachAvoiding(t)).has(r)) effective.push(t);
       }
-      if (said && (yield* reachAvoiding(t)).has(r)) removed.add(t);
     }
+    for (const t of effective) removed.add(t);
   }
   return removed;
 }
@@ -547,6 +575,7 @@ export function* derive(
     direct: sorted,
     directById: new Map(sorted.map((d) => [d.device, d])),
     memo: new Map(),
+    lastHit: new Map(),
   };
   const p0 = yield* closure(ctx, NONE);
   const removals = yield* removalsOf(ctx, p0);
@@ -563,16 +592,23 @@ export function* derive(
     return rest;
   };
   const trusted = [...t].map(([id, m]) => dropRelay(id, m.entry)).sort(byName);
-  // A removed device stays checkable (its signed changes keep verifying): its entry is read as the
-  // vouchers that were not removed give it.
+  // Checkable = every device whose key was ever validly vouched (a member of P) and that has no key
+  // conflict, trusted or not: a device that fell out of T (removed, or vouched only through a removed
+  // or conflicted device) keeps its signed changes verifiable, so the honest devices that took them
+  // are not blocked by them for ever. The entry is read as the vouchers that were not removed give
+  // it; where only removed devices vouched, the entry as P has it, unless those disagree on the key.
   const sanitized: Members = new Map(
     [...p0].map(([id, m]) => [id, removals.has(id) ? { ...m, voucher: false } : m]),
   );
   const gone: TrustedDevice[] = [];
-  for (const id of removedIds) {
-    if (!p0.has(id) || analysis.keyConflict.has(id)) continue;
-    const found = yield* evaluate(ctx, sanitized, id);
-    if (found) gone.push({ ...dropRelay(id, found.entry), removed: true });
+  for (const [id, member] of [...p0].sort(byDevice)) {
+    if (t.has(id) || analysis.keyConflict.has(id)) continue;
+    let entry = (yield* evaluate(ctx, sanitized, id))?.entry;
+    if (!entry) {
+      if (member.keys.size > 1 && !ctx.directById.has(id)) continue;
+      entry = member.entry;
+    }
+    gone.push({ ...dropRelay(id, entry), removed: removals.has(id) });
   }
   const checkable = [...trusted, ...gone].sort(byName);
   const reasons = new Map<string, TrustReason[]>();

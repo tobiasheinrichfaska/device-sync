@@ -339,19 +339,31 @@ describe('every limit, at the limit and one over (driven by LIMITS)', () => {
     expect(parseChange(fieldsOf({ a: object(LIMITS.maxEntries + 1) }))).toBeUndefined();
   });
 
-  it('maxDevices (stand, done and knew)', () => {
+  it('maxDevices (knew only) and maxStandDevices (stand, done, tips)', () => {
     const vector = (n: number) =>
       Object.fromEntries(Array.from({ length: n }, (_, i) => [`d${i}`, i]));
-    expect(parseVector(vector(LIMITS.maxDevices))).toBeDefined();
-    expect(parseVector(vector(LIMITS.maxDevices + 1))).toBeUndefined();
-    expect(
-      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices), tips: {} }),
-    ).toBeDefined();
-    expect(
-      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices + 1), tips: {} }),
-    ).toBeUndefined();
     expect(parseChange(change({ knew: vector(LIMITS.maxDevices) }))).toBeDefined();
     expect(parseChange(change({ knew: vector(LIMITS.maxDevices + 1) }))).toBeUndefined();
+    // a stand is not limited by the concurrent heads of a field
+    expect(parseVector(vector(LIMITS.maxDevices + 1))).toBeDefined();
+    expect(parseVector(vector(LIMITS.maxStandDevices))).toBeDefined();
+    expect(parseVector(vector(LIMITS.maxStandDevices + 1))).toBeUndefined();
+    expect(
+      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices + 1), tips: {} }),
+    ).toMatchObject({ t: 'stand' });
+    // over its limit a stand or done is well-formed but too large: an overflow marker, not undefined
+    expect(
+      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxStandDevices + 1), tips: {} }),
+    ).toEqual({ t: 'overflow', of: 'stand' });
+    expect(
+      parseSyncMessage({
+        t: 'done',
+        vector: vector(LIMITS.maxStandDevices + 1),
+        fingerprint: '0'.repeat(32),
+      }),
+    ).toEqual({ t: 'overflow', of: 'done' });
+    // a damaged message stays unreadable
+    expect(parseSyncMessage({ t: 'stand', vector: vector(5), tips: [] })).toBeUndefined();
   });
 
   it('maxChanges (one message)', () => {
@@ -406,6 +418,7 @@ describe('limits override (partial, per call)', () => {
     maxDepth: 2,
     maxEntries: 3,
     maxDevices: 2,
+    maxStandDevices: 3,
     maxChanges: 2,
     maxName: 5,
     maxId: 6,
@@ -421,7 +434,8 @@ describe('limits override (partial, per call)', () => {
     expect(parseChange(fieldsOf({ a: [[1]] }), { limits: tight })).toBeDefined();
     expect(parseChange(fieldsOf({ abcdef: 1 }), { limits: tight })).toBeUndefined();
     expect(parseChange(change({ id: 'abcdefg' }), { limits: tight })).toBeUndefined();
-    expect(parseVector({ a: 1, b: 1, c: 1 }, { limits: tight })).toBeUndefined();
+    expect(parseVector({ a: 1, b: 1, c: 1, d: 1 }, { limits: tight })).toBeUndefined();
+    expect(parseVector({ a: 1, b: 1, c: 1 }, { limits: tight })).toBeDefined();
     expect(
       parseChange(fieldsOf({ a: ['aaaaa', 'aaaaa', 'aaaaa'] }), { limits: tight }),
     ).toBeUndefined();

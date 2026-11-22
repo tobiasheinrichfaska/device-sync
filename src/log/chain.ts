@@ -12,10 +12,16 @@ export function heldIn(log: readonly Change[]): Map<string, Change> {
   return heldCache.getOrBuild(log, () => new Map(log.map((c) => [idOf(c), c])));
 }
 
+/** The evidence accessor: the change this replica holds with this device and number, if any. */
+export function changeAt(replica: Replica, device: DeviceId, seq: number): Change | undefined {
+  return heldIn(replica.log).get(`${device}#${seq}`);
+}
+
 /**
- * What a `stand` proves about the history behind its vector: per device the link (check value) of the
- * change at the vector's position. A device holding another version of that number, or a successor
- * whose `prev` names another one, has seen a different history (equivocation, see `tipConflict`).
+ * What a `stand` CLAIMS about the history behind its vector: per device the link (`changeLink`, a
+ * hash of the whole signed head, which names its predecessor's link) of the change at the vector's
+ * position. A receiver that holds another version of that number has a history that differs from the
+ * sender's (`tipConflict`). It is an UNPROVEN claim, not a proof: it names no culprit.
  */
 export function tipsOf(replica: Replica): Record<DeviceId, string> {
   const held = heldIn(replica.log);
@@ -31,7 +37,9 @@ export function tipsOf(replica: Replica): Record<DeviceId, string> {
 
 /**
  * The first device whose tip contradicts what this replica holds: the change it holds at the tip's
- * number has another link. Tips of numbers this replica does not hold prove nothing and are skipped.
+ * number has another link. It names the device whose HISTORY differs, not who is lying: the sender
+ * may have forged the tip, or this replica holds one of two versions of a double signature. Tips of
+ * numbers this replica does not hold say nothing and are skipped.
  */
 export function tipConflict(
   replica: Replica,

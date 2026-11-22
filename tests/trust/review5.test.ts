@@ -160,19 +160,18 @@ describe('N3: a compromised voucher cannot neutralise its own removal or poison 
     expect(s.reasons).toContain('key-conflict');
   });
 
-  it('removals of equal rank are decided by the smaller id: deliberate and deterministic', async () => {
-    // B and M are both entered by A (rank 1) and remove each other: the smaller id acts first and wins
+  it('removals of equal rank are symmetric: B and M remove each other, both are removed (no id tie-break)', async () => {
+    // B and M are both entered by A (rank 1) and remove each other
     const base = await ledger();
     const byB = await drop(b, merge(emptyOf(b), base.log).replica, m, ALL);
     const byM = await drop(m, merge(emptyOf(m), base.log).replica, b, ALL);
-    expect(b.id < m.id).toBe(true);
     for (const logs of [
       [base, byB, byM],
       [byM, byB, base],
     ]) {
       const t = await computeTrust(holding(VIEWER, ...logs), [known(a)], ALL);
-      expect(names(t.trusted)).toEqual(['A', 'B', 'X']);
-      expect(t.removed).toEqual([m.id]);
+      expect(names(t.trusted)).toEqual(['A', 'X']);
+      expect(t.removed).toEqual([b.id, m.id].sort());
     }
   });
 
@@ -358,7 +357,7 @@ describe('semantics without a write cut-off: a removed device stays checkable', 
     expect(sy.session.waiting).toBe(0);
   });
 
-  it('N4 with trust: M signed m:1 twice, A and B hold one version each; the first session refuses, also after M is removed', async () => {
+  it('N4 with trust: M signed m:1 twice, A and B hold one version each; the first session ends neutrally (tip-mismatch), also after M is removed', async () => {
     let base = await enter(a, emptyOf(a), r, 'member', O);
     base = await enter(a, base, b, 'admin', O);
     const mk = () => merge(emptyOf(r), base.log).replica;
@@ -372,8 +371,10 @@ describe('semantics without a write cut-off: a removed device stays checkable', 
     const direct = [known(a, 'admin')];
     const { sx, sy } = await talk(ra, rb, judgeFor(a.id, direct), judgeFor(b.id, direct));
     for (const s of [sx, sy]) {
-      expect(s.session.refusalReason).toBe('equivocation');
-      expect(s.session.refusalDevice).toBe(r.id);
+      expect(s.session.refusal).toBe('diverged');
+      expect(s.session.refusalReason).toBe('tip-mismatch');
+      expect(s.session.subjectDevice).toBe(r.id);
+      expect(s.session.refusalDevice).toBeUndefined();
     }
   });
 });

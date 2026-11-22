@@ -22,7 +22,13 @@ export type SyncMessage =
       /** Only on the last piece: the sender cut its answer at its limit, more follows in the next session. */
       readonly more?: true;
     }
-  | { readonly t: 'done'; readonly vector: VersionVector; readonly fingerprint: string };
+  | { readonly t: 'done'; readonly vector: VersionVector; readonly fingerprint: string }
+  /**
+   * Never sent: what the parser makes of a `stand` or `done` that is well-formed but too large for
+   * this receiver (more than `maxStandDevices` devices in its vector, or over `maxMessageChars`).
+   * The session then ends gracefully (`Session.truncated`); it is not a refusal.
+   */
+  | { readonly t: 'overflow'; readonly of: 'stand' | 'done' };
 
 export interface ParseOptions {
   /** Partial override of the defaults in `LIMITS`. */
@@ -66,12 +72,12 @@ function fieldsOf(raw: unknown, limits: Limits): Record<string, unknown> | undef
 
 function vectorOf(
   raw: unknown,
-  limits: Limits,
+  max: number,
   deviceId: (id: string) => boolean,
 ): VersionVector | undefined {
   if (!isPlain(raw)) return undefined;
   const keys = Object.keys(raw);
-  if (keys.length > limits.maxDevices) return undefined;
+  if (keys.length > max) return undefined;
   const out = dict<number>();
   for (const device of keys) {
     const seq = raw[device];
@@ -81,7 +87,7 @@ function vectorOf(
   return out;
 }
 
-/** The tips of a stand: at most `maxDevices`, only devices the vector counts, each a check value. */
+/** The tips of a stand: at most `maxStandDevices`, only devices the vector counts, each a link. */
 function tipsOfRaw(
   raw: unknown,
   vector: VersionVector,
@@ -90,7 +96,7 @@ function tipsOfRaw(
 ): Record<DeviceId, string> | undefined {
   if (!isPlain(raw)) return undefined;
   const keys = Object.keys(raw);
-  if (keys.length > limits.maxDevices) return undefined;
+  if (keys.length > limits.maxStandDevices) return undefined;
   const out = dict<string>();
   for (const device of keys) {
     const tip = raw[device];
@@ -128,7 +134,7 @@ function changeOf(raw: unknown, limits: Limits, deviceId: (id: string) => boolea
   }
   // What the author knew travels along: without it no device could tell a conflict, so a `set` or
   // `delete` without it is refused (an erased write needs none).
-  const knew = raw.knew === undefined ? undefined : vectorOf(raw.knew, limits, deviceId);
+  const knew = raw.knew === undefined ? undefined : vectorOf(raw.knew, limits.maxDevices, deviceId);
   if (raw.knew !== undefined && !knew) return undefined;
   if (kind !== 'redacted' && !knew) return undefined;
   const { time, by } = raw;
@@ -176,17 +182,33 @@ function messageOf(
   if (!isPlain(raw)) return undefined;
   if (raw.t === 'stand') {
     if (!onlyMembers(raw, new Set(['t', 'vector', 'tips']))) return undefined;
-    const vector = vectorOf(raw.vector, limits, deviceId);
+    // A vector over the limit is well-formed but too large: not read at all (bounded work).
+    if (isPlain(raw.vector) && Object.keys(raw.vector).length > limits.maxStandDevices) {
+      return { t: 'overflow', of: 'stand' };
+    }
+    const vector = vectorOf(raw.vector, limits.maxStandDevices, deviceId);
     const tips = vector && tipsOfRaw(raw.tips, vector, limits, deviceId);
-    return vector && tips ? { t: 'stand', vector, tips } : undefined;
+    if (!vector || !tips) return undefined;
+    // The message size bounds a stand as it bounds a changes message.
+    if (JSON.stringify(vector).length + JSON.stringify(tips).length > limits.maxMessageChars) {
+      return { t: 'overflow', of: 'stand' };
+    }
+    return { t: 'stand', vector, tips };
   }
   if (raw.t === 'done') {
     if (!onlyMembers(raw, new Set(['t', 'vector', 'fingerprint']))) return undefined;
-    const vector = vectorOf(raw.vector, limits, deviceId);
+    if (isPlain(raw.vector) && Object.keys(raw.vector).length > limits.maxStandDevices) {
+      return { t: 'overflow', of: 'done' };
+    }
+    const vector = vectorOf(raw.vector, limits.maxStandDevices, deviceId);
     const fingerprint = raw.fingerprint;
-    return vector && typeof fingerprint === 'string' && FINGERPRINT.test(fingerprint)
-      ? { t: 'done', vector, fingerprint }
-      : undefined;
+    if (!vector || typeof fingerprint !== 'string' || !FINGERPRINT.test(fingerprint)) {
+      return undefined;
+    }
+    if (JSON.stringify(vector).length > limits.maxMessageChars) {
+      return { t: 'overflow', of: 'done' };
+    }
+    return { t: 'done', vector, fingerprint };
   }
   if (raw.t === 'changes') {
     if (!onlyMembers(raw, new Set(['t', 'changes', 'last', 'more']))) return undefined;
@@ -238,12 +260,12 @@ export function parseChange(raw: unknown, options: ParseOptions = {}): Change | 
   );
 }
 
-/** A version vector (stand), strictly read: at most `maxDevices` devices, counts are safe integers. */
+/** A version vector (stand), strictly read: at most `maxStandDevices` devices, counts are safe integers. */
 export function parseVector(raw: unknown, options: ParseOptions = {}): VersionVector | undefined {
   return guarded(() =>
     vectorOf(
       raw,
-      resolveLimits(options.limits),
+      resolveLimits(options.limits).maxStandDevices,
       options.deviceId ?? ((s) => DEFAULT_DEVICE_ID.test(s)),
     ),
   );

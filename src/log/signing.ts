@@ -21,10 +21,12 @@ export type Verdict = 'checked' | 'pending' | 'false';
  *   profile). It must stop writing and enrol again with a NEW device id; writing on would create
  *   equivocation. It is decided only after the signature verified: an unsigned or forged change
  *   under the own id is `unsigned` / `bad-signature` and says nothing about this device.
- * - `equivocation`: the same device and number was signed twice with different content, or a
- *   change does not continue the hash chain of the version of its predecessor that is held (`prev`),
- *   or a `stand` names another version than the one held. The author (`Rejection.change.device`,
- *   `Session.refusalDevice`) is faulty or malicious; the app should stop trusting that device.
+ * - `equivocation`: two signed changes of one device are in hand that cannot both be true: the same
+ *   device and number signed twice with different content or head, or a change whose `prev` does not
+ *   name the (signed) predecessor that is held. The author (`Rejection.change.device`,
+ *   `Session.refusalDevice`) is faulty or malicious; the app should stop trusting that device. A
+ *   `stand` that names another version is NOT this verdict: it ends the session as `tip-mismatch`
+ *   without a culprit (see `proveEquivocation`).
  * - `bad-prev`: the hash chain is not spelled right: no `prev` after the first change, or one on
  *   the first.
  * - the others name the rule that failed: `unsigned`, `bad-check`, `bad-signature`,
@@ -220,6 +222,39 @@ export async function signChange(
   return { ...withCheck, sig };
 }
 
+/**
+ * The one proof of equivocation an app may act on: two changes with the same device and number and
+ * different signed texts that BOTH carry a signature that verifies under the author's key (and, for a
+ * change that still has its content, a check value that matches it). A `tip-mismatch` of a session
+ * is only a claim about someone's history and proves nothing; fetch the other version
+ * (`changeAt` on the device that holds it) and ask this function. False for one change twice, for
+ * changes of different authors or numbers, and for anything unsigned or invalid; never throws.
+ */
+export async function proveEquivocation(
+  a: Change,
+  b: Change,
+  publicKey: CryptoKey,
+  appId: string,
+  dataSet: string,
+): Promise<boolean> {
+  try {
+    if (a.device !== b.device || a.seq !== b.seq) return false;
+    for (const c of [a, b]) {
+      if (!c.sig || !c.check) return false;
+      if (c.kind !== 'redacted' && changeCheckValue(c) !== c.check) return false;
+    }
+    const first = changeSigningText(appId, a, dataSet);
+    const second = changeSigningText(appId, b, dataSet);
+    if (first === second) return false;
+    return (
+      (await verifyText(publicKey, first, a.sig as string)) &&
+      (await verifyText(publicKey, second, b.sig as string))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** This device's own changes without a signature, signed; `insertSignatures` puts them into a replica. */
 export async function signOwnChanges(
   appId: string,
@@ -254,7 +289,7 @@ export function insertSignatures(replica: Replica, signed: readonly Change[]): R
 export interface SeenChange {
   /** The signed text: what two versions of one device and number are compared by. */
   readonly text: string;
-  /** Its link (check value): what its successor's `prev` must name. */
+  /** Its link (`changeLink`): what its successor's `prev` must name. */
   readonly link: string;
   readonly prev: string | undefined;
 }
@@ -339,7 +374,7 @@ async function judgeEach(
   return judged.map((j, i) => {
     const change = changes[i] as Change;
     if (j.verdict !== 'checked' || j.text === undefined) return j;
-    const link = change.check as string;
+    const link = changeLink(change) as string;
     const before = seen.get(idOf(change));
     if (before !== undefined && before.text !== j.text) return no('equivocation');
     const lower = change.seq > 1 ? seen.get(`${change.device}#${change.seq - 1}`) : undefined;
@@ -576,6 +611,8 @@ export interface Judging {
   readonly pending: Change[];
   /** Records of every verified final deletion so far: carried over all rounds and pieces. */
   readonly deletions: Set<string>;
+  /** Records of verified erased changes whose deletion has not arrived yet (the group is still open). */
+  readonly open: Set<string>;
   /** Every verified change by device and number: to see equivocation and a broken hash chain. */
   readonly seen: Map<string, SeenChange>;
   /** Verified changes per author (for the quota). A Map: any device id is an ordinary key. */
@@ -593,6 +630,7 @@ export const emptyJudging = (): Judging => ({
   erased: [],
   pending: [],
   deletions: new Set(),
+  open: new Set(),
   seen: new Map(),
   counts: new Map(),
   chars: 0,
@@ -602,6 +640,13 @@ export const emptyJudging = (): Judging => ({
 export interface AdmitLimits {
   readonly maxSessionChanges: number;
   readonly maxSessionChars: number;
+  /**
+   * The budgets while an erased change waits for its deletion (`Limits.maxGroupChanges` and
+   * `maxGroupChars`): the larger of the session budget and this one applies then. Missing: no
+   * extension.
+   */
+  readonly maxGroupChanges?: number;
+  readonly maxGroupChars?: number;
   /** What may still be unverifiable AFTER the key-learning rounds (see `settle`). */
   readonly maxPendingChanges: number;
 }
@@ -637,14 +682,35 @@ export async function admit(
   const sizes: number[] = [];
   let cut: LimitReason | undefined;
   let chars = judging.chars;
-  const room = limits ? limits.maxSessionChanges - heldCount(judging) : Infinity;
+  const held = heldCount(judging);
+  // While an erased change waits for its deletion the group is indivisible: the wider budget applies.
+  const open = new Set(judging.open);
+  const deleted = new Set<string>();
   for (const change of changes) {
     const size = JSON.stringify(change).length;
-    if (sizes.length >= room) cut = 'session-changes';
-    else if (limits && chars + size > limits.maxSessionChars) cut = 'session-chars';
+    if (limits) {
+      const wide = open.size > 0;
+      const maxChanges = wide
+        ? Math.max(limits.maxSessionChanges, limits.maxGroupChanges ?? 0)
+        : limits.maxSessionChanges;
+      const maxChars = wide
+        ? Math.max(limits.maxSessionChars, limits.maxGroupChars ?? 0)
+        : limits.maxSessionChars;
+      if (held + sizes.length >= maxChanges) cut = 'session-changes';
+      // the first change always fits (it is bounded by the message limit): a budget smaller than one
+      // change would otherwise make that change impossible to take
+      else if (chars + size > maxChars && held + sizes.length > 0) cut = 'session-chars';
+    }
     if (cut) break;
     sizes.push(size);
     chars += size;
+    const key = recordKey(change);
+    if (change.kind === 'delete') {
+      open.delete(key);
+      deleted.add(key);
+    } else if (change.kind === 'redacted' && !deleted.has(key) && !judging.deletions.has(key)) {
+      open.add(key);
+    }
   }
   const kept = sizes.length === changes.length ? changes : changes.slice(0, sizes.length);
   const judged = await judgeEach({ ...options, state }, kept, judging.seen);
@@ -666,9 +732,15 @@ export async function admit(
         break;
       }
       judging.counts.set(change.device, count);
-      if (change.kind === 'redacted') judging.erased.push(change);
-      else judging.accepted.push(change);
-      if (change.kind === 'delete') judging.deletions.add(recordKey(change));
+      const key = recordKey(change);
+      if (change.kind === 'redacted') {
+        judging.erased.push(change);
+        if (!judging.deletions.has(key)) judging.open.add(key);
+      } else judging.accepted.push(change);
+      if (change.kind === 'delete') {
+        judging.deletions.add(key);
+        judging.open.delete(key);
+      }
     }
     judging.chars += sizes[i] as number;
   }
@@ -752,11 +824,10 @@ export async function settle(
     if (pending.length > 0) {
       // A self-verifying key source may see what is waiting, too (never a change claiming this
       // device's own id: the derivation believes the own log without a signature check).
+      // The verified changes that merge holds back (`carry`: a causal hold) belong to it too, so the
+      // verdict does not depend on whether a change happens to be merged yet or held behind another.
       const keyState = options.keys.selfVerifying
-        ? merge(
-            upTo,
-            pending.filter((c) => c.device !== upTo.device),
-          ).replica
+        ? merge(upTo, [...carry, ...pending.filter((c) => c.device !== upTo.device)]).replica
         : upTo;
       // Without a special-case hook only the key decides pending: look at each waiting author once.
       let ready: Set<DeviceId> | undefined;

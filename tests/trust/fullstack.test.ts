@@ -176,7 +176,7 @@ describe('a new device joins by invitation and is trusted only through the vouch
     ]);
   });
 
-  it('removal by a vouching device ends trust; earlier signed changes stay checkable; what came through the removed is pending', async () => {
+  it('removal by a vouching device ends trust; earlier signed changes stay checkable; what came through the removed is checkable but not trusted', async () => {
     const ra0 = await join(a, emptyOf(a), b, 'admin', 5);
     let rb = merge(emptyOf(b), ra0.log).replica;
     rb = await join(b, rb, c, 'member', 6);
@@ -194,14 +194,15 @@ describe('a new device joins by invitation and is trusted only through the vouch
     expect(res.rejected).toBe(0);
     // B's earlier notes are checkable though B is removed (its keys are vouched for)
     expect(res.accepted.filter((x) => x.device === b.id).length).toBeGreaterThan(0);
-    // C was entered by B only: B's vouching no longer counts, so C cannot be checked
-    expect(res.pending.every((x) => x.device === c.id)).toBe(true);
-    expect(res.pending.length).toBeGreaterThan(0);
+    // C was entered by B only: B's vouching no longer makes C trusted, but its key was vouched for
+    // while B stood, so C's changes are checked and taken (an app decides what untrusted data may do)
+    expect(res.pending).toEqual([]);
+    expect(res.accepted.filter((x) => x.device === c.id).length).toBeGreaterThan(0);
     const taken = merge(emptyOf(r), res.accepted).replica;
     const t = await computeTrust(taken, direct, O);
     expect(names(t.trusted)).toEqual(['A']);
     expect(t.removed).toEqual([b.id]);
-    expect(names(t.checkable)).toEqual(['A', 'B']);
+    expect(names(t.checkable)).toEqual(['A', 'B', 'C']);
   });
 
   it('a forged entry never becomes trusted: changed fields by a non-vouching device, or a tampered signed entry', async () => {

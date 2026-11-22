@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateDeviceKeys } from '../../src/core/index.ts';
 import {
-  changeCheckValue,
+  changeLink,
   emptyReplica,
   fingerprint,
   insertSignatures,
@@ -478,7 +478,7 @@ describe('L6: processing pieces is linear', () => {
         knew: {},
       };
       // the hash chain: the link of the previous change
-      bare.push(i === 0 ? c : { ...c, prev: changeCheckValue(bare[i - 1] as Change) });
+      bare.push(i === 0 ? c : { ...c, prev: changeLink(bare[i - 1] as Change) as string });
     }
     return Promise.all(bare.map((c) => resign(c)));
   }

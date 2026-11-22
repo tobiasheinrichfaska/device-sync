@@ -14,8 +14,20 @@ export interface Limits {
   readonly maxDepth: number;
   /** Most entries in one list or object of a value. */
   readonly maxEntries: number;
-  /** Most devices in one version vector. */
+  /**
+   * Most devices in one `knew` (the unresolved concurrent heads a write names); also bounds how many
+   * concurrent heads a field may have before local writing answers `too-many-devices`.
+   */
   readonly maxDevices: number;
+  /**
+   * Most devices in the version vector of a `stand` or `done` (and so in its `tips`): the vector
+   * lists every device that ever wrote, so it grows over the years and needs room of its own. A
+   * receiver that gets more ENDS THE SESSION (`Session.truncated`, `limit: 'stand-devices'`); it
+   * is not a refusal. The message size still bounds it: one stand entry costs about 50 characters of
+   * vector and 90 of tips for a 39-character device id, so 10000 devices are about 1.4 million
+   * characters, and a stand over `maxMessageChars` is too large as well.
+   */
+  readonly maxStandDevices: number;
   /** Most changes in one message. */
   readonly maxChanges: number;
   /** A piece (one changes message) is cut at this many UTF-8 bytes of JSON; one change may exceed it alone. */
@@ -27,6 +39,17 @@ export interface Limits {
   readonly maxMessageChars: number;
   /** Most changes `receiveJudged` holds over the pieces of one session before it gives up. */
   readonly maxSessionChanges: number;
+  /**
+   * The same two budgets while the session holds an erased change whose deletion has not arrived
+   * (`maxGroupChanges` instead of `maxSessionChanges`, `maxGroupChars` instead of `maxSessionChars`).
+   * An erased change can only be applied together with its record's deletion, and the deletion only
+   * after every earlier number of its author: that group of changes is indivisible, so a sender
+   * answers with it whole even when it is larger than the session budget (progress guarantee), and a
+   * receiver reads on until the deletion has come, up to these ceilings. A group larger than the
+   * ceilings cannot be taken: the session ends `truncated` every time and the app raises the limits.
+   */
+  readonly maxGroupChanges: number;
+  readonly maxGroupChars: number;
   /**
    * Most characters (UTF-16 units of the JSON) of changes `receiveJudged` holds over one session:
    * the count limit alone does not bound memory, as one change may be long.
@@ -47,11 +70,14 @@ export const LIMITS: Limits = Object.freeze({
   maxDepth: 6,
   maxEntries: 200,
   maxDevices: 50,
+  maxStandDevices: 10_000,
   maxChanges: 500,
   pieceBytes: 12000,
   maxMessageChars: 1_000_000,
   maxSessionChanges: 100_000,
   maxSessionChars: 16_000_000,
+  maxGroupChanges: 400_000,
+  maxGroupChars: 64_000_000,
   maxPendingChanges: 2000,
   maxName: 120,
   maxId: 200,

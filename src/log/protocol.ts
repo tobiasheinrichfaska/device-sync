@@ -1,4 +1,4 @@
-import { canonical, sha256Text } from '../core/index.ts';
+import { base64url, canonical, sha256Text } from '../core/index.ts';
 import { resolveLimits } from './limits.ts';
 import { tipConflict, tipsOf } from './chain.ts';
 import { merge } from './merge.ts';
@@ -88,15 +88,22 @@ export function fingerprint(replica: Replica): string {
 
 /**
  * Why a session ended without taking anything: a message that cannot be read, a change that is
- * false (the detail is in `Session.refusalReason`), or a message the protocol does not allow at that
- * point (a second `stand` or `done`). Only hostile input is a refusal: a limit of the receiver
- * (changes, size, quota) ends the reading early instead (`Session.truncated`) and what was
- * verified is taken.
+ * false (the detail is in `Session.refusalReason`), a message the protocol does not allow at that
+ * point (a DIFFERENT second `stand` or `done`; an identical repeat is ignored), or `diverged`: the
+ * other's `stand` claims a history that differs from the one held (`tip-mismatch`). `diverged` blames
+ * nobody: a tip is an unproven claim (see `proveEquivocation`). Only hostile input is a refusal: a
+ * limit of the receiver (changes, size, quota, a stand over `maxStandDevices`) ends the reading
+ * early instead (`Session.truncated`) and what was verified is taken.
  */
-export type Refusal = 'unreadable' | 'forged' | 'unexpected';
+export type Refusal = 'unreadable' | 'forged' | 'unexpected' | 'diverged';
 
-/** The detail of a refusal: the reason a change was false, or what was repeated. */
-export type RefusalReason = Reason | 'unparsable' | 'repeated-stand' | 'repeated-done';
+/**
+ * The detail of a refusal: the reason a change was false, what was repeated, or `tip-mismatch` (a
+ * stand names another version of a change than the one held; neutral, no culprit: read the notes on
+ * `Session.subjectDevice`).
+ */
+export type RefusalReason =
+  Reason | 'unparsable' | 'repeated-stand' | 'repeated-done' | 'tip-mismatch';
 
 /** What a session needs beyond the parser's options. */
 export interface SessionOptions extends ParseOptions {
@@ -148,8 +155,24 @@ export interface Session {
   readonly refusal?: Refusal;
   /** Why (see `RefusalReason`; for `own-history` and `equivocation` read the notes on `Reason`). */
   readonly refusalReason?: RefusalReason;
-  /** The author of the change that caused the refusal, when there is one. */
+  /**
+   * The author of the change that caused a refusal for a reason that comes with a change in hand
+   * (`forged` and its reasons, as `equivocation` between two changes this device holds).
+   */
   readonly refusalDevice?: DeviceId;
+  /**
+   * With the refusal `diverged` (`tip-mismatch`): the device whose HISTORY differs between the two
+   * replicas. It does not say who lies: the other side may have invented the tip, or one of the two
+   * holds one version of a double signature. An app must not remove or distrust a device because of
+   * it; it retries, fetches the other version (`changeAt`) and calls `proveEquivocation`.
+   */
+  readonly subjectDevice?: DeviceId;
+  /** Why the session ended early at a limit of this device (see `truncated`), where the reason is not in `judging`. */
+  readonly limit?: 'stand-devices';
+  /** Hash of the `stand` this session received (an identical repeat is ignored, a different one refused). */
+  readonly standHash?: string;
+  /** Hash of the `done` this session received (likewise). */
+  readonly doneHash?: string;
 }
 
 export interface Step {
@@ -181,23 +204,32 @@ function prune(
   list: readonly Change[],
   requireSig: boolean,
   deleteKeys: ReadonlySet<string>,
+  vector: VersionVector,
 ): Change[] {
   let sent = list;
   for (;;) {
     const present = new Set(sent.filter((c) => c.kind === 'delete').map(recordKey));
     const cut = new Set<DeviceId>();
+    // The highest number of each device that is kept so far: what a receiver would hold by then.
+    const reach = new Map<DeviceId, number>();
+    const reachOf = (device: DeviceId): number =>
+      Math.max(seen(vector, device), reach.get(device) ?? 0);
     const out: Change[] = [];
     for (const change of list) {
       if (cut.has(change.device)) continue;
       const key = recordKey(change);
+      // A change whose `knew` names something that is not sent could not be applied: the receiver
+      // would hold it and nothing would be taken.
       if (
         (requireSig && !change.sig) ||
-        (change.kind === 'redacted' && deleteKeys.has(key) && !present.has(key))
+        (change.kind === 'redacted' && deleteKeys.has(key) && !present.has(key)) ||
+        Object.entries(change.knew ?? {}).some(([device, n]) => n > reachOf(device))
       ) {
         cut.add(change.device);
         continue;
       }
       out.push(change);
+      reach.set(change.device, change.seq);
     }
     if (out.length === sent.length) return out;
     sent = out;
@@ -209,10 +241,17 @@ function prune(
  * change depends on was applied here before it): with `signedOnly` (default) only changes that carry
  * a signature; an erased change goes only with its record's deletion (else the receiver would
  * refuse the session and blame the erased change's author); `withheld` counts what was left out for
- * that. The answer is then cut at the receiver-independent session budget (`maxSessionChanges`
- * changes and `maxSessionChars` characters): `more` is true when something that could be sent was
- * not, and the other device asks again in its next session. A cut keeps a gapless prefix of every
- * device, and never an erased change without its deletion.
+ * that (and a change whose `knew` names something that is not sent: it could not be applied). The
+ * answer is then cut at the receiver-independent session budget (`maxSessionChanges` changes and
+ * `maxSessionChars` characters): `more` is true when something that could be sent was not, and the
+ * other device asks again in its next session. A cut keeps a gapless prefix of every device, and
+ * never an erased change without its deletion.
+ *
+ * PROGRESS: an answer to a stand contains at least one applicable group of changes whenever any
+ * exists, also when that group alone is larger than the budget (an erased change, its author's
+ * earlier numbers and the deletion form one group; a single large change is a group of its own). A
+ * budget that cut every applicable change away would repeat itself for ever: the other device would
+ * ask again and get nothing again.
  */
 function answerFor(
   replica: Replica,
@@ -222,7 +261,7 @@ function answerFor(
   const limits = resolveLimits(options.limits);
   const missing = replica.log.filter((c) => c.seq > seen(vector, c.device));
   const deleteKeys = new Set(missing.filter((c) => c.kind === 'delete').map(recordKey));
-  const sendable = prune(missing, options.signedOnly !== false, deleteKeys);
+  const sendable = prune(missing, options.signedOnly !== false, deleteKeys, vector);
   const withheld = missing.length - sendable.length;
   let size = 0;
   let count = 0;
@@ -232,16 +271,30 @@ function answerFor(
     count += 1;
   }
   if (count === sendable.length) return { changes: sendable, withheld, more: false };
-  const cut = prune(sendable.slice(0, count), false, deleteKeys);
-  return { changes: cut, withheld, more: true };
+  let cut = prune(sendable.slice(0, count), false, deleteKeys, vector);
+  if (cut.length === 0) {
+    // The budget cut away every applicable change: take the shortest prefix that holds one (what an
+    // applicable prefix holds only grows with its length, so a binary search finds it; `sendable`
+    // itself is stable under `prune`, so the search ends).
+    let low = count + 1;
+    let high = sendable.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (prune(sendable.slice(0, middle), false, deleteKeys, vector).length > 0) high = middle;
+      else low = middle + 1;
+    }
+    cut = prune(sendable.slice(0, low), false, deleteKeys, vector);
+  }
+  return { changes: cut, withheld, more: cut.length < sendable.length };
 }
 
 /**
  * What a received (already parsed) message changes, and what to send in return. A stand is answered
  * with the changes the other lacks (only signed ones, see `SessionOptions.signedOnly`); changes are
  * merged, and after the last piece this device closes with its stand and fingerprint; `done` is
- * remembered for `outcome`. A second `stand` or `done` in one session ends it (refusal `unexpected`):
- * every `stand` costs an answer. A refused session ignores everything. This variant takes changes
+ * remembered for `outcome`. An identical second `stand` or `done` is ignored (a transport duplicate); a
+ * different one ends the session (refusal `unexpected`): every `stand` costs an answer. A stand whose
+ * tips contradict the log ends it as `diverged` / `tip-mismatch` (no blame). A refused session ignores everything. This variant takes changes
  * as they are: signatures are judged by `receiveJudged`.
  */
 export function onSyncMessage(
@@ -251,13 +304,27 @@ export function onSyncMessage(
   options: SessionOptions = {},
 ): Step {
   if (session.refusal) return { session, replica, send: [] };
+  if (message.t === 'overflow') {
+    // Well-formed but larger than this device reads: the session ends here, nothing is refused.
+    return {
+      session: { ...session, truncated: true, limit: 'stand-devices' },
+      replica,
+      send: [],
+    };
+  }
   if (message.t === 'stand') {
-    if (session.standReceived) return refused(session, replica, 'unexpected', 'repeated-stand');
-    // The other's history must be the one this device holds: a tip that names another version of a number
-    // is equivocation, seen at once and without any signature work.
+    const hash = hashOf({ vector: message.vector, tips: message.tips });
+    if (session.standReceived) {
+      // A transport may deliver a message twice: the same stand again is ignored, another one is not allowed.
+      if (session.standHash === hash) return { session, replica, send: [] };
+      return refused(session, replica, 'unexpected', 'repeated-stand');
+    }
+    // A tip that names another version than the one held means the two histories differ. It is a
+    // claim, not a proof: it ends the session without naming a culprit (`proveEquivocation`).
     const conflict = tipConflict(replica, message.vector, message.tips);
-    if (conflict !== undefined)
-      return refused(session, replica, 'forged', 'equivocation', conflict);
+    if (conflict !== undefined) {
+      return refused(session, replica, 'diverged', 'tip-mismatch', undefined, conflict);
+    }
     const { changes, withheld, more } = answerFor(replica, message.vector, options);
     return {
       session: {
@@ -265,6 +332,7 @@ export function onSyncMessage(
         sent: session.sent + changes.length,
         withheld: session.withheld + withheld,
         standReceived: true,
+        standHash: hash,
         ...(more ? { sentMore: true } : {}),
       },
       replica,
@@ -294,13 +362,24 @@ export function onSyncMessage(
       ],
     };
   }
-  if (session.peer) return refused(session, replica, 'unexpected', 'repeated-done');
+  const hash = hashOf({ vector: message.vector, fingerprint: message.fingerprint });
+  if (session.peer) {
+    if (session.doneHash === hash) return { session, replica, send: [] };
+    return refused(session, replica, 'unexpected', 'repeated-done');
+  }
   return {
-    session: { ...session, peer: { vector: message.vector, fingerprint: message.fingerprint } },
+    session: {
+      ...session,
+      peer: { vector: message.vector, fingerprint: message.fingerprint },
+      doneHash: hash,
+    },
     replica,
     send: [],
   };
 }
+
+/** A short hash of a message's content, to tell an identical repeat from a different message. */
+const hashOf = (value: unknown): string => base64url(sha256Text(canonical(value)));
 
 function refused(
   session: Session,
@@ -308,10 +387,17 @@ function refused(
   refusal: Refusal,
   refusalReason: RefusalReason,
   refusalDevice?: DeviceId,
+  subjectDevice?: DeviceId,
 ): Step {
   const { judging: _j, ...rest } = session;
   return {
-    session: { ...rest, refusal, refusalReason, ...(refusalDevice ? { refusalDevice } : {}) },
+    session: {
+      ...rest,
+      refusal,
+      refusalReason,
+      ...(refusalDevice ? { refusalDevice } : {}),
+      ...(subjectDevice ? { subjectDevice } : {}),
+    },
     replica,
     send: [],
   };

@@ -232,24 +232,21 @@ function reference(
     return dist;
   };
   const rank = walk(undefined);
-  const order = [...rank.keys()].sort((a, b) =>
-    (rank.get(a) as number) !== (rank.get(b) as number)
-      ? (rank.get(a) as number) - (rank.get(b) as number)
-      : a < b
-        ? -1
-        : a > b
-          ? 1
-          : 0,
-  );
+  // Rule 3: one rank after the other; all devices of a rank act at once (no tie-break by id): a
+  // device acts unless a device of a STRICTLY lower rank removed it.
   const removed = new Set<string>();
-  for (const r of order) {
-    if (r !== own && removed.has(r)) continue;
-    if (!vouchesIn(r)) continue;
-    const said = writes.filter(
-      (w) => w.writer === r && w.field === 'removed' && w.value === true && w.target !== r,
-    );
-    for (const t of new Set(said.map((w) => w.target))) {
-      if (!removed.has(t) && walk(t).has(r)) removed.add(t);
+  const ranks = [...new Set(rank.values())].sort((a, b) => a - b);
+  for (const level of ranks) {
+    const before = new Set(removed);
+    for (const r of [...rank.keys()].filter((id) => rank.get(id) === level)) {
+      if (r !== own && before.has(r)) continue;
+      if (!vouchesIn(r)) continue;
+      const said = writes.filter(
+        (w) => w.writer === r && w.field === 'removed' && w.value === true && w.target !== r,
+      );
+      for (const t of new Set(said.map((w) => w.target))) {
+        if (!before.has(t) && walk(t).has(r)) removed.add(t);
+      }
     }
   }
   const removedIds = [...removed].filter((id) => id !== own).sort();
@@ -291,9 +288,22 @@ function reference(
   const view: Members = new Map(
     [...p0].map(([id, m]) => [id, removed.has(id) ? { ...m, vouches: false } : m]),
   );
-  const gone = removedIds.filter(
-    (id) => p0.has(id) && !conflict.has(id) && evaluate(id, view) !== undefined,
-  );
+  // Checkable: every member of P without a key conflict, trusted or not. Its entry is read from the
+  // vouchers that were not removed; where only removed devices vouched, the entry as P has it, unless
+  // those disagree on the signing key (then it is ambiguous and not checkable).
+  const goneEntries: [string, Entry][] = [];
+  for (const id of [...p0.keys()].sort()) {
+    if (t.has(id) || conflict.has(id)) continue;
+    let e = evaluate(id, view);
+    if (!e) {
+      const keys = metById.has(id)
+        ? [(metById.get(id) as KnownDevice).sig]
+        : values(id, 'sig', okKey, p0).slice(0, 8);
+      if (keys.length > 1 && !metById.has(id)) continue;
+      e = (p0.get(id) as Member).entry;
+    }
+    goneEntries.push([id, e]);
+  }
   const reasons: string[] = [];
   for (const id of [...conflict].sort()) reasons.push(`${id}:key-conflict`);
   for (const id of [...mismatch].sort()) reasons.push(`${id}:key-mismatch`);
@@ -313,7 +323,7 @@ function reference(
   const trusted = [...t].map(([id, m]) => describe(id, m.entry, relayConflict.has(id)));
   const checkable = [
     ...trusted,
-    ...gone.map((id) => describe(id, evaluate(id, view) as Entry, relayConflict.has(id))),
+    ...goneEntries.map(([id, e]) => describe(id, e, relayConflict.has(id))),
   ];
   return {
     trusted: trusted.sort(),

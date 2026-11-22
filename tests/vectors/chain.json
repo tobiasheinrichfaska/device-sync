@@ -1,0 +1,366 @@
+{
+  "about": "THROW-AWAY KEY (a second one, for the hash chain): generated once for this file and never used anywhere else; its private half was discarded. link = base64url(SHA-256(canonical({v, device, seq, clock, collection, id, kind (redacted counts as set), check, prev}))): the signed text without the app marker and the data set. \"changes\" are dev-a:1..3 (a set, a set with prev, a delete with prev); \"erased2\" is dev-a:2 after the deletion erased its content (same link, same signature); \"stand\" is the stand of a device that holds all three; \"doubleSigned\" are two signed versions of dev-a:1 (same content, other record) that prove equivocation. Every entry of \"refused\" must be refused or not proven as described.",
+  "appId": "demo",
+  "dataSet": "main",
+  "publicKey": "BGfC1R0tJw3Xw_x8S4EDb7-9Y6Qup-Dey0z1SOXA2AmQO8pVXLZL603HXxyfQQ86KP9vwanE-P700VlJPH2Euvw",
+  "changes": [
+    {
+      "device": "dev-a",
+      "collection": "items",
+      "id": "r1",
+      "seq": 1,
+      "clock": 1,
+      "kind": "set",
+      "fields": {
+        "title": "Hello"
+      },
+      "knew": {},
+      "time": 1700000000000,
+      "by": "user",
+      "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+      "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+    },
+    {
+      "device": "dev-a",
+      "collection": "items",
+      "id": "r1",
+      "seq": 2,
+      "clock": 2,
+      "kind": "set",
+      "fields": {
+        "title": "World"
+      },
+      "knew": {},
+      "time": 1700000000001,
+      "by": "user",
+      "prev": "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+      "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+      "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5A"
+    },
+    {
+      "device": "dev-a",
+      "collection": "items",
+      "id": "r1",
+      "seq": 3,
+      "clock": 3,
+      "kind": "delete",
+      "knew": {},
+      "time": 1700000000002,
+      "by": "user",
+      "prev": "BWkxlxyiv30QZKhPf9EYf7QmZj1nNtrJlV-hy5PjD8U",
+      "check": "d5J1eq98u5ScUj02NSFAeK24s5ictUI52XAITNxUw04",
+      "sig": "tBkL8DQiT3kF5dlkLIFjLAp2pCVAiUWQ9vYCNibS5uwico_36DojNH-qMe9FmIY2svZv3l0sHdGELiHvtkjR5g"
+    }
+  ],
+  "links": [
+    "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+    "BWkxlxyiv30QZKhPf9EYf7QmZj1nNtrJlV-hy5PjD8U",
+    "_5J6mUbWOyVHdErRL6OTDSY57CAUlxLGdS_wwbz2Fcw"
+  ],
+  "erased2": {
+    "device": "dev-a",
+    "seq": 2,
+    "clock": 2,
+    "collection": "items",
+    "id": "r1",
+    "kind": "redacted",
+    "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+    "prev": "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+    "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5A"
+  },
+  "stand": {
+    "t": "stand",
+    "vector": {
+      "dev-a": 3
+    },
+    "tips": {
+      "dev-a": "_5J6mUbWOyVHdErRL6OTDSY57CAUlxLGdS_wwbz2Fcw"
+    }
+  },
+  "doubleSigned": {
+    "a": {
+      "device": "dev-a",
+      "collection": "items",
+      "id": "r1",
+      "seq": 1,
+      "clock": 1,
+      "kind": "set",
+      "fields": {
+        "title": "Hello"
+      },
+      "knew": {},
+      "time": 1700000000000,
+      "by": "user",
+      "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+      "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+    },
+    "b": {
+      "device": "dev-a",
+      "collection": "items",
+      "id": "r2",
+      "seq": 1,
+      "clock": 1,
+      "kind": "set",
+      "fields": {
+        "title": "Hello"
+      },
+      "knew": {},
+      "time": 1700000000000,
+      "by": "user",
+      "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+      "sig": "QoeI2BOl3_N9Ev29ZfExLTeNBESHZaenGOjByamP9aYcQN3nwb6zndTIP0RMR-DpK-vq6vsINFk9cit6aWdzSg"
+    }
+  },
+  "refused": [
+    {
+      "name": "prev names another predecessor (signed correctly): equivocation",
+      "change": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 2,
+        "clock": 2,
+        "kind": "set",
+        "fields": {
+          "title": "World"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "prev": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "sig": "SUDO_DmVfr8gjTJZfIAiUEyWofThSst-zH4GWR_KUxk1xtN2Ei11BXQIJBYswDA5PuoHK1pNiJDHcin5I5cisw"
+      },
+      "verdict": "false"
+    },
+    {
+      "name": "no prev after the first change: bad-prev",
+      "change": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 2,
+        "clock": 2,
+        "kind": "set",
+        "fields": {
+          "title": "World"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "sig": "EtBhBcgx9gjQHsKRtAGUtGLU8d3iehM3sFpZD6omBpkCBpm7TyOIxTKF1kmB4dgPNzyHNKoejPmr5xzjJzLlHA"
+      },
+      "verdict": "false"
+    },
+    {
+      "name": "prev altered after signing: the signature no longer verifies",
+      "change": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 2,
+        "clock": 2,
+        "kind": "set",
+        "fields": {
+          "title": "World"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "prev": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5A"
+      },
+      "verdict": "false"
+    },
+    {
+      "name": "signature of the second change flipped in its last character",
+      "change": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 2,
+        "clock": 2,
+        "kind": "set",
+        "fields": {
+          "title": "World"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "prev": "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5B"
+      },
+      "verdict": "false"
+    },
+    {
+      "name": "an erased change alone, its deletion is not in sight",
+      "change": {
+        "device": "dev-a",
+        "seq": 2,
+        "clock": 2,
+        "collection": "items",
+        "id": "r1",
+        "kind": "redacted",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "prev": "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+        "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5A"
+      },
+      "verdict": "false"
+    }
+  ],
+  "tamperedStand": {
+    "t": "stand",
+    "vector": {
+      "dev-a": 3
+    },
+    "tips": {
+      "dev-a": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    }
+  },
+  "notProven": [
+    {
+      "name": "one change twice",
+      "a": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      },
+      "b": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      }
+    },
+    {
+      "name": "same number, same signed text",
+      "a": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      },
+      "b": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      }
+    },
+    {
+      "name": "a version with a flipped signature",
+      "a": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      },
+      "b": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r2",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "QoeI2BOl3_N9Ev29ZfExLTeNBESHZaenGOjByamP9aYcQN3nwb6zndTIP0RMR-DpK-vq6vsINFk9cit6aWdzSA"
+      }
+    },
+    {
+      "name": "another number",
+      "a": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 1,
+        "clock": 1,
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "rm0LxO_wj_4huSiMdYwuxOKux4FRxb1WJquYGrel2GwpCy8ZYRMqEKxbjnMmSQscv4bvrV1dQZa28AyK-YpW9g"
+      },
+      "b": {
+        "device": "dev-a",
+        "collection": "items",
+        "id": "r1",
+        "seq": 2,
+        "clock": 2,
+        "kind": "set",
+        "fields": {
+          "title": "World"
+        },
+        "knew": {},
+        "time": 1700000000001,
+        "by": "user",
+        "prev": "KmKrpfPV8GsLPy1RopDzPuSAsusGr2rYY71o5UxKTus",
+        "check": "NXsZlHAy8Ls3Lgp-Nvf5r-jTYjjxcdTCJ-a94cUBQAQ",
+        "sig": "j1tCMbpDjUGVdTKXWKdW-2wm2fGQWEFPPBILzjGtx14szLfVqTB833wpA-TOgM8tYwSPJUJSo4lgxo_zoGNY5A"
+      }
+    }
+  ]
+}

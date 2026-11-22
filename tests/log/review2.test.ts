@@ -559,26 +559,43 @@ describe('N4: one stand and one done per session', () => {
   const stand: SyncMessage = { t: 'stand', vector: {}, tips: {} };
   const done: SyncMessage = { t: 'done', vector: {}, fingerprint: '0'.repeat(32) };
 
-  it('a second stand ends the session (unexpected / repeated-stand) and sends nothing', () => {
+  it('an identical second stand (a transport duplicate) is ignored: no answer, no refusal', () => {
     const a = emptyReplica('a');
     const first = onSyncMessage(startSession(a).session, a, stand);
     expect(first.session.refusal).toBeUndefined();
     const second = onSyncMessage(first.session, a, stand);
+    expect(second.session.refusal).toBeUndefined();
+    expect(second.send).toEqual([]);
+    expect(second.session.sent).toBe(first.session.sent);
+    const viaReceive = receive(first.session, a, json(stand));
+    expect(viaReceive.session.refusal).toBeUndefined();
+  });
+
+  it('a DIFFERENT second stand ends the session (unexpected / repeated-stand) and sends nothing', () => {
+    const a = emptyReplica('a');
+    const first = onSyncMessage(startSession(a).session, a, stand);
+    const other: SyncMessage = { t: 'stand', vector: { z: 1 }, tips: {} };
+    const second = onSyncMessage(first.session, a, other);
     expect(second.session.refusal).toBe('unexpected');
     expect(second.session.refusalReason).toBe('repeated-stand');
     expect(second.send).toEqual([]);
-    const viaReceive = receive(first.session, a, json(stand));
+    const viaReceive = receive(first.session, a, json(other));
     expect(viaReceive.session.refusalReason).toBe('repeated-stand');
   });
 
-  it('a second done ends the session (unexpected / repeated-done)', async () => {
+  it('an identical second done is ignored, a different one ends the session (unexpected / repeated-done)', async () => {
     const a = emptyReplica('a');
     const first = onSyncMessage(startSession(a).session, a, done);
     expect(first.session.refusal).toBeUndefined();
-    const second = onSyncMessage(first.session, a, done);
+    const same = onSyncMessage(first.session, a, done);
+    expect(same.session.refusal).toBeUndefined();
+    const judgedSame = await receiveJudged(first.session, a, json(done), judgeFor('a'));
+    expect(judgedSame.session.refusal).toBeUndefined();
+    const other: SyncMessage = { t: 'done', vector: {}, fingerprint: '1'.repeat(32) };
+    const second = onSyncMessage(first.session, a, other);
     expect(second.session.refusal).toBe('unexpected');
     expect(second.session.refusalReason).toBe('repeated-done');
-    const judged = await receiveJudged(first.session, a, json(done), judgeFor('a'));
+    const judged = await receiveJudged(first.session, a, json(other), judgeFor('a'));
     expect(judged.session.refusalReason).toBe('repeated-done');
   });
 

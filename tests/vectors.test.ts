@@ -12,12 +12,20 @@ import {
 } from '../src/core/index.ts';
 import {
   changeCheckValue,
+  changeLink,
   changeSigningText,
   emptyReplica,
   judgeChange,
+  judgeChanges,
+  merge,
+  parseSyncMessage,
   parseSyncMessageText,
+  proveEquivocation,
+  tipConflict,
+  tipsOf,
   write,
   type Change,
+  type Replica,
 } from '../src/log/index.ts';
 
 const load = <T>(name: string): T =>
@@ -156,4 +164,106 @@ describe('vectors: one signed change that every implementation must accept', () 
       expect(await judge(r.change, r.appId, r.dataSet)).toBe('false');
     });
   }
+});
+
+describe('vectors: the hash chain (signed change with prev, signed erased change, stand with tips)', () => {
+  const file = load<{
+    appId: string;
+    dataSet: string;
+    publicKey: string;
+    changes: Change[];
+    links: string[];
+    erased2: Change;
+    stand: { t: 'stand'; vector: Record<string, number>; tips: Record<string, string> };
+    doubleSigned: { a: Change; b: Change };
+    refused: { name: string; change: Change; verdict: string }[];
+    tamperedStand: { t: 'stand'; vector: Record<string, number>; tips: Record<string, string> };
+    notProven: { name: string; a: Change; b: Change }[];
+  }>('chain');
+  const [first, second, third] = file.changes as [Change, Change, Change];
+  const key = () => importPublicKey(file.publicKey, 'sig') as Promise<CryptoKey>;
+  const context = (state: Replica = emptyReplica('n')) => ({
+    appId: file.appId,
+    dataSet: file.dataSet,
+    keys: { keyFor: () => key() },
+    state,
+    allowFinalDelete: () => true,
+  });
+
+  it('links: changeLink of each change is the recorded one, and every later change names it as prev', () => {
+    expect(file.changes.map((c) => changeLink(c))).toEqual(file.links);
+    expect(second.prev).toBe(file.links[0]);
+    expect(third.prev).toBe(file.links[1]);
+    for (const link of file.links) expect(link).toHaveLength(43);
+  });
+
+  it('the signed text of a change with prev contains it, and every signature verifies', async () => {
+    expect(changeSigningText(file.appId, second, file.dataSet)).toContain(
+      `"prev":"${second.prev}"`,
+    );
+    for (const c of [...file.changes, file.erased2]) {
+      const text = changeSigningText(file.appId, c, file.dataSet);
+      expect(await verifyText(await key(), text, c.sig as string)).toBe(true);
+    }
+  });
+
+  it('a signed change with prev is accepted beside its predecessor; the chain is accepted in order', async () => {
+    const holder = merge(emptyReplica('n'), [first]).replica;
+    expect(await judgeChange(context(holder), second)).toBe('checked');
+    expect(await judgeChanges(context(), [first, second, third])).toEqual([
+      'checked',
+      'checked',
+      'checked',
+    ]);
+  });
+
+  it('a signed erased change keeps link and signature, and is accepted beside its deletion only', async () => {
+    expect(changeLink(file.erased2)).toBe(file.links[1]);
+    expect(file.erased2.kind).toBe('redacted');
+    const holder = merge(emptyReplica('n'), [first]).replica;
+    expect(await judgeChanges(context(holder), [file.erased2, third])).toEqual([
+      'checked',
+      'checked',
+    ]);
+    expect(await judgeChange(context(holder), file.erased2)).toBe('false');
+  });
+
+  it('a stand carries the tips of the held changes; a receiver that holds the same history finds no conflict', () => {
+    const holder = merge(emptyReplica('n'), [first, second, third]).replica;
+    expect(tipsOf(holder)).toEqual(file.stand.tips);
+    expect(file.stand.tips['dev-a']).toBe(file.links[2]);
+    expect(parseSyncMessage(file.stand)).toEqual(file.stand);
+    expect(tipConflict(holder, file.stand.vector, file.stand.tips)).toBeUndefined();
+    // one that holds the erased version of the second change has the same history
+    const erased = merge(emptyReplica('n'), [first, file.erased2, third]).replica;
+    expect(tipConflict(erased, file.stand.vector, file.stand.tips)).toBeUndefined();
+  });
+
+  it('a stand with a changed tip is read, and conflicts: a claim without a culprit', () => {
+    const holder = merge(emptyReplica('n'), [first, second, third]).replica;
+    expect(parseSyncMessage(file.tamperedStand)).toEqual(file.tamperedStand);
+    expect(tipConflict(holder, file.tamperedStand.vector, file.tamperedStand.tips)).toBe('dev-a');
+  });
+
+  it('every tampered change is refused', async () => {
+    expect(file.refused.length).toBeGreaterThanOrEqual(5);
+    const holder = merge(emptyReplica('n'), [first]).replica;
+    for (const r of file.refused) {
+      expect(await judgeChange(context(holder), r.change), r.name).toBe(r.verdict);
+    }
+  });
+
+  it('two signed versions of one number are proven to be equivocation; the other pairs are not', async () => {
+    const { a, b } = file.doubleSigned;
+    expect(a.check).toBe(b.check); // same content ...
+    expect(changeLink(a)).not.toBe(changeLink(b)); // ... other head: other link
+    expect(await proveEquivocation(a, b, await key(), file.appId, file.dataSet)).toBe(true);
+    for (const pair of file.notProven) {
+      const proof = await proveEquivocation(pair.a, pair.b, await key(), file.appId, file.dataSet);
+      expect(proof, pair.name).toBe(false);
+    }
+    // a holder of the first version judges the second as equivocation
+    const holder = merge(emptyReplica('n'), [a]).replica;
+    expect(await judgeChange(context(holder), b)).toBe('false');
+  });
 });
