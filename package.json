@@ -26,10 +26,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./conformance": {
+      "types": "./dist/relay/conformance.d.ts",
+      "import": "./dist/relay/conformance.js"
+    },
+    "./conformance/cases.json": "./tests/relay/conformance/cases.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "tests/relay/conformance/cases.json",
+    "docs/relay-protocol.md"
   ],
   "dependencies": {
     "@noble/hashes": "^2.4.0"

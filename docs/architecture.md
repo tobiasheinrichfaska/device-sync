@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust and post exist)
+# Architecture (built layer by layer; core, log, trust, post and relay exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -17,7 +17,7 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 | **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
 
 `core`, `log`, `trust`, `post` and `push` are pure: no clock, no randomness, no I/O (both are passed
-in) and testable without a UI. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC.
+in) and testable without a UI. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
 
 ## Parameters instead of constants
 
@@ -128,7 +128,29 @@ signed changes, earlier and later, verify; the app restricts it with `mayWrite`,
 the group keys once the encryption layer exists), the device lock after days without contact, and
 which person a device belongs to.
 
-## Wire protocol of the relay
+## Relay layer (`src/relay/`)
 
-Described next to the client with machine-readable test cases, so a server and any port of it can be
-tested against the same cases. Not yet written.
+The exact protocol of the relay, version 1, is written in `docs/relay-protocol.md`: transport rules, every
+endpoint, token formats, error kinds, limits, presence and waiting rules, the order of checks and a list of
+open points a server owner still has to decide. The layer has five parts.
+
+- **`limits`, `kinds`**: every number of the protocol (`RELAY_LIMITS`), the polling cadence, the mapping from
+  the English names of the API to the German wire words (`ENDPOINTS`, `WIRE_MEMBERS`), and the error-kind
+  table (`RELAY_KINDS`: wire word, English name, status, class fatal / retry / reenrol / refused, delay hint)
+  as data. Tests tie the document's limits table, mapping tables and error table to this code.
+- **`readers`**: a strict reader for every answer of the relay. Each takes the text of a body, refuses
+  unknown members, duplicate keys, non-canonical base64url and anything over the documented bound, never
+  throws, and returns fresh copies.
+- **`client`**: `RelayClient` with injected `fetch`, base URL, app id, clock and credential store. Protocol
+  errors are results with an error kind, never exceptions; the access never appears in a result; requests
+  use `credentials: 'omit'`; retries are bounded, backed off and only for kinds that are safe to repeat; an
+  expired access moves the client to a `stale` state (no more requests) until it enrols again, optionally
+  through a hook; polling follows the documented cadence.
+- **`framing`**: the client's own convention for payloads larger than one message: versioned frames, strict
+  reassembly with limits (parts, bytes, senders, hold time as parameters).
+- **`conformance`**: a runner that takes the language-neutral cases of
+  `tests/relay/conformance/cases.json` and a running server (exported as `device-sync/conformance`). The
+  repository tests it against an in-memory reference server written from the document alone, and against
+  deliberately broken variants of that server.
+
+The push layer that builds the ring request, and the browser layer that supplies a credential store, come later.

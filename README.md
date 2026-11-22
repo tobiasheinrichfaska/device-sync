@@ -10,8 +10,8 @@ shapes, merge rules on a business level, rights, texts and UI belong to your app
 **Status: work in progress (0.0.0).** Implemented and exported so far: the `core` layer (canonical
 JSON, check values, device keys, signatures, end-to-end session, encrypted file, sealed envelope for several readers), the `post` layer (mailbox for envelopes carried for others, per-day exchange, receipts), the `log` layer (change log, merge, signing and judging,
 the exchange protocol with strict parsers and partial sessions) and the `trust` layer (device list,
-derived trust, meeting code, invitation). Not yet there: relay client,
-push, transfer, browser. The package is not published to npm. See
+derived trust, meeting code, invitation) and the `relay` layer (client of a store-and-forward message relay with strict readers and
+bounded retries, message framing, the exact protocol in [docs/relay-protocol.md](docs/relay-protocol.md), and conformance cases a relay server can be tested against). Not yet there: push, transfer, browser. The package is not published to npm. See
 [docs/architecture.md](docs/architecture.md) for the layers.
 
 ## Install and test

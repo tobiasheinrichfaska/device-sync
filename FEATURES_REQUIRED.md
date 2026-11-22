@@ -1,7 +1,7 @@
 # Critical User Paths — device-sync
 
 **Purpose:** Core workflows that must not break. Audit validates these end-to-end.
-Status: core (incl. session, encrypted file and envelope), post (mailbox), log (model, signing, exchange protocol) and trust implemented; the rest is the target.
+Status: core (incl. session, encrypted file and envelope), post (mailbox), relay (client, readers, framing, conformance), log (model, signing, exchange protocol) and trust implemented; the rest is the target.
 
 ## Library behaviour (target)
 
@@ -13,7 +13,7 @@ Status: core (incl. session, encrypted file and envelope), post (mailbox), log (
 - [x] **Two apps never share bytes** (markers, check code, change signatures, session keys and file keys per appId: `tests/core/session.test.ts`, `tests/core/file.test.ts`, `tests/core/secure.test.ts`) — different `appId`s give different signatures and keys
 - [x] **A session carries messages in order and nothing else** (`tests/core/session.test.ts`: tamper sweeps, replay, duplication, reordering, dropping, reflection, counter limit; `tests/vectors-session.test.ts`) — an altered, replayed, reordered, dropped or reflected message is refused and changes no state
 - [x] **A file opens only for its recipient, only from its sender** (`tests/core/file.test.ts`, `tests/vectors-session.test.ts`)
-- [ ] **A relay client survives errors** — it acts on the error code, never on its text
+- [x] **A relay client survives errors** — it acts on the error code, never on its text (`tests/relay/client.test.ts`: every kind of failure against the reference server and scripted answers; fatal kinds are never retried, retry kinds with bounded backoff, an expired access stops further requests and re-enrols once, the access never appears in a result or a log, a hostile body is bounded; `tests/relay/readers.test.ts`: 3500 fuzz inputs per reader; `tests/relay/conformance.test.ts`: the runner passes the reference server and fails twelve broken variants)
 
 | Path                          | Impact                              | Audit Check                                    |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------- |
