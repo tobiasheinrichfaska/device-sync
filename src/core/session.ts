@@ -229,6 +229,8 @@ export async function openSession(params: SessionParams): Promise<SessionOpening
   }
   if (ownDh === undefined) return refuse('bad-own');
   if (ephPublic !== ownHello.eph) return refuse('own-hello-mismatch');
+  // the static pair as the "ephemeral" one would give the four secrets static terms: no forward secrecy
+  if (ephPublic === ownDh) return refuse('bad-own');
   if (peer.dh === ownDh) return refuse('same-key');
 
   const peerEph = await importPoint(peerHello.eph);

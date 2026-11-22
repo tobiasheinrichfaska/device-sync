@@ -794,7 +794,8 @@ opened.
 The caller supplies: `appId`, own `device` and agreement pair, the `peer` (`device`, `dh`), the own
 ephemeral pair and both hellos. Refused with a code: `bad-own`, `bad-peer`, `bad-hello` (a hello that is
 not exactly device and eph), `own-hello-mismatch` (own hello has another device id or another point than
-the ephemeral pair), `wrong-device` (the peer's hello names another device than `peer.device`),
+the ephemeral pair), `bad-own` also when the "ephemeral" pair has the same public point as the static agreement pair (every
+secret would be a static one: no forward secrecy), `wrong-device` (the peer's hello names another device than `peer.device`),
 `same-device`, `mirrored` (both hellos carry the same ephemeral point: a message fed back), `bad-peer-key`
 (not a point), `same-key` (the peer's static point is this device's own), `bad-point` (the peer's
 ephemeral point is not on the curve), `ephemeral-reused`, `crypto-failure`. An invalid app id is a
@@ -1063,7 +1064,7 @@ twice is one reader. Steps:
 5. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
 6. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
 
-Making is refused with a code, changing nothing: `bad-author` (device id or signing key unusable),
+Making is refused with a code, changing nothing: `bad-author` (device id unusable, or the signing key is not an ECDSA private key that can sign),
 `bad-channel`, `bad-day`, `bad-input` (the content is not bytes), `bad-random` (the source is not a
 function, throws or gives the wrong number of bytes), `no-recipients`, `too-many-recipients` (more than
 `maxFans` readers listed), `bad-recipient` (not a point, or not on the curve), `too-large` (the content or

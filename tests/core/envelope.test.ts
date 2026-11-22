@@ -196,7 +196,7 @@ describe('sealing and opening (cases of both earlier implementations)', () => {
     });
     expect(await seal1({ author: { device: A.device, signing: {} } })).toEqual({
       ok: false,
-      reason: 'crypto-failure',
+      reason: 'bad-author',
     });
     expect(await seal1({ random: () => new Uint8Array(3) })).toEqual({
       ok: false,

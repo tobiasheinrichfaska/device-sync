@@ -289,7 +289,16 @@ export async function sealEnvelope(params: EnvelopeSealParams): Promise<Envelope
   const lim = resolveEnvelopeLimits(params.limits);
   const refuse = (reason: EnvelopeSealRefusal): EnvelopeSealed => ({ ok: false, reason });
   if (!isPlain(author) || !isDeviceText(author.device)) return refuse('bad-author');
-  if (typeof author.signing !== 'object' || author.signing === null) return refuse('bad-author');
+  const signing = author.signing as CryptoKey | null | undefined;
+  if (
+    typeof signing !== 'object' ||
+    signing === null ||
+    signing.type !== 'private' ||
+    signing.algorithm?.name !== 'ECDSA' ||
+    !signing.usages?.includes('sign')
+  ) {
+    return refuse('bad-author');
+  }
   if (!isDeviceText(channel)) return refuse('bad-channel');
   if (!isDay(day)) return refuse('bad-day');
   if (!(body instanceof Uint8Array)) return refuse('bad-input');
