@@ -327,7 +327,8 @@ never be mutated in place.
 Over any channel (direct connection, relay, a file) two devices run one **session**: both send their
 stand; each answers with the changes the other lacks, in pieces; each takes what arrives and closes
 with its new stand and a fingerprint. Equal fingerprints mean both show the same data. The channel
-only carries the messages; encryption belongs to the session of the `core` layer (not built yet).
+only carries the messages; encryption belongs to the session of the `core` layer (built; this package has no test that wires
+the two together, the app does).
 
 ### Messages
 
@@ -568,8 +569,7 @@ layer does not revoke a removed device's ability to write.** An app that removes
 (1) stop exchanging with it at the transport, (2) treat data authored by removed devices as
 untrusted when it presents it (`deviceStatus(...).removed`), (3) restrict what it may still do with
 `mayWrite` / `allowFinalDelete`, knowing that a hook that looks at state can answer differently on two
-devices (they may hold different parts of the log), and (4) have the encryption layer (not built
-yet) rotate the group keys on removal. A removed device stays removed: coming back means a NEW device
+devices (they may hold different parts of the log), and (4) rotate the group keys on removal (group keys are not part of this package yet). A removed device stays removed: coming back means a NEW device
 id (`addDevice` refuses `removed`; `removed: false` is never a way back). An earlier design stopped
 the writes of a removed device automatically (`lastSeq`, the verdict `ignored`, `KeySource.standing`);
 it was taken out because a device-local decision about someone else's numbers makes honest devices

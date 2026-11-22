@@ -125,7 +125,7 @@ strategies like this:
 
 Left to the app: everything a removed or untrusted device may still do (it stays checkable, so its
 signed changes, earlier and later, verify; the app restricts it with `mayWrite`, stops exchanging with it, and rotates
-the group keys once the encryption layer exists), the device lock after days without contact, and
+the group keys, which this package does not provide yet), the device lock after days without contact, and
 which person a device belongs to.
 
 ## Relay layer (`src/relay/`)
