@@ -315,6 +315,17 @@ export const lockRemoved = (state: LockState): LockState =>
   state.removed ? state : { ...state, removed: true };
 
 /**
+ * Feeds the verdict of a removal notice into the lock (`judgeRemovalNotice`, or `SyncReport.notice` of
+ * the sync driver): only a proven removal (`selfRemoved: true`) locks for good, like `lockRemoved`; any
+ * other verdict, or none, leaves the state as it is. The lock layer takes the verdict by its shape and
+ * knows nothing of the trust layer.
+ */
+export const lockRemovedBy = (
+  state: LockState,
+  verdict: { readonly selfRemoved?: boolean } | undefined,
+): LockState => (verdict?.selfRemoved === true ? lockRemoved(state) : state);
+
+/**
  * This device's own deadline (e.g. a private device: shorter). A lock that stands stays; `warnDays`
  * must not exceed `maxDays`.
  */

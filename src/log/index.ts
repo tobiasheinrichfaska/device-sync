@@ -43,7 +43,9 @@ export type {
   SnapshotOptions,
   SnapshotResult,
 } from './snapshot.ts';
-export { merge } from './merge.ts';
+export { merge, mergeSparse } from './merge.ts';
+export { checkRights } from './rights.ts';
+export type { RightsAnswer, RightsOptions, RightsRefusal } from './rights.ts';
 export {
   APPROVAL_LIMITS,
   approve,
@@ -68,6 +70,7 @@ export {
   judgeChange,
   judgeChanges,
   judgeDetailed,
+  judgeRetained,
   proveEquivocation,
   readChanges,
   signChange,
@@ -132,6 +135,32 @@ export type {
   SessionOptions,
   Step,
 } from './protocol.ts';
+export {
+  approveAll,
+  approveChange,
+  correctValue,
+  keepValue,
+  recordsWithRequests,
+  requestCount,
+  review,
+  reviewConflicts,
+  reviewRequests,
+  reviewSettlements,
+  reviewView,
+  takeApproverValue,
+} from './review.ts';
+export type {
+  ApproveAllOptions,
+  ReviewConfig,
+  ReviewConflict,
+  ReviewConflictKind,
+  ReviewFailure,
+  ReviewRequest,
+  ReviewSettlement,
+  ReviewState,
+  ReviewValue,
+  ReviewWriteResult,
+} from './review.ts';
 export {
   REPLICA_AT_REST,
   REPLICA_VERSION,

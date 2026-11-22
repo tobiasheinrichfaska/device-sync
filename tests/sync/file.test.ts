@@ -15,7 +15,7 @@ import {
   type ExchangeFileConfig,
   type SyncConfig,
 } from '../../src/sync/index.ts';
-import { APP, prng, world, type Member } from './helpers.ts';
+import { APP, prng, removeFrom, world, type Member } from './helpers.ts';
 
 const PLAN = 'plan';
 const NOW = 1_800_000_000_000;
@@ -244,6 +244,32 @@ describe('the exchange file', () => {
         nowMs: NOW,
       }),
     ).toMatchObject({ ok: false, reason: 'bad-input' });
+  });
+});
+
+describe('a file for a removed device', () => {
+  it('carries the removal notice and nothing else; the removed device learns it from the file alone', async () => {
+    const w = await world(['A', 'B', 'C']);
+    const [a, b, c] = w.members as [Member, Member, Member];
+    removeFrom(a, c);
+    const made = await makeExchangeFile(cfgOf(a), { to: c.id, replica: a.replica, nowMs: NOW });
+    if (!made.ok) throw new Error(`${made.reason} ${made.detail}`);
+    expect(made.removalNotice).toBe(true);
+    expect(made.changes).toBe(0);
+    const took = await takeExchangeFile(cfgOf(c), {
+      file: made.file,
+      replica: c.replica,
+      nowMs: NOW,
+    });
+    if (!took.ok) throw new Error(`${took.reason} ${took.detail}`);
+    expect(took.removal?.selfRemoved).toBe(true);
+    expect(took.applied).toBe(0);
+    // a device that was never removed gets no notice
+    expect(
+      await makeExchangeFile(cfgOf(a), { to: b.id, replica: a.replica, nowMs: NOW }),
+    ).toMatchObject({ ok: true });
+    const none = await makeExchangeFile(cfgOf(a), { to: 'nobody', replica: a.replica, nowMs: NOW });
+    expect(none).toMatchObject({ ok: false, reason: 'recipient-not-trusted' });
   });
 });
 

@@ -21,8 +21,14 @@ import {
   deviceKeySource,
   resolveValidators,
   type KnownDevice,
+  type NoticeVerdict,
   type Trust,
   type TrustOptions,
+  judgeRemovalNotice,
+  looksLikeRemovalNotice,
+  readRemovalNotice,
+  removalNotice,
+  writeRemovalNotice,
 } from '../trust/index.ts';
 import { channelKeys } from '../channel/keys.ts';
 import {
@@ -67,6 +73,7 @@ import {
 } from '../relay/index.ts';
 import type { RelayClient } from '../relay/index.ts';
 import { resolveSyncLimits, type SyncCode, type SyncLimits } from './limits.ts';
+import { noticeTargetsOf, rememberTold } from './notice.ts';
 import { buildRoster, type Peer, type Roster } from './roster.ts';
 import {
   frameOf,
@@ -96,7 +103,10 @@ export interface SyncConfig {
   /** Random bytes (exactly `n`): a parameter, never read from a global. */
   readonly random: (n: number) => Uint8Array;
   /** The app's hooks of the log layer (who may write, final deletion, quota, special cases). */
-  readonly judge?: Pick<JudgeOptions, 'mayWrite' | 'allowFinalDelete' | 'quota' | 'special'>;
+  readonly judge?: Pick<
+    JudgeOptions,
+    'mayWrite' | 'allowFinalDelete' | 'quota' | 'special' | 'rights'
+  >;
   /** Hold back until approved (`docs/approval.md`). */
   readonly approval?: ApprovalOptions;
   readonly limits?: Partial<SyncLimits>;
@@ -131,6 +141,14 @@ export interface SyncReport {
   readonly trust: Trust;
   /** This device's own removal counts: the step did nothing else. */
   readonly selfRemoved: boolean;
+  /**
+   * The verdict of a removal notice judged at this step (at most `maxNoticesPerStep` are judged; the
+   * proof wins): `selfRemoved` true means a trusted device removed THIS device. Feed it to the lock:
+   * `lockRemovedBy(lock, report.notice)`.
+   */
+  readonly notice?: NoticeVerdict;
+  /** Removed devices that were told of their removal at this step (the relay took every frame). */
+  readonly told: readonly string[];
   /** Devices whose removal counted for the first time at this step (their keys may need rotating). */
   readonly newlyRemoved: readonly string[];
   /** Devices the step exchanges with: trusted, with a usable relay id. */
@@ -347,12 +365,19 @@ async function run(
     });
   }
   const mainCtx = ctxs.get(dataSet) as SetCtx;
+  const aim = (): void => {
+    state.noticeTargets = trust.selfRemoved
+      ? new Map()
+      : noticeTargetsOf(trust, roster, state, ownRelay, lim.maxNoticeTargets, now, lim.retellMs);
+  };
+  aim();
   const refresh = async (): Promise<void> => {
     if (trustedFor === mainCtx.replica) return;
     replica = mainCtx.replica;
     trust = await computeTrust(replica, direct, cfg.trust);
     trustedFor = replica;
     roster = buildRoster(trust, own.device, ownRelay);
+    aim();
   };
   const may = (ctx: SetCtx, peer: Peer): boolean => {
     try {
@@ -382,6 +407,9 @@ async function run(
   let messagesSent = 0;
   const passed: PassedFile[] = [];
   let present: readonly string[] = [];
+  let notice: NoticeVerdict | undefined;
+  let noticesJudged = 0;
+  const told: string[] = [];
   let relayFailure: { kind: string; class: string } | undefined;
 
   const nextDelay = (busy: boolean): number => {
@@ -405,7 +433,9 @@ async function run(
       ) || [...state.outbox.values()].some((q) => q.length > 0);
     const report: SyncReport = {
       trust,
-      selfRemoved: trust.selfRemoved,
+      selfRemoved: trust.selfRemoved || state.removedProof,
+      ...(notice ? { notice } : {}),
+      told,
       newlyRemoved,
       peers: [...roster.peers.keys()],
       present: roster.peers.size === 0 ? [] : present.filter((id) => roster.byRelay.has(id)),
@@ -436,19 +466,24 @@ async function run(
     for (const device of [...state.outbox.keys()]) {
       if (!roster.peers.has(device)) {
         const queued = state.outbox.get(device) ?? [];
-        for (let i = 0; i < queued.length; i += 1) note('recipient-not-trusted', device);
-        forget(device);
+        // a removed device that may be told keeps the notice, nothing else
+        const keep = state.noticeTargets.has(device) ? queued.filter((q) => q.notice) : [];
+        for (let i = keep.length; i < queued.length; i += 1) note('recipient-not-trusted', device);
+        if (keep.length === 0) forget(device);
+        else state.outbox.set(device, keep);
       }
     }
   };
 
   // 3. A removed device does nothing: no collect (its messages are not its to take), no sending.
-  if (trust.selfRemoved) {
+  const bailOut = (): SyncResult => {
     for (const device of [...state.peers.keys()]) forget(device);
     for (const device of [...state.outbox.keys()]) forget(device);
+    state.noticeTargets = new Map();
     note('self-removed');
     return finish();
-  }
+  };
+  if (trust.selfRemoved || state.removedProof) return bailOut();
   for (const x of roster.excluded) note(x.reason, x.device);
   purge();
 
@@ -478,7 +513,10 @@ async function run(
 
   // 5. Collect (asking the presence of the peers in the same call).
   let collected: readonly CollectedMessage[] = [];
-  const ask = [...roster.byRelay.keys()].slice(0, 200);
+  const ask = [
+    ...roster.byRelay.keys(),
+    ...[...state.noticeTargets.values()].map((t) => t.relayId),
+  ].slice(0, 200);
   const got: RelayResult<CollectAllValue> = await cfg.relay.collectAll({
     ask,
     maxCalls: lim.maxCollectCalls,
@@ -507,12 +545,15 @@ async function run(
     await takeIn(message);
   }
   takeReceipts();
+  // A removal notice proved this device removed: nothing else is done, nothing more is sent.
+  if (state.removedProof) return bailOut();
 
   // 7. Ask the present peers that are due.
   await refresh();
   if (relayFailure === undefined || relayFailure.class === 'retry') {
     await askPeers();
     await askPost();
+    await tellRemoved();
   }
 
   // 8. Drop what is queued.
@@ -552,6 +593,7 @@ async function run(
       file,
     });
     if (!opened.ok) return note('cannot-open', peer.device, opened.reason);
+    if (looksLikeRemovalNotice(appId, opened.payload)) return takeNotice(peer, opened.payload);
     if (!looksLikePacket(appId, opened.payload)) {
       if (passed.length < lim.maxPassedPerStep) passed.push({ from: peer.device, file });
       return;
@@ -809,6 +851,50 @@ async function run(
     }
   }
 
+  /** A removal notice from a peer: judged on a throw-away copy, never merged. */
+  async function takeNotice(peer: Peer, payload: Uint8Array): Promise<void> {
+    if (noticesJudged >= lim.maxNoticesPerStep) return note('notice-rate-limited', peer.device);
+    noticesJudged += 1;
+    const changes = readRemovalNotice(appId, payload, {
+      limits: cfg.log ?? {},
+      deviceId: valid.deviceId,
+      ...(cfg.trust.collection !== undefined ? { collection: cfg.trust.collection } : {}),
+    });
+    if (!changes) return note('bad-notice', peer.device);
+    const verdict = await judgeRemovalNotice(replica, direct, changes, cfg.trust);
+    if (verdict.selfRemoved) {
+      state.removedProof = true;
+      notice = verdict;
+    } else {
+      notice ??= verdict;
+      note(
+        verdict.reason === 'no-proof' ? 'notice-no-proof' : 'notice-refused',
+        peer.device,
+        verdict.detail ?? verdict.reason,
+      );
+    }
+  }
+
+  /** Queues the notice for each removed device that is present and not told yet. */
+  async function tellRemoved(): Promise<void> {
+    const presentIds = new Set(present);
+    for (const target of state.noticeTargets.values()) {
+      if (!presentIds.has(target.relayId)) continue;
+      if ((state.outbox.get(target.device) ?? []).some((q) => q.notice)) continue;
+      const made = removalNotice(replica, target.device, { ...cfg.trust, direct });
+      if (!made.ok) {
+        if (made.reason === 'too-large') note('notice-too-large', target.device);
+        continue;
+      }
+      await sealAndQueue(
+        target,
+        [writeRemovalNotice(appId, made.changes)],
+        lim.maxFramesPerAnswer,
+        true,
+      );
+    }
+  }
+
   // ── outbound ────────────────────────────────────────────────────────────────────────────────
 
   /** Seals each packet for the peer, frames it and queues it, all or nothing. */
@@ -816,6 +902,7 @@ async function run(
     peer: Peer,
     packets: readonly Uint8Array[],
     maxFrames: number,
+    isNotice = false,
   ): Promise<boolean> {
     const queued: Queued[] = [];
     let total = 0;
@@ -837,7 +924,12 @@ async function run(
         return false;
       }
       total += frames.length;
-      queued.push({ frames, queuedMs: now, next: 0 });
+      queued.push({
+        frames,
+        queuedMs: now,
+        next: 0,
+        ...(isNotice ? { notice: true as const } : {}),
+      });
     }
     if (total > maxFrames) {
       note('answer-too-large', peer.device);
@@ -898,7 +990,7 @@ async function run(
     for (let call = 0; call < lim.maxDropsPerStep; call += 1) {
       const batch: { device: string; content: Uint8Array; q: Queued }[] = [];
       for (const [device, list] of state.outbox) {
-        const peer = roster.peers.get(device);
+        const peer = roster.peers.get(device) ?? state.noticeTargets.get(device);
         if (!peer) continue;
         const q = list[0];
         if (!q) continue;
@@ -909,7 +1001,7 @@ async function run(
       if (batch.length === 0) return;
       const result: RelayResult<DropValue> = await cfg.relay.drop(
         batch.map((b) => ({
-          device: roster.peers.get(b.device)?.relayId ?? '',
+          device: (roster.peers.get(b.device) ?? state.noticeTargets.get(b.device))?.relayId ?? '',
           content: b.content,
         })),
       );
@@ -930,6 +1022,10 @@ async function run(
         b.q.next += 1;
         if (b.q.next >= b.q.frames.length) {
           messagesSent += 1;
+          if (b.q.notice) {
+            rememberTold(state, b.device, now, lim.rememberedNotices);
+            told.push(b.device);
+          }
           const list = state.outbox.get(b.device) ?? [];
           list.shift();
           if (list.length === 0) state.outbox.delete(b.device);

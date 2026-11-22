@@ -1,5 +1,8 @@
 # Hold back until approved (log layer)
 
+A different model, where everything is applied and the approved view is derived from the log, is in
+`docs/review.md`; it explains which of the two to use.
+
 An app can ask, for every change that arrives, whether it is applied now, held back until a person
 or a rule approves it, or rejected. The package supplies the mechanism (`src/log/approval.ts`); the
 app supplies the decision (a hook) and the user interface. Without a hook nothing changes: `merge`,

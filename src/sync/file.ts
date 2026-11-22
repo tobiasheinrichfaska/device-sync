@@ -44,6 +44,12 @@ import {
   type Mailbox,
 } from '../post/index.ts';
 import {
+  judgeRemovalNotice,
+  looksLikeRemovalNotice,
+  readRemovalNotice,
+  removalNotice,
+  writeRemovalNotice,
+  type NoticeVerdict,
   computeTrust,
   deviceKeySource,
   deviceNeverErase,
@@ -253,6 +259,8 @@ export type MakeFileResult =
       readonly envelopes: number;
       /** A set's answer was cut: the next file continues (the recipient's stand says where). */
       readonly more: boolean;
+      /** The file is a removal notice for a removed recipient (no data, no envelopes, no notice slot). */
+      readonly removalNotice?: true;
     }
   | { readonly ok: false; readonly reason: ExchangeFileRefusal; readonly detail?: string };
 
@@ -310,7 +318,31 @@ export async function makeExchangeFile(
   const trust = await computeTrust(main, directOf(cfg), cfg.trust);
   if (trust.selfRemoved) return refuse('self-removed');
   const peer = trust.trusted.find((d) => d.device === params.to && d.device !== own.device);
-  if (!peer) return refuse('recipient-not-trusted');
+  if (!peer) {
+    // A device whose removal counts gets nothing but the removal notice (the proof that it was removed).
+    const gone = trust.checkableById.get(params.to);
+    if (!gone || !trust.removed.includes(params.to)) return refuse('recipient-not-trusted');
+    const made = removalNotice(main, params.to, { ...cfg.trust, direct: directOf(cfg) });
+    if (!made.ok) return refuse('recipient-not-trusted', made.reason);
+    const sealed = await sealFile({
+      appId,
+      own: { device: own.device, agreement: own.keys.agreement },
+      to: { device: gone.device, dh: gone.dh },
+      payload: writeRemovalNotice(appId, made.changes),
+      random: cfg.random(12),
+    });
+    if (!sealed.ok) return refuse('seal-failed', sealed.reason);
+    return {
+      ok: true,
+      file: sealed.file,
+      replica: main,
+      sets: {},
+      changes: 0,
+      envelopes: 0,
+      more: false,
+      removalNotice: true,
+    };
+  }
   const valid = resolveValidators(cfg.trust.valid);
   const replicas = new Map<string, Replica>([[dataSet, main]]);
   for (const name of names) {
@@ -437,6 +469,8 @@ export type TakeFileResult =
       readonly more: boolean;
       /** Codes of what was dropped (sets not registered, not allowed for the sender). */
       readonly dropped: Readonly<Record<string, number>>;
+      /** With a removal notice instead of data: the verdict (`selfRemoved` says this device was removed). */
+      readonly removal?: NoticeVerdict;
     }
   | { readonly ok: false; readonly reason: TakeFileRefusal; readonly detail?: string };
 
@@ -495,6 +529,36 @@ export async function takeExchangeFile(
   });
   if (!opened.ok) return refuse('cannot-open', opened.reason);
   const valid = resolveValidators(cfg.trust.valid);
+  if (looksLikeRemovalNotice(appId, opened.payload)) {
+    // A removal notice is judged apart on a throw-away copy and never merged (docs/sync.md).
+    const changes = readRemovalNotice(appId, opened.payload, {
+      limits: cfg.log ?? {},
+      deviceId: valid.deviceId,
+      ...(cfg.trust.collection !== undefined ? { collection: cfg.trust.collection } : {}),
+    });
+    if (!changes) return refuse('bad-payload');
+    const removal = await judgeRemovalNotice(main, direct, changes, cfg.trust);
+    return {
+      ok: true,
+      from: peer.device,
+      replica: main,
+      sets: Object.fromEntries(
+        Object.keys(cfg.sets ?? {}).map((n) => [
+          n,
+          params.held?.sets?.[n] ?? emptyReplica(own.device),
+        ]),
+      ),
+      mailbox: params.held?.mailbox ?? EMPTY_MAILBOX,
+      received: [],
+      applied: 0,
+      memory: params.memory ?? EMPTY_STANDS,
+      notice: null,
+      refused: {},
+      more: false,
+      dropped: {},
+      removal,
+    };
+  }
   const payload = readExchangePayload(appId, opened.payload, cfg, valid.deviceId);
   if (!payload) return refuse('bad-payload');
 

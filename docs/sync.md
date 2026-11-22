@@ -53,18 +53,20 @@ without that check. A peer that is in sync is asked again every `idleRoundMs`.
 | Inbound is filtered at the transport, before assembling and before any merge: the relay id must be a peer's (else `unknown-sender` / `removed-sender`); the assembled file must be addressed to this device, name the same device as the relay id (`sender-mismatch`) and open with that device's agreement key (`cannot-open`). | `takeIn`                                        |
 | **The sender is the device whose key opens the file, never the relay's `from`.** `from` only bounds what is assembled and is checked against the file. A relay that forges it makes messages drop, nothing more. The data inside is judged by its authors' signatures.                                                           | `takeFile`                                      |
 | A device that finds itself removed does nothing: no collect, no sending (`self-removed`).                                                                                                                                                                                                                                        | `syncOnce`                                      |
+| A removed device is sent exactly one thing: the removal notice (see below), once, never a sync packet or a queued file.                                                                                                                                                                                                          | `syncOnce` (`purge`, `drain`)                   |
 | After a removal the report says so (`newlyRemoved`, `trust`); the group key is checked through the adapter: `rotationStatus` (`needsRotation` and the lead hint), `rotateAfterRemoval` (a new epoch for the trusted devices only), `grantToMissing`. The grants go out through `queueFile`.                                      | `groupAdapter.ts`                               |
 
 **Stays the app's job** (hooks and decisions the package does not take):
 
-- _Who may write._ `judge: { mayWrite, allowFinalDelete, quota, special }` are passed to the log layer
-  unchanged. A removed device stays _checkable_: its signed changes, earlier and later, verify, and a
+- _Who may write._ `judge: { mayWrite, allowFinalDelete, quota, special, rights }` are passed to the log layer
+  unchanged (`rights` sees the batch and the author's role: `docs/rights.md`). A removed device stays _checkable_: its signed changes, earlier and later, verify, and a
   trusted device that holds them can pass them on. The package cuts a removed device off at the transport,
   not in the log (a device-local write cut-off made honest devices disagree, see `CLAUDE.md`, Trust).
 - _Who may vouch_: the `Voucher` strategy of the trust options. _Hold back until approved_: `approval`.
 - _Retention_ of old group keys (`pruneGroup`), of the log, of what a removed device may still read.
-- _Telling a removed device_ that it was removed: nothing is sent to it, not even a notice. (An app that
-  wants the notice sends it itself; the removal is a signed entry in the log.)
+- _What a removed device does with the news_: the report carries the verdict of a removal notice
+  (`report.notice`); the app feeds it to the lock (`lockRemovedBy`, `docs/lock.md`) and stops using the
+  copy (see "Removal notice").
 - _Presentation_: data authored by removed devices is shown as untrusted (`deviceStatus`).
 - _Re-admission_: a removed id stays removed; a returning device enrols with a new id.
 - The relay id of a device must be written into its entry (`addDevice(..., { relayId })`) by a vouching
@@ -163,6 +165,11 @@ The file is sealed for ONE device (`sealFile`) and its payload is one compact JS
   dropped (`dropped`), envelopes pass the mailbox's quota. A file has no replay protection: taking one twice is
   harmless (idempotent).
 - A set the recipient may not read (`mayExchange`) is not put into the file at all.
+- **Removed recipient**: a file for a device whose removal counts is the removal notice (the sealed payload of
+  `docs/sync.md`, "Removal notice"), nothing else (`removalNotice: true`; no data, no envelopes, and the `notice`
+  slot stays for trusted recipients). `takeExchangeFile` recognises a notice payload, judges it apart on a
+  throw-away copy and answers `removal` (the verdict, `selfRemoved`); nothing is merged. The notice is not a
+  packet, so it is independent of the `sync:2` marker.
 
 ## What a step sends
 
@@ -171,6 +178,61 @@ A step queues, per peer, the asks and answers of every set and the mailbox excha
 `maxDropsPerStep` times; each call carries **one frame per recipient, at most 50 recipients** (the relay's
 limit), a device is a recipient once per call, the own relay id is never one (a roster never contains it), and
 a message larger than a megabyte (`queueFile`) simply takes more calls (`tests/sync/drop-split.test.ts`).
+
+## Removal notice
+
+A removed device is sent nothing, so without this it would work on its old copy for ever and would never
+learn that it was removed. The notice is the one thing it is sent. It is **proof, not an order**: the
+receiver does not obey it, it checks it.
+
+**Sending.** A trusted device whose replica shows a removal that counts (`Trust.removed`) addresses the
+removed device by the relay id in its entry (the entry as the vouchers wrote it; a relay id that a trusted
+peer also names is not used), asks the relay for its presence in the same call as the peers' (at most
+`maxNoticeTargets` removed devices at a time), and sends it the notice when it is present: `removalNotice`
+of the trust layer, sealed for that one device like any file, framed like any file. The device is
+remembered as told (`SyncState.told`, RAM only, at most `rememberedNotices`, oldest forgotten first) when
+the relay has taken every frame; it is told again only when it is still present `retellMs` later (a
+message the relay lost is never noticed; a device that learned stops collecting and is not present again).
+A queued file of any other kind for a removed device is dropped at the step, as before. Every trusted
+device that sees the removal sends the notice; there is no election.
+
+**The notice** is one compact JSON text, members in this order, one spelling:
+`{"m":"<app>-removal:1","changes":[<change>,...]}`. The changes are the signed `set` writes to the device
+list found backwards from the removed device's entry: the writes into it (the removal itself and the entry
+of its introduction), then the writes into the entries of the devices that wrote those, and so on, down to
+the devices the receiver can know in person. The removed device's own writes and the entries of devices
+that are not in that chain are left out. They are **sparse** (the earlier numbers of their devices are not
+sent), ascending by device and number without a repeat. The reader (`readRemovalNotice`) is strict: the
+text is exactly what `JSON.stringify` writes, every change goes through the log's strict change parser,
+only signed `set` writes to the device list are accepted, at most 2000 changes and 1 000 000 bytes
+(`REMOVAL_LIMITS`; a longer chain is not sent: `notice-too-large`). The notice carries no planning, no
+stand and no envelope.
+
+**Judging** (`judgeRemovalNotice`, called by the step for a notice that arrives from a peer). Nothing is
+merged into the replica: the changes are applied only to a throw-away copy (`mergeSparse`), which is never
+stored or sent on. Every signature must check against keys the receiver can vouch for (its met devices,
+then the entries the changes themselves prove, checked by the trust derivation's own signature checks);
+**one wrong signature refuses the whole notice** (`notice-refused`). A change nobody can check counts for
+nothing, and so do the writes of this device itself that it does not hold. The verdict is
+`selfRemoved: true` only when, on the copy, a removal of THIS device counts (a trusted device removed it,
+by the derivation's rank rules); then `reason` is `removed`, the step stops for good (`self-removed`, no
+collect, no sending, the queues are dropped) and `report.notice` is the verdict. A notice that names
+another device, comes from a device the receiver does not trust, is partial (the removal without the
+entries that vouch for the remover) or is changed gives `no-proof` (`notice-no-proof`) or is refused; none
+of them changes anything. At most `maxNoticesPerStep` notices are judged per step (`notice-rate-limited`).
+A notice is only taken from a peer (the transport filter above); a relay or a stranger that forges one
+gets `unknown-sender` before anything is read.
+
+**The app** feeds `report.notice` to the lock: `lockRemovedBy(lockState, report.notice)` locks the device
+for good with the reason `removed`. The step keeps the proof in RAM only: after a restart, the stored lock
+state is what keeps the device shut, so an app that cannot read it must treat the device as locked. The
+removed device keeps what it already has; the notice protects nothing it holds, it only tells it.
+
+**Not protected.** A relay can drop, delay or withhold the notice (the device then locks only by time, if
+the app has a lock); a compromised trusted device can send a true notice early (it proves a real removal
+and nothing else) but cannot forge one; a removed device that never collects is never told; the notice
+shows a removed device the entries of the devices that vouch for it (names, roles, keys, relay ids), which
+it could already see while it was a member.
 
 ## Cutting and limits
 
@@ -209,6 +271,10 @@ watches every drop).
 | `busyHoldMs`           | 30_000    | after a frame came or went the step stays "busy" (fast cadence) this long                      |
 | `failureBaseMs`        | 2_000     | pause after a failed collect, doubled for every failure in a row                               |
 | `failureCapMs`         | 60_000    | longest such pause                                                                             |
+| `maxNoticeTargets`     | 20        | removed devices asked for presence at once, to tell them of their removal                      |
+| `retellMs`             | 600_000   | a removed device still present this long after it was told is told again                       |
+| `maxNoticesPerStep`    | 2         | removal notices judged per step; more are dropped (`notice-rate-limited`)                      |
+| `rememberedNotices`    | 200       | devices remembered as told (RAM only; the oldest is forgotten first)                           |
 
 (The `## Limits` table is read by `tests/sync/docs.test.ts`: it lists exactly `SYNC_LIMITS`.)
 
@@ -271,9 +337,14 @@ went, slow (`idleMs`) otherwise, and after a failed collect 2, 4, 8 ... seconds 
 | `recipient-not-trusted` | outbound | queued for a device that is no peer any more: dropped, never sent                                   |
 | `no-relay-id`           | roster   | a trusted device whose entry has no usable relay id: it cannot be reached                           |
 | `relay-id-clash`        | roster   | two trusted devices name one relay id: both are left out                                            |
-| `self-removed`          | step     | this device's own removal counts: the step does nothing else                                        |
+| `self-removed`          | step     | this device's own removal counts, or a notice proved it: the step does nothing else                 |
 | `collect-failed`        | step     | the collect failed (detail: kind)                                                                   |
 | `collect-interrupted`   | step     | a later collect call failed; what was collected is used                                             |
+| `bad-notice`            | inbound  | a removal notice that does not read exactly as the format above                                     |
+| `notice-refused`        | inbound  | a notice with a change that failed judgement (detail: the log's reason) or that is malformed        |
+| `notice-no-proof`       | inbound  | a valid notice that does not show this device removed (about another device, partial, untrusted)    |
+| `notice-rate-limited`   | inbound  | more notices in one step than `maxNoticesPerStep`                                                   |
+| `notice-too-large`      | outbound | the chain that proves a removal is over the notice limits: the device cannot be told                |
 
 ## What is NOT protected
 
@@ -282,7 +353,8 @@ went, slow (`idleMs`) otherwise, and after a failed collect 2, 4, 8 ... seconds 
 - A removed device keeps what it already has (data and keys); the package stops sending to it and
   hearing it, and offers the rotation of the group key, which protects only what is written afterwards.
 - Until a device has learnt of a removal (through a trusted peer) it still answers the removed device.
-  The window is the time for the removal to travel; no clock decides it.
+  The window is the time for the removal to travel; no clock decides it. The removed device learns of its
+  removal only through the notice (see above); it is not stopped by the transport until then.
 - A compromised trusted device can pass on a removed device's signed changes; the log accepts them
   (the signature is valid). Restrict with `mayWrite`.
 - A file is authenticated by the static agreement keys of both devices (no signature, no replay protection,

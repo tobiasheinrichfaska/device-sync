@@ -180,7 +180,13 @@ describe('removal', () => {
     }
     expect(text(b, 'n2')).toBe('after removal');
     expect(text(c, 'n2')).toBeUndefined();
-    expect(collectedByC.every((n) => n === 0)).toBe(true);
+    // C collected nothing but the removal notice (docs/sync.md, "Removal notice"): once that proved its
+    // removal it does not collect any more
+    const loop = c.reports.slice(-12);
+    const proofAt = loop.findIndex((r) => r.notice?.selfRemoved === true);
+    expect(proofAt).toBeGreaterThanOrEqual(0);
+    expect(collectedByC.slice(0, proofAt).every((n) => n === 0)).toBe(true);
+    expect(loop.slice(proofAt + 1).every((r) => r.collected === 0 && r.selfRemoved)).toBe(true);
     expect(totals(a.state)['recipient-not-trusted']).toBeGreaterThan(0);
     // B learned the removal through A, with no help from the relay
     expect(b.reports.some((r) => r.newlyRemoved.includes(c.id))).toBe(true);
@@ -198,8 +204,17 @@ describe('removal', () => {
     });
     expect(got.ok).toBe(true);
     expect(readFileHeader(APP, passed[0]!.file)?.to).toBe(b.id);
+  });
 
-    // C, which does not know it is removed, writes and asks: A and B drop it and merge nothing of it
+  it('a removed device that is not told (it keeps its old copy) writes and asks: A and B drop it and merge nothing of it', async () => {
+    const { w, a, b, c } = await three();
+    note(a, 'n1', 'x');
+    await rounds(w, 6);
+    removeFrom(a, c);
+    // as if they had told it already (or it never answers): no notice goes out
+    a.state.told.set(c.id, w.now());
+    b.state.told.set(c.id, w.now());
+    await rounds(w, 3);
     note(c, 'n3', 'from the removed');
     for (let i = 0; i < 10; i += 1) {
       await rounds(w, 1);

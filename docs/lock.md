@@ -17,7 +17,7 @@ earlier implementation). Two variants are two configurations of the same machine
 | Server deadline | `server` / `remote` | an answer of the server (the server's time)         | 10 days, warning from day 7, `wipeOn: 'contact'` |
 
 Functions: `lockStart`, `recordLockContact`, `lockStatus`, `lockObserve`, `lockCheck`, `lockMarkWiped`,
-`lockRemoved`, `lockSetDays`, `storeLockState`, `readLockState`, `signLockOrder`, `readLockOrder`,
+`lockRemoved`, `lockRemovedBy`, `lockSetDays`, `storeLockState`, `readLockState`, `signLockOrder`, `readLockOrder`,
 `applyLockOrder`.
 
 ## Sources of time
@@ -50,6 +50,17 @@ the device's by more than `skewMs`). Whether the peer is trusted and whether the
 is the caller's check (trust layer: `deviceStatus`); it only passes a contact it accepts and calls
 `lockRemoved` otherwise. With `revive` a counted contact lifts an expiry or clock lock; without it
 only a new `lockStart` does (the server variant: a locked device is wiped at its next contact).
+
+## Removal
+
+`lockRemoved(state)` locks the device for good with the reason `removed`: only a new `lockStart` helps. The
+caller decides what shows this device removed. The sync driver's removal notice is the proof for a device
+that was removed while it did not know: `lockRemovedBy(state, verdict)` takes the verdict of
+`judgeRemovalNotice` (or `SyncReport.notice`, `docs/sync.md`, "Removal notice") by its shape,
+`{ selfRemoved: true }`, and calls `lockRemoved` for a proven removal only; any other verdict, a refused or
+partial notice, a notice about another device, or no verdict leaves the state as it is. The lock layer
+knows nothing of the trust layer; it never sees the notice itself. Store the returned state at once: the
+driver keeps the proof in RAM only, so after a restart the stored lock state is what keeps the device shut.
 
 ## Operator orders
 

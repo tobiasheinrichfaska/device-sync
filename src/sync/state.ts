@@ -10,6 +10,7 @@ import {
 import type { Session } from '../log/index.ts';
 import type { Mailbox, PostSession } from '../post/index.ts';
 import type { SyncCode } from './limits.ts';
+import type { Peer } from './roster.ts';
 
 export interface Round {
   readonly id: string;
@@ -64,6 +65,8 @@ export interface PeerState {
 }
 
 export interface Queued {
+  /** A removal notice: the one thing a removed device is sent. */
+  readonly notice?: true;
   readonly frames: readonly Uint8Array[];
   readonly queuedMs: number;
   next: number;
@@ -81,6 +84,12 @@ export interface SyncState {
   failures: number;
   /** The devices whose removal counted at the last step. */
   removed: ReadonlySet<string>;
+  /** Devices told of their removal (device to time), bounded by `rememberedNotices`; RAM only. */
+  readonly told: Map<string, number>;
+  /** The removed devices that may be told now, addressed by their entry's relay id (rebuilt every step). */
+  noticeTargets: ReadonlyMap<string, Peer>;
+  /** A removal notice proved that this device was removed: the step does nothing else any more. */
+  removedProof: boolean;
   /** Totals since the state was made, by code. */
   readonly counters: Record<string, number>;
 }
@@ -94,6 +103,9 @@ export function newSyncState(appId: string, framing: FramingLimits = FRAMING_LIM
     peers: new Map(),
     outbox: new Map(),
     removed: new Set(),
+    told: new Map(),
+    noticeTargets: new Map(),
+    removedProof: false,
     counters: Object.create(null) as Record<string, number>,
   };
 }
