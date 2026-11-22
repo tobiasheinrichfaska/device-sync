@@ -1,0 +1,30 @@
+{
+  "description": "Web Push test vectors copied from the RFCs (all keys are the RFCs' published example keys). rfc8291: appendix A and the example of section 5. rfc8292: the example token of section 2.4 (its private key is not published; the signature is verified with the public key).",
+  "rfc8291": {
+    "plaintext": "V2hlbiBJIGdyb3cgdXAsIEkgd2FudCB0byBiZSBhIHdhdGVybWVsb24",
+    "senderPublic": "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8",
+    "senderPrivate": "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw",
+    "receiverPublic": "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4",
+    "receiverPrivate": "q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94",
+    "salt": "DGv6ra1nlYgDCS1FRnbzlw",
+    "authSecret": "BTBZMqHH6r4Tts7J_aSIgg",
+    "ecdhSecret": "kyrL1jIIOHEzg3sM2ZWRHDRB62YACZhhSlknJ672kSs",
+    "prkKey": "Snr3JMxaHVDXHWJn5wdC52WjpCtd2EIEGBykDcZW32k",
+    "keyInfo": "V2ViUHVzaDogaW5mbwAEJXGyvs3942BVGq8e0PTNNmwRzr5VX4m8t7GGpTM5FzFo7OLr4BhZe9MEebhuPI-OztV3ylkYfpJGmQ22ggCLDgT-M_SrDepxkU21WCP3O1SUj0EwbZIHMtu5pZpTKGSCIA5Zent7wmC6HCJ5mFgJkuk5cwAvMBKiiujwa7t45ewP",
+    "ikm": "S4lYMb_L0FxCeq0WhDx813KgSYqU26kOyzWUdsXYyrg",
+    "prk": "09_eUZGrsvxChDCGRCdkLiDXrReGOEVeSCdCcPBSJSc",
+    "cek": "oIhVW04MRdy2XN9CiKLxTg",
+    "nonce": "4h_95klXJ5E_qnoN",
+    "header": "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8",
+    "ciphertext": "8pfeW0KbunFT06SuDKoJH9Ql87S1QUrdirN6GcG7sFz1y1sqLgVi1VhjVkHsUoEsbI_0LpXMuGvnzQ",
+    "body": "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+  },
+  "rfc8292": {
+    "endpoint": "https://push.example.net/p/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV",
+    "jwtHeader": "{\"typ\":\"JWT\",\"alg\":\"ES256\"}",
+    "jwtClaims": "{\"aud\":\"https://push.example.net\",\"exp\":1453523768,\"sub\":\"mailto:push@example.com\"}",
+    "jwt": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL3B1c2guZXhhbXBsZS5uZXQiLCJleHAiOjE0NTM1MjM3NjgsInN1YiI6Im1haWx0bzpwdXNoQGV4YW1wbGUuY29tIn0.i3CYb7t4xfxCDquptFOepC9GAu_HLGkMlMuCGSK2rpiUfnK9ojFwDXb1JrErtmysazNjjvW2L9OkSSHzvoD1oA",
+    "publicKey": "BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs",
+    "expiresS": 1453523768
+  }
+}
