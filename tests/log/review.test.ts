@@ -610,18 +610,31 @@ const time = <T>(run: () => T): [T, number] => {
 };
 
 describe('cost', () => {
-  it('the review of 12000 and of 24000 writes costs about twice as much, not four times', () => {
-    const small = many(12000, 5);
+  it('the review of 6000 and of 24000 writes costs about four times as much, not sixteen', () => {
+    const small = many(6000, 5);
     const large = many(24000, 5);
     reviewAll(small); // warm up the index
     reviewAll(large);
-    const [a, fast] = time(() => reviewAll(small));
-    const [b, slow] = time(() => reviewAll(large));
+    // The best of three runs each: one slow run is garbage collection or a loaded machine, a
+    // quadratic review is slow in every run.
+    let a = reviewAll(small);
+    let b = reviewAll(large);
+    let fast = Infinity;
+    let slow = Infinity;
+    for (let run = 0; run < 3; run += 1) {
+      const [ra, ta] = time(() => reviewAll(small));
+      const [rb, tb] = time(() => reviewAll(large));
+      a = ra;
+      b = rb;
+      fast = Math.min(fast, ta);
+      slow = Math.min(slow, tb);
+    }
     expect(a.requests.length).toBeGreaterThan(0);
     expect(b.requests.length).toBeGreaterThan(a.requests.length);
     expect(fast).toBeLessThan(2500);
     expect(slow).toBeLessThan(5000);
-    expect(slow / Math.max(fast, 1)).toBeLessThan(3.4);
+    // four times the writes: about 4 times the time when linear, about 16 when quadratic
+    expect(slow / Math.max(fast, 1)).toBeLessThan(8);
   });
 
   it('thousands of writes of two devices to one field stay linear', () => {
