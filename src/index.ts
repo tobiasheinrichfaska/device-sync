@@ -9,3 +9,4 @@ export * from './relay/index.ts';
 export * from './transfer/index.ts';
 export * from './push/index.ts';
 export * from './browser/index.ts';
+export * from './group/index.ts';
