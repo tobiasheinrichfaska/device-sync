@@ -8,6 +8,7 @@
   "scripts": {
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:relay-real": "vitest run --config vitest.relay-real.config.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

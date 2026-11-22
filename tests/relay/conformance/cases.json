@@ -2322,6 +2322,7 @@
             }
           },
           "expect": {
+            "mayCloseConnection": true,
             "status": 413,
             "headers": {
               "access-control-allow-origin": "https://delta.example"

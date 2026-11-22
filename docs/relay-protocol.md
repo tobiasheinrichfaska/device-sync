@@ -68,6 +68,10 @@ answer a version-1 client with refusals of that revision (`neue-fassung-noetig`,
   body is read. What fails there is refused without reading the body. Only then is the body read, up to the
   limit of the endpoint (see "Limits"); a body over it is refused at once with `zu-gross` (413), also when no
   `Content-Length` was announced, and an announced length over the limit is refused before the body is read.
+  A client that is still writing a body of several megabytes when the relay answers and closes may see a
+  reset instead of the 413 (RFC 9112, 9.6); the real server does exactly that on a fast local connection, so
+  the one conformance step with a 6 MB body accepts a closed connection (`mayCloseConnection`). A client of
+  this protocol never sends more than 4.4 MB (50 recipients of 64 KiB), so it cannot run into it.
 - **Time limits of the HTTP layer:** the head must be complete within 10 s (otherwise the connection is
   ended, possibly with a bare 408 without CORS: a client treats that as a network error), the body within
   14 s (otherwise `zu-langsam`, 408), the whole request within 30 s.
@@ -567,20 +571,67 @@ device limits. When `reset` exists the runner calls it before every case.
   device id). The runner mints tokens itself: they need no help from the server.
 - `capture` maps a name to a JSON pointer into the answer body; the string found is kept for later steps.
 - `repeat: N` runs a step N times.
-- **Expectation:** `{ "status", "headers"?, "body"?, "empty"? }`. `headers` maps lower-case names to the
+- **Expectation:** `{ "status", "headers"?, "body"?, "empty"?, "mayCloseConnection"? }`. `headers` maps lower-case names to the
   required value, or `null` for "must be absent". On every answer the runner also checks the three fixed
   headers and, except for 204, the JSON content type. A `body` is exact JSON: an object must have exactly
   the members given (add `"$open": true` to allow others), arrays must have the given length, and a
   value may be a pattern `{ "$type": "string", "pattern": regex, "maxLength"? }`, `{ "$type": "integer",
 "min"?, "max"? }`, `{ "$type": "boolean" }`, `{ "$type": "array", "length"?, "maxLength"? }` or
   `{ "$type": "any" }`.
+  `mayCloseConnection: true` (used by the one case that sends a body of 6 MB and more) lets a server end the
+  connection instead of answering: a server that answers 413 at once and closes while the client is still
+  writing megabytes can make the client see a reset (RFC 9112, 9.6), as the existing server does on a fast
+  local connection. An answer that does arrive must match; the step counts as passed otherwise.
 - A `control` step member is `{ "advanceTime": ms }`, `{ "setLimits": {...} }` or `{ "setPushResult": ... }`.
 
 `runConformance(baseUrl, fetch, { cases, control?, now?, only?, timeoutMs? })` returns per case `pass`,
 `fail` (with reasons) or `skip`. It is exported from `device-sync/conformance`. In this repository CI runs
 it against the in-memory reference server in `tests/relay/reference-server.ts`, which implements exactly
 this document and nothing hidden, and shows that the runner fails against twelve deliberately broken
-variants of it.
+variants of it. Opt-in, outside CI, `npm run test:relay-real` runs the same
+cases and the client against the real Node relay server (see "Verification against the existing relay").
+
+## Verification against the existing relay
+
+On 2026-11-22 the conformance cases and the client were run against the REAL Node relay server (its own
+source, unmodified, over real HTTP with the real `fetch`), not only against the reference server. What was
+run (`npm run test:relay-real`, opt-in, outside `npm test` and CI; `RELAY_REAL_PATH` names the directory of
+the server's source; `tests/relay-real/`):
+
+- **The server as deployed** (`node src/server.ts` with its own environment variables, real clocks, real
+  limits, no test interface): all 61 cases that need no test interface pass; the 9 that need one are skipped.
+- **The same server code with a test interface.** The real server has none, so a small harness
+  (`tests/relay-real/harness.ts`) builds it from its own modules with the clock, the limits and the push
+  service that its constructor already takes as parameters (a clock that moves, lowered limits, a stand-in
+  for the push service) and a control port. HTTP layer, checks, tokens and counters are the real code. All
+  70 cases pass.
+- **Unusual requests** (94 probes: JSON shapes, header spellings, paths, methods, preflights, every endpoint
+  with malformed members) went to the real server and to the reference server; the answers (status,
+  kind, CORS and fixed headers) are identical. The only differences are the extra `/gesund` members and the
+  value of `Access-Control-Allow-Headers` (open points 6 and 10), and `HEAD`, which has no body.
+- **The package's own client** (`RelayClient`) end to end against the real server: enrolment with a proof and
+  with an invitation (both once), `ping`, `renew` and `renewIfDue` across a moved clock, an expired access
+  with and without the re-enrolment hook, a forged access, `invite` and its hourly limit, `drop` (1, 50
+  recipients, 64 KiB each = about 4.4 MB of JSON, 100 messages per mailbox, the sender and app limits),
+  `collect`/`collectAll` following `more` and with the bound of one call, presence, a ring through the
+  stand-in push service (status passes through, unreachable is 502, the hourly limit), `poll`, the rate limit
+  with backoff, and the origin and app mix-ups.
+- **Real time:** a message and presence last 30 seconds, a body that does not arrive in 14 seconds gets the
+  readable 408 `zu-langsam` with CORS, a head that does not arrive in 10 seconds gets Node's bare 408 without
+  CORS.
+
+What this found: the document, the reference server and the real server agree. In the package, one
+conformance step was too strict (the step "drop 6 MB" expected a 413 that a client still writing megabytes may
+not be able to read: the real server answers at once and closes; see `mayCloseConnection` above), and the
+open points 5, 6 and 12 below said "probable" or guessed; they now say what the real server does (open point
+12 had guessed wrong). One difference is the
+real server's, not the document's: the wire word for "the relay is full" (open point 9).
+
+What is still NOT verified: a PHP port (none exists yet), the real push services (the stand-in answers; the
+real server's own call to a push service was not exercised), a real browser (CORS is checked by headers, not
+by a browser), the deployed instance behind its CDN, the behaviour under real load and the overload answer
+`beschaeftigt` (not provoked), the server's restart behaviour, and the later admission revision (not part of
+version 1).
 
 ## Provenance of the rules
 
@@ -616,11 +667,16 @@ then a client and a conformance run MUST NOT rely on any particular answer.
    be taken a second time within its life. Whether a port must keep the marks is not decided.
 4. **Several simultaneous errors.** The order in "Order of checks" is the existing server's. Whether it is
    normative for other servers beyond the pairs the conformance cases pin is not decided.
-5. **Unusual JSON and headers.** Duplicate members in a body (the existing server keeps the last), nesting
-   depth, escapes, the length of the `Authorization` header and of other headers, a `Content-Length` that does
-   not match, and a missing `Content-Length` are not specified.
-6. **The exact `Access-Control-Allow-Headers` value** of the preflight answer, and the status of a preflight
-   for an unknown path (the existing server answers 404 before it looks at the method).
+5. **Unusual JSON and headers.** Duplicate members in a body (the existing server keeps the last: checked
+   2026-11-22 with a duplicated `anwesend`), nesting depth, escapes, the length of the `Authorization`
+   header and of other headers, a `Content-Length` that does not match, and a missing `Content-Length` are
+   not specified. The existing server and the reference server answered 94 such probes alike (see
+   "Verification against the existing relay"); that is an observation, not a rule.
+6. **The exact `Access-Control-Allow-Headers` value** of the preflight answer (the existing server sends
+   `authorization, content-type` and the names of two headers of its later revision; the reference server
+   sends the first two), and the status of a preflight for an unknown path (the existing server answers 404
+   before it looks at the method). A version-1 client needs only `authorization` and `content-type` to be
+   listed.
 7. **Retry hints.** The relay sends no `Retry-After`; the delay hints of `RELAY_KINDS` are the package's own
    choice, not the relay's.
 8. **Clock rules of the relay.** The existing server never judges a token earlier than its own start plus
@@ -635,16 +691,20 @@ then a client and a conformance run MUST NOT rely on any particular answer.
    (not writable in this public repository). **Decided 2026-11-22: the neutral word is `relay-voll`**
    (`relay-full`, 503, refused). It is in the error table and the reference server answers it. The existing
    servers must be changed to send `relay-voll`; until they are, a client reads their old word on a 503 as
-   `unavailable` (retry later).
+   `unavailable` (retry later). Confirmed against the real server
+   (`tests/relay-real/client.real.test.ts`): with `devicesTotal` lowered to 1 it answers 503 with its old
+   word and the client returns `unavailable` with no token. This is the one place where the real server
+   differs from this document; the server owner is to change the word (the real server is not changed here).
 10. **Other members.** Whether a relay of a later revision may add members to the answers of `ping`,
     `erneuern` and `einladen` (the existing server does so only for clients that announce a protocol
     version in a header the version-1 client never sends).
 11. **A restart-proof device list** and the retention of known devices (the existing server drops a device
     nobody heard of for 90 days): not part of the protocol.
 12. **Spelling of the access MAC, and a previous secret.** The text above calls the MAC canonical base64url, but
-    the existing relay checks the pattern and compares the DECODED bytes, so spellings that differ only in the
-    unused bits of the last character are accepted too (probable, read from the source, not run). Whether a
-    port must refuse them is not decided; no conformance case depends on it. The existing relay can also be
+    the existing relay compares the text of the MAC with the one it computes, so a spelling that differs only in
+    the unused bits of the last character is REFUSED (`zugang-ungueltig`; run 2026-11-22). An earlier reading
+    of the source that guessed the opposite was wrong. A port should do the same, but no conformance case
+    depends on it. The existing relay can also be
     given a previous secret (an environment variable) so that tokens signed with it stay valid until their end:
     a new secret then does not invalidate everything at once.
 13. **A later revision (admission).** The existing relay implements more than version 1: extra members of
