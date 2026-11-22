@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push, browser and group exist)
+# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push, browser, group, lock and sync exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -15,6 +15,7 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 | **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)                      |
 | **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt                       |
 | **lock**     | Device lock: days without contact (peer or server time), operator orders, wipe instruction as a hook result (`docs/lock.md`) |
+| **sync**     | Driver: pull rounds of the log exchange over the relay, sealed per trusted device; removal enforced at the transport         |
 | **push**     | Web Push encryption and VAPID, ring request, service worker template                                                         |
 | **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                                    |
 
@@ -228,3 +229,11 @@ per-message key derived from the epoch key, with epoch, key id, data set and the
 authenticated. The state is a plain value with a strict reader. A removed device keeps every key it
 already held; there is no forward secrecy and no post-compromise security beyond rotation
 (`docs/group.md`).
+
+## Sync driver (`src/sync/`, `docs/sync.md`)
+
+Wires log, trust, core (sealed file) and relay: `syncOnce(config, state, replica, nowMs)` collects, filters
+at the transport (only trusted peers, the sender is the key that opens the file, never the relay's `from`),
+judges and merges, answers asks, asks present peers and drops bounded batches. Recipients come from the
+trust derivation; a removal stops outbound at once and is reported (`newlyRemoved`); `groupAdapter.ts` is
+the only file that touches the group layer.
