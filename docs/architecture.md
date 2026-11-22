@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust, post, relay and push exist)
+# Architecture (built layer by layer; core, log, trust, post, relay, push and browser exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -169,4 +169,19 @@ point checks and strict readers and on `relay` only for the `RingRequest` type a
 - **`worker`**: `buildServiceWorkerSource` returns the text of a service worker for a content-free push:
   local texts only, no payload, no network; tested by running it in a `node:vm` sandbox.
 
-The browser layer that supplies a credential store comes later.
+## Browser layer (`src/browser/`, `docs/browser.md`)
+
+The only layer that talks to browser APIs, and it takes every one of them as a parameter (an `IDBFactory`, a
+lock manager, a `BroadcastChannel`, timers, a clock, `MediaDevices`), so nothing runs at import time and every
+part runs in Node tests with small fakes. Depends on `core` (device keys) and `relay` (the `CredentialStore`
+type).
+
+- **`keystore`, `credential`**: one IndexedDB database with one object store and versioned records;
+  structured-cloned non-extractable `CryptoKey` objects (no JWK, no export); strict reading with codes (never
+  throws on a corrupt or foreign record), `wipe`, handling of blocked opens, version changes, quota and
+  aborts; `relayCredentialStore` is the relay client's `CredentialStore` on top of it.
+- **`leader`, `listener`**: one listener per app and device. Web Locks when available; otherwise a heartbeat
+  election over a channel whose rules are a pure state machine (leases measured by the clock, claims ordered by
+  time and id), tested by seeded simulations of joins, crashes, releases and pauses.
+- **`media`**: `CameraSource`, `AudioSource`, `AudioSink` interfaces for the later `transfer` layer; an adapter
+  that maps permission errors to codes and always stops every track; strict readers of frames and samples.
