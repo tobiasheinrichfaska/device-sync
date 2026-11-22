@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SYNC_CODES, SYNC_LIMITS, syncMark, writePacket } from '../../src/sync/index.ts';
+import { REMOVAL_LIMITS, removalMark } from '../../src/trust/index.ts';
 
 const DOC = readFileSync(new URL('../../docs/sync.md', import.meta.url), 'utf8');
 
@@ -32,7 +33,7 @@ describe('docs/sync.md against the code', () => {
   });
 
   it('every code is written by the source', () => {
-    const src = ['step.ts', 'roster.ts'].map((f) =>
+    const src = ['step.ts', 'roster.ts', 'notice.ts'].map((f) =>
       readFileSync(new URL(`../../src/sync/${f}`, import.meta.url), 'utf8'),
     );
     const text = src.join('\n');
@@ -51,5 +52,15 @@ describe('docs/sync.md against the code', () => {
   it('the figures quoted from the relay are the relay limits', () => {
     expect(DOC).toContain('65 536');
     expect(DOC).toContain('40 000 bytes');
+  });
+
+  it('the removal notice text and limits are the ones written in the document', () => {
+    expect(DOC).toContain('{"m":"<app>-removal:1","changes":[<change>,...]}');
+    expect(removalMark('demo')).toBe('demo-removal:1');
+    const text = section('Removal notice');
+    expect(text).toContain(`at most ${REMOVAL_LIMITS.maxChanges} changes`);
+    expect(text).toContain(
+      `${REMOVAL_LIMITS.maxBytes.toLocaleString('en').replace(/,/g, ' ')} bytes`,
+    );
   });
 });

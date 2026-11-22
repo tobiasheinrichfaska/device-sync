@@ -4,6 +4,7 @@ import {
   lockMarkWiped,
   lockObserve,
   lockRemoved,
+  lockRemovedBy,
   lockSetDays,
   lockStart,
   lockStatus,
@@ -179,6 +180,32 @@ describe('parity with the earlier implementation', () => {
     const r = recordLockContact(s, 'peer', 1, 1, { peer: 'a' });
     expect(r).toMatchObject({ ok: true, counted: false, why: 'removed' });
     expect(lockRemoved(s)).toBe(s);
+  });
+});
+
+describe('the verdict of a removal notice', () => {
+  const REVIVE = { ...PEER, revive: true, distinct: true, skewMs: DAY_MS };
+  it('only a proven removal locks; every other verdict, or none, leaves the state as it is', () => {
+    const s = start(REVIVE);
+    expect(lockStatus(lockRemovedBy(s, { selfRemoved: true }), 0)).toMatchObject({
+      status: 'locked',
+      reason: 'removed',
+    });
+    for (const verdict of [
+      undefined,
+      { selfRemoved: false },
+      {},
+      { selfRemoved: 'true' as unknown as boolean },
+    ]) {
+      expect(lockRemovedBy(s, verdict)).toBe(s);
+    }
+    const locked = lockRemovedBy(s, { selfRemoved: true });
+    expect(lockRemovedBy(locked, { selfRemoved: true })).toBe(locked);
+    // contacts do not lift it, as with lockRemoved
+    expect(recordLockContact(locked, 'peer', 1, 1, { peer: 'a' })).toMatchObject({
+      counted: false,
+      why: 'removed',
+    });
   });
 });
 

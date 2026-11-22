@@ -1,4 +1,5 @@
 import { canonical } from '../core/index.ts';
+import { heldIn } from './chain.ts';
 import { changeCheckValue } from './check.ts';
 import { IndexEditor, indexOf, rememberIndex, type LogIndex } from './recordIndex.ts';
 import type {
@@ -211,7 +212,7 @@ class MinHeap {
   }
 }
 
-function apply(
+export function apply(
   collections: Readonly<Record<string, Collection>>,
   edit: (collection: string) => Record<string, StoredRecord>,
   change: Change,
@@ -399,4 +400,21 @@ export function mergeRetained(
     notices,
     base: { ...replica.base, ...base },
   };
+}
+
+/**
+ * The replica with sparse changes put in: changes that are NOT a gapless run (the writes a removal
+ * notice carries, the retained changes of a snapshot), applied without waiting for a gap or a `knew`.
+ * It is for judging on a throw-away copy (`vector` and the clock stay as they were, so nothing here
+ * says the replica "has" these numbers, and the copy must never be stored or sent on). Changes the
+ * replica already holds are left out. Cost linear in the changes (plus the copy of the log).
+ */
+export function mergeSparse(replica: Replica, changes: readonly Change[]): Replica {
+  const held = heldIn(replica.log);
+  const fresh = unique(changes).filter((c) => !held.has(keyOf(c)));
+  if (fresh.length === 0) return replica;
+  const out = mergeRetained(replica, fresh, replica.vector, replica.clock, {});
+  if (replica.base) return out;
+  const { base: _marker, ...plain } = out;
+  return plain;
 }

@@ -43,7 +43,9 @@ export type {
   SnapshotOptions,
   SnapshotResult,
 } from './snapshot.ts';
-export { merge } from './merge.ts';
+export { merge, mergeSparse } from './merge.ts';
+export { checkRights } from './rights.ts';
+export type { RightsAnswer, RightsOptions, RightsRefusal } from './rights.ts';
 export {
   APPROVAL_LIMITS,
   approve,
@@ -68,6 +70,7 @@ export {
   judgeChange,
   judgeChanges,
   judgeDetailed,
+  judgeRetained,
   proveEquivocation,
   readChanges,
   signChange,
