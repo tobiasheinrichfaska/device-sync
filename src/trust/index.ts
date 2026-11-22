@@ -71,3 +71,5 @@ export type {
   Reply,
   ReplyCheck,
 } from './invitation.ts';
+export { computeTrustSync, rightsView, trustView } from './view.ts';
+export type { TrustView } from './view.ts';

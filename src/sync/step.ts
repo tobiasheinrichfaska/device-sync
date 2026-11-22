@@ -70,7 +70,10 @@ export interface SyncConfig {
   /** Random bytes (exactly `n`): a parameter, never read from a global. */
   readonly random: (n: number) => Uint8Array;
   /** The app's hooks of the log layer (who may write, final deletion, quota, special cases). */
-  readonly judge?: Pick<JudgeOptions, 'mayWrite' | 'allowFinalDelete' | 'quota' | 'special'>;
+  readonly judge?: Pick<
+    JudgeOptions,
+    'mayWrite' | 'allowFinalDelete' | 'quota' | 'special' | 'rights'
+  >;
   /** Hold back until approved (`docs/approval.md`). */
   readonly approval?: ApprovalOptions;
   readonly limits?: Partial<SyncLimits>;
