@@ -71,3 +71,27 @@ export type {
   Reply,
   ReplyCheck,
 } from './invitation.ts';
+export {
+  DEFAULT_CLOCK_DIFF_MS,
+  DEFAULT_CLOCK_SLACK_MS,
+  MAX_DEADLINE_MS,
+  MIN_DEADLINE_MS,
+  checkDeadline,
+  contactDeadline,
+  deadlinePolicy,
+  deadlineStart,
+  isDeadlineMs,
+  parseDeadline,
+  setDeadlineMs,
+} from './deadline.ts';
+export type {
+  DeadlineContact,
+  DeadlineContactReason,
+  DeadlineContactResult,
+  DeadlineLockReason,
+  DeadlineMs,
+  DeadlineOptions,
+  DeadlinePolicyOptions,
+  DeadlineState,
+  DeadlineVerdict,
+} from './deadline.ts';
