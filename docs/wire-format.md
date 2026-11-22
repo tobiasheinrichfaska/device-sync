@@ -179,7 +179,7 @@ per signature), not 64 bytes, high-s, or not valid is simply `false`.
 **Signed text of a change** (`changeSigningText(appId, change, dataSet)`):
 
 ```
-${appId}-change:2|${canonical({ v: 2, set: dataSet, device, seq, clock, collection, id, kind, check })}
+${appId}-change:2|${canonical({ v: 2, set: dataSet, device, seq, clock, collection, id, kind, check[, prev] })}
 ```
 
 - The **marker** `${appId}-change:2` is part of the text, so a signature made for one app never
@@ -190,24 +190,35 @@ ${appId}-change:2|${canonical({ v: 2, set: dataSet, device, seq, clock, collecti
   as `set`, so erasing the content keeps the signature valid.
 - `check` is the content check value (`changeCheckValue`); it is taken before an erasure and kept, so
   the content (`fields`, `knew`, `time`, `by`) is bound through it.
+- `prev` is the **hash chain**: the check value of the SAME device's previous change (`seq - 1`),
+  called its link (`changeLink`: the `check` the change has, or will have once signed). It is present
+  on every change with `seq` above 1 and absent on the first; it is part of the signed head and it
+  **survives redaction** (an erased change keeps `prev`, so the text of an erased change stays the one
+  of the original). An honest device therefore can never follow two different versions of one number
+  with the same successor: signing `m:1` twice makes `m:2` name only one of them.
 - Example: `demo-change:2|{"check":"c1","clock":3,"collection":"items","device":"a","id":"x","kind":"set","seq":1,"set":"main","v":2}`.
+- Example with prev: `demo-change:2|{"check":"c2","clock":4,"collection":"items","device":"a","id":"x","kind":"delete","prev":"c1","seq":2,"set":"main","v":2}`.
+
+The format changed with the hash chain (round 3, third pass): the text of a change with `seq` above 1
+now contains `prev`; the first change's text is unchanged (the committed vectors in `tests/vectors/`
+were updated on purpose, `signing-text.json`; `verification.json` gained two refused variants).
 
 **Order of verification** (`judgeChanges`; `judgeChange` is exactly `judgeChanges(context, [change])`
 for that change), the first rule that applies decides. Every `false` carries a reason code
 (`Rejection.reason`, `Session.refusalReason`):
 
 1. a member other than `device`, `seq`, `clock`, `collection`, `id`, `kind`, `fields`, `knew`, `time`,
-   `by`, `check`, `sig` (for a `redacted` change: other than `device`, `seq`, `clock`, `collection`,
-   `id`, `kind`, `check`, `sig`): `false`, `unknown-member` (the signature does not cover it, so it
-   would travel unchecked);
+   `by`, `check`, `prev`, `sig` (for a `redacted` change: other than `device`, `seq`, `clock`,
+   `collection`, `id`, `kind`, `check`, `prev`, `sig`): `false`, `unknown-member` (the signature does
+   not cover it, so it would travel unchecked);
 2. the app's special-case hook (`checked` / `false` (`not-allowed`) / `pending`; undefined = go on);
-3. a device the key source says was removed (`KeySource.standing`, a `cutoff`) and `seq` above the
-   cutoff: **`ignored`**, `after-removal` (not taken, not forwarded, not a refusal);
-4. no `sig` or no `check`: `false`, `unsigned`;
+3. no `sig` or no `check`: `false`, `unsigned`;
+4. `prev` missing after the first change, or present on the first: `false`, `bad-prev` (a signature
+   made without the chain must not make a change valid);
 5. a `delete` in a collection of `neverErase` (the option, or `KeySource.neverErase`): `false`,
    `never-erase`;
 6. a change that is not `redacted` whose content does not match `check`: `false`, `bad-check`;
-7. the author's key is not known (`KeySource.standing().key`, else `keyFor`): `pending`;
+7. the author's key is not known (`KeySource.keyFor`): `pending`;
 8. the signature does not verify: `false`, `bad-signature` (a change this replica already holds with
    the same signed text and the same signature was verified when it was taken: a repeat costs no
    second check);
@@ -216,7 +227,9 @@ for that change), the first rule that applies decides. Every `false` carries a r
    key: an unsigned or forged change under the own id is `unsigned` / `bad-signature` and must not
    tell the app to abandon its id;
 10. the same `device#seq` is already known (in the log, or earlier in the batch or session) with a
-    different signed text (head or check value): `false`, `equivocation`;
+    different signed text (head or check value): `false`, `equivocation`; the same when its `prev`
+    is not the link of the predecessor (`device#seq-1`) the log or the batch holds, or the batch
+    holds a successor whose `prev` names another change;
 11. a `delete` and the app's `allowFinalDelete(author, change, state)` does not say yes (it is
     **missing by default**, so a final deletion is judged `false`, `delete-not-allowed`: it is
     irreversible, the id is dead for ever, and every member's signature makes one valid);
@@ -228,23 +241,31 @@ applied**: already in the replica (its data or its log), or applied by `merge` i
 would be with the batch's verified changes (the erased changes that pass included, as one fills the
 gap of its own number). A deletion that is judged right but that `merge` holds back (a gap in its
 author's numbering, a `knew` it cannot reach, a clock jump) does not count: the erased change is
-`pending` (not taken, not forwarded), and the same when the deletion itself is `pending` or `ignored`;
+`pending` (not taken, not forwarded), and the same when the deletion itself is `pending`;
 without any deletion in sight it is `false`, `redacted-without-deletion` (in a partial session, see
 below, it waits instead). Otherwise a forwarder could erase a signed write at a victim while the
 deletion is not applied there. In `readChanges` and `receiveJudged` the verdicts do not depend on
-the order of the batch, its piece structure or the order in which keys become known.
+the order of the batch, its piece structure or the order in which keys become known. The set of erased
+changes that count is the greatest set consistent with itself; it is found with one linear pass over
+the dependencies (an erased change whose record has no deletion that can still apply is dropped, which
+opens a gap that kills the later deletions of its author, and so on) and a few merges, so a chain of
+erased changes that each need the next one costs linear time (`tests/log/review4.test.ts`, N6).
 
-**Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `ignored`:
-neither taken nor forwarded, and not a refusal; the session goes on and the vector of that device does
-not advance past the gap, so the sender offers the changes again in every session. `false`: forgery.
-`readChanges` judges the batch (`admit`, then `settle`, which repeats while taken changes make more
-authors checkable); a single `false` aborts the whole batch and nothing is taken.
+**Verdicts.** `checked`: taken. `pending`: neither taken nor forwarded, it comes again. `false`:
+forgery. `readChanges` judges the batch (`admit`, then `settle`, which repeats while taken changes
+make more authors checkable); a single `false` aborts the whole batch and nothing is taken. Each
+round of `settle` looks up the key of each waiting author once and judges only the changes of
+authors that have become checkable; it merges only what the round before added. A key source that
+verifies every signature it reads itself (`KeySource.selfVerifying`, set by the trust layer) is
+asked against the replica plus the waiting changes (never one claiming the receiver's own id), so a
+chain of devices that each introduce the next is read in one round instead of one per link
+(1600 chained entries: about 0.5 s; `tests/trust/chainscale.test.ts`).
 
-**Key source.** `KeySource.keyFor(device, state)` is required. Optional: `standing(device, state)`
-returns `{ key?, cutoff? }` (the trust layer fills it from removal entries; `key` wins over `keyFor`,
-a number `cutoff` makes every change with `seq` above it `ignored`), and `neverErase`, a list of
+**Key source.** `KeySource.keyFor(device, state)` is required. Optional: `neverErase`, a list of
 collections that is merged into the judge option of the same name (the device list itself must never
-be finally deleted).
+be finally deleted), and `selfVerifying` (see above). A key source says who can be CHECKED, not who
+may write: a removed device stays checkable (see "Trust derivation"), and what it may still do is the
+app's `mayWrite`.
 
 **What an app does with a reason.**
 
@@ -252,16 +273,22 @@ be finally deleted).
   that it does not hold: its state is
   older than the world's (restored backup, cloned profile). It must stop writing and enrol again with
   a NEW device id; writing on would create equivocation.
-- `after-removal` is never a refusal; count it (`ReadResult.ignored`, `Session.ignored`).
-- `equivocation`: one device signed the same number twice with different content. Equivocation is
-  only detected when the two histories meet in one replica: two devices holding different versions
-  have equal stands, so a stand-based session never sends the change and only the fingerprints
-  differ; a third device that meets both versions refuses the second. There is no hash chain. The
-  author (`Rejection.change.device`, `Session.refusalDevice`) is faulty or malicious: the app should
-  stop trusting that device (remove it from the device list) and tell the people involved. Whoever
-  already took one version keeps it; the replicas do not heal by themselves. An erased change
-  (`y:1 redacted`) whose deletion was the other version is refused as `redacted-without-deletion`
-  for ever on a device holding the harmless version: the signal is the reason code.
+- `equivocation`: one device signed the same number twice with different content, or a change does not
+  continue the chain of the predecessor that is held. It is seen at the **first session** in which two
+  devices holding different versions meet, without any change being sent: the `stand` carries `tips`
+  (see "Messages"), and a receiver that holds the change at a tip's number with another link ends the
+  session with the refusal `forged` and the reason `equivocation`, naming the author in
+  `Session.refusalDevice`. It is also seen when a third device meets both versions, and for a
+  successor that names the other version. The author is faulty or malicious: the app should stop
+  trusting that device (remove it from the device list, which does not stop the refusal: a removed
+  device stays checkable) and tell the people involved. Whoever already took one version keeps it; the
+  replicas do not heal by themselves. An erased change (`y:1 redacted`) whose deletion was the other
+  version is refused as `redacted-without-deletion` for ever on a device holding the harmless
+  version: the signal is the reason code. Limit: two versions that differ only in the head (clock,
+  collection, id), not in the content, have the same link; the hash chain does not see them (the
+  signed text comparison does, once both meet in one replica).
+- `bad-prev`: a change that is not spelled right (no chain link after the first change); a sender that
+  follows the format never produces it.
 - `delete-not-allowed`: pass `allowFinalDelete` if the app has final deletions at all.
 - the others name the rule that failed.
 
@@ -284,11 +311,11 @@ only carries the messages; encryption belongs to the session of the `core` layer
 
 All messages are JSON objects with exactly these members; an unknown member refuses the message.
 
-| `t`       | Members                                                                                               | Meaning                                                                                                                    |
-| --------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `stand`   | `vector`                                                                                              | The sender's version vector; opens the session                                                                             |
-| `changes` | `changes` (list of changes), `last` (boolean), `more` (only `true`, only with `last: true`, optional) | One piece of the changes the receiver lacks; `last` ends the list; `more` says the answer was cut (see "Partial sessions") |
-| `done`    | `vector`, `fingerprint` (32 lower-case hex)                                                           | Sent once, after the other's last piece was taken                                                                          |
+| `t`       | Members                                                                                               | Meaning                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `stand`   | `vector`, `tips`                                                                                      | The sender's version vector and, per device, the link (check value) of the change at the vector's position; opens the session |
+| `changes` | `changes` (list of changes), `last` (boolean), `more` (only `true`, only with `last: true`, optional) | One piece of the changes the receiver lacks; `last` ends the list; `more` says the answer was cut (see "Partial sessions")    |
+| `done`    | `vector`, `fingerprint` (32 lower-case hex)                                                           | Sent once, after the other's last piece was taken                                                                             |
 
 Flow: on a `stand` the receiver answers with the changes the other lacks in the order of its own log
 (always at least one piece, the last marked `last: true`, and `more: true` when the answer was cut). On the other's last piece a device merges, then sends one
@@ -321,9 +348,15 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
   `id` 1 to `maxId` characters, names as below, `kind` one of `set`/`delete`/`redacted`; `knew` (a
   vector; required for `set` and `delete`), optional `time` (safe integer, 0 or more), `by` (1 to
   `maxName` characters, no control or format character, NFC), `check` (43 base64url characters), `sig` (86 base64url characters, only with
-  `check`). A `redacted` change refuses `knew`, `time` and `by`. `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
+  `check`), `prev` (43 base64url characters: required when `seq` is above 1, refused on `seq` 1, kept
+  by a `redacted` change). A `redacted` change refuses `knew`, `time` and `by`. `fields` is required, non-empty and at most `maxFields` for `set`, and refused for
   `delete` and `redacted`.
 - **Vector:** at most `maxDevices` entries; keys are device ids, values safe integers of 0 or more.
+- **Tips** (of a `stand`; required, may be empty): at most `maxDevices` entries; keys are device ids
+  that the vector counts with a number of 1 or more, values are 43 base64url characters. A tip names
+  the link (`changeLink`) of the change at the vector's position; a receiver that holds the change at
+  that number with another link refuses the session (`forged`, `equivocation`, `refusalDevice`), and a
+  tip of a number it does not hold proves nothing. Tips cost about 50 characters per device.
 - **Numbers** must be safe integers (counts) or finite (values): `NaN`, `Infinity`, `-Infinity`,
   floats where a count is expected, negatives and anything above 2^53 refuse.
 - **Names and keys** (`collection`, `id`, `fields`, keys inside a value) are 1 to `maxName` (`maxId`
@@ -374,7 +407,10 @@ offending piece (in `receiveJudged`: of the whole session) is taken. `Session.re
 - `forged`: a change was judged false; `Session.refusalReason` is the reason code of the section
   "Signatures" and `Session.refusalDevice` its author. Everything except the question "is there a
   deletion beside this erased change" is decided at once: an unsigned, forged, equivocating or
-  not-allowed change refuses the session at the piece that carries it, not at the last piece.
+  not-allowed change refuses the session at the piece that carries it, not at the last piece. A
+  `stand` whose `tips` contradict the receiver's log (another version of a number it holds) refuses
+  the session at the stand, with the reason `equivocation` and the author in `refusalDevice`, before
+  anything is sent or any signature is checked.
 - `unexpected`: a second `stand` (`repeated-stand`) or a second `done` (`repeated-done`) in one
   session. Every `stand` costs an answer, so one is enough.
 
@@ -452,16 +488,15 @@ One record per device in one reserved collection (default `device`; the app may 
 is the device id. Entries are never finally deleted: the collection belongs in `neverErase`
 (`deviceNeverErase()`), so a final deletion there is judged false.
 
-| Field     | Type    | Required | Meaning                                                                                  |
-| --------- | ------- | -------- | ---------------------------------------------------------------------------------------- |
-| `name`    | text    | yes      | Display name (app predicate; default 1 to 40 letters, digits, ` ._-`)                    |
-| `sig`     | text    | yes      | Public signing key, a point (87 characters); must differ from `dh`                       |
-| `dh`      | text    | yes      | Public agreement key, a point (87 characters)                                            |
-| `role`    | text    | no       | Opaque role (app predicate; default `^[a-z][a-z0-9:_-]{0,79}$`)                          |
-| `relayId` | text    | no       | The id the relay gave the device (app predicate; default 1 to 80, no control characters) |
-| `removed` | boolean | no       | `true` ends trust; entries stay. Missing counts as false                                 |
-| `lastSeq` | integer | no       | Written with `removed: true`: the highest number of the removed device the remover holds |
-| `private` | boolean | no       | "Private device" flag; written only when true or when it replaces a differing value      |
+| Field     | Type    | Required | Meaning                                                                                                             |
+| --------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `name`    | text    | yes      | Display name (app predicate; default 1 to 40 letters, digits, ` ._-`)                                               |
+| `sig`     | text    | yes      | Public signing key, a point (87 characters); must differ from `dh`                                                  |
+| `dh`      | text    | yes      | Public agreement key, a point (87 characters)                                                                       |
+| `role`    | text    | no       | Opaque role (app predicate; default `^[a-z][a-z0-9:_-]{0,79}$`)                                                     |
+| `relayId` | text    | no       | The id the relay gave the device (app predicate; default 1 to 80, no control characters)                            |
+| `removed` | boolean | no       | `true` ends standing as a voucher and as introduced; entries stay, signatures still verify. Missing counts as false |
+| `private` | boolean | no       | "Private device" flag; written only when true or when it replaces a differing value                                 |
 
 A device id (default `device-` and 32 lower-case hex digits, `newDeviceId`) is 128 random bits. A
 second id, `relayId`, is assigned by a relay; the trust layer only validates it.
@@ -471,67 +506,92 @@ second id, `relayId`, is assigned by a relay; the trust layer only validates it.
 Trust is derived from the log and from `direct` (the devices met in person, with the keys learned in
 person), never stored (`computeTrust`, `deviceStatus`). The result is a function of the SET of changes
 and of `direct`: the order changes arrived in, the order records were created in and the order of the
-met list change nothing (property test over 400 random scenarios, `tests/trust/order.test.ts`). No rule
-iterates until it settles, no rule looks at the shrinking result.
+met list change nothing (property test over 400 random scenarios, `tests/trust/order.test.ts`, and a
+differential test of 3200 scenarios against an independent reference written from these rules,
+`tests/trust/reference.test.ts`). No rule iterates until it settles on its own result: the only
+iteration is the synchronous rounds of rule 1, with a fixed bound.
+
+**What a removal means (read this first).** A removal ends a device's standing as a VOUCHER and as a
+device that can be introduced through the chain. The removed device stays **checkable**: its signed
+changes, the earlier AND the later ones, still verify, and the signature layer accepts them. **This
+layer does not revoke a removed device's ability to write.** An app that removes a device must itself
+(1) stop exchanging with it at the transport, (2) treat data authored by removed devices as
+untrusted when it presents it (`deviceStatus(...).removed`), (3) restrict what it may still do with
+`mayWrite` / `allowFinalDelete`, knowing that a hook that looks at state can answer differently on two
+devices (they may hold different parts of the log), and (4) have the encryption layer (not built
+yet) rotate the group keys on removal. A removed device stays removed: coming back means a NEW device
+id (`addDevice` refuses `removed`; `removed: false` is never a way back). An earlier design stopped
+the writes of a removed device automatically (`lastSeq`, the verdict `ignored`, `KeySource.standing`);
+it was taken out because a device-local decision about someone else's numbers makes honest devices
+disagree and block each other.
 
 Terms. A **write** is one value of one field of an entry together with its writer and its change. A
-write **counts** when its writer is this device (unsigned, it holds its own log) or a vouching device
-of the current round, whose signature checks (check value, `changeSigningText` with the app id and the
-data set, the voucher's signing key as the derivation holds it) and who is not the device the entry
-belongs to. `canVouch(device, entries)` is the app's strategy (`vouchAll`, `vouchRoles`,
-`vouchAnyRole`); it is asked when a device joins and again when its entry changes, and must answer
-from the entry (its role); `entries` is a live view of the derivation so far.
+write **counts** when its writer is this device (it holds its own log) or a device that vouches in the
+current round and whose signature on the write checks (check value, `changeSigningText` with the app
+id and the data set, under one of the **keys** the writer's entry has, see rule 1), and the writer is
+not the device the entry belongs to. `canVouch(device, entries)` is the app's strategy (`vouchAll`,
+`vouchRoles`, `vouchAnyRole`); it is asked when a device joins and again when its entry changes, and
+must answer from the entry (its role); `entries` is a live view of the derivation so far. This device
+itself is always a root and its own writes always count.
 
-1. **Potential trust P** (removals ignored). The least fixpoint from the devices met in person, in
-   synchronous rounds: a device joins when its name, signing key and agreement key each have a valid
-   counting value (the newest valid one of the writes that count), and the keys differ. Role,
-   `relayId` and `private` are taken the same way when present. A round looks only at the state at its
-   start, so no order of records matters. A met device keeps the entry learned in person (name,
+1. **Potential trust P** (removals and key conflicts ignored: this is "who could be trusted"). The
+   fixpoint from the devices met in person, in synchronous rounds: a device joins when its name,
+   signing key and agreement key each have a valid counting value (the newest valid one of the writes
+   that count), and the keys differ. Role, `relayId` and `private` are taken the same way when
+   present. A round looks only at the state at its start, so no order of records matters. Membership
+   only grows (a device that joined stays) and the voucher flag follows the newest entry: a voucher
+   that is later given another role by a vouching device stops vouching, but whoever it introduced
+   while it vouched stays in P (deliberate; the rounds are bounded, so a derivation always ends; test
+   `N10` in `tests/trust/review5.test.ts`). A met device keeps the entry learned in person (name,
    keys, role) and may add a role it lacks from the log (when the keys agree). A role that does not
-   count (`roleCounts`) stays as `roleVouched`. The number of rounds is bounded (a derivation always
-   ends). This device itself is always a root and its own writes count.
-2. **Key consistency.** For every device `d`, all values ever written for its `sig` and `dh` by
-   devices of P that vouch (the whole history, signatures checked, not only the newest) are collected.
-   More than one distinct `sig` or `dh`: `d` is not trusted through the chain (reason `key-conflict`;
-   a voucher that writes its own key into another entry is a conflict for that entry, whichever
-   entry was written first). A met device keeps the keys learned in person; a conflicting vouch is
-   ignored and reported (`key-mismatch`). More than one distinct `relayId`: the relay id is dropped
-   (`relay-conflict`), the device stays trusted. P is then computed again without the conflicted
-   devices. Keys of an id never change: a re-keyed device is a new device id.
-3. **Removal.** A removal edge `r -> t` exists when the newest `removed: true` that `r` wrote into the
-   entry of `t` counts (`r` is in P, vouches, signature checks) AND `r` is reachable from the met
-   devices (and this device) inside P by a chain of vouching devices that does not pass through `t`
-   (an edge `u -> w`: `u` vouches and wrote an identity field of `w`). Such a removal is **effective**.
-   It is evaluated statically on P, never on the shrinking result, so mutual or cyclic removals
-   remove everybody involved (**fail closed**: when `A` and `R` remove each other and both are
-   reachable without the other, both are removed) and the result never depends on record or log
-   order. What the device itself or a non-voucher wrote into `removed` counts for nothing; a later
-   `removed: false` (by anybody, also by the remover) does not take a removal back. A removed device
-   stays removed: re-admission means a NEW device id (`addDevice` refuses `removed`).
-4. **Trust T** = what is reachable from the met devices in P restricted to the devices that are not
-   effectively removed and not key-conflicted: the derivation of rule 1 run again without them, so a
-   device that was vouched only through a removed device drops out, and a met device that is
-   effectively removed is not trusted either. `checkable` = T plus the effectively removed devices
-   whose keys were vouched for: a removal ends trust from now on, not what the device wrote before.
-   Hiding ("deleting") an entry ends nothing.
-5. **Cut-off.** `removeDevice` writes `lastSeq` (an integer, the highest change number of the removed
-   device this device holds) together with `removed: true`. `standing(device)` of an effectively
-   removed device is `{ key, cutoff }` with `cutoff` = the minimum of `lastSeq` over all its
-   effective removals (smaller = stricter, the same at every device; a removal without a valid
-   `lastSeq` gives no cutoff). `deviceKeySource` implements `KeySource.standing`: the judge ignores
-   (verdict `ignored`, reason `after-removal`) changes of that device with `seq` above the cutoff
-   without refusing the session; changes up to the cutoff stay `checked`. `deviceKeySource.neverErase`
-   lists the device collection.
+   count (`roleCounts`) stays as `roleVouched`. The **keys** of a device are the one learned in person
+   for a met device, else every signing key a counting write ever gave its entry: a voucher that
+   writes another key into an entry cannot make that device's own writes unverifiable.
+2. **Rank.** Rank is the distance in the vouching graph from the roots, inside P: this device and the
+   met devices have rank 0; an edge `u -> w` exists when `u` is this device or vouches and wrote a
+   verified identity field (`name`, `sig`, `dh`, `role`, `relayId`, `private`) of the entry of `w`.
+3. **Removals**, in one fixed total order: rank ascending, then device id ascending. Each device `r`
+   of P that is reachable gets its turn. If `r` is already removed it removes nobody (this device
+   itself never loses the right to remove: it holds its own log). If `r` vouches, then for every
+   device `t` into whose entry `r` wrote a **verified** `removed: true` (an unverifiable write does not
+   shadow a verified one, whatever the order; a write of the device into its own entry and a later
+   `removed: false` count for nothing), the removal is **effective** when `r` is reachable from the
+   roots inside P by a chain that does not pass through `t`; `t` is then removed. So a removal by a
+   device of lower rank cannot be neutralised by the removed device (it cannot vote afterwards), a
+   compromised voucher cannot make its own removal void by tampering with the remover's entry, and
+   two devices of EQUAL rank that remove each other are decided by the smaller id (the smaller id
+   acts first and wins): deliberate and deterministic, not a vote. **Fail-closed inherent to the
+   voucher strategy:** any voucher can remove the devices it can reach; the app chooses `vouchRoles`.
+4. **Key consistency**, after the removals: for every device `d`, all values ever written for its
+   `sig` and `dh` by devices of P that vouch and are NOT removed (the whole history, signatures
+   checked, not only the newest) are collected. More than one distinct `sig` or `dh`: `d` is not
+   trusted through the chain (reason `key-conflict`); a met device keeps the keys learned in person,
+   a conflicting vouch is ignored and reported (`key-mismatch`). More than one distinct `relayId`: the
+   relay id is dropped (`relay-conflict`), the device stays trusted. **What a removed device wrote
+   carries no authority**: not for conflicts, not for vouching, not for removals. Keys of an id never
+   change: a re-keyed device is a new device id. A voucher can pre-occupy a future device id with its
+   own keys: when the real device is entered later, `addDevice` answers `other-keys` (a voucher can
+   always write anything; this is the cost of vouching).
+5. **Trust T** = what is reachable from the roots through vouchers (rule 1 run again) without the
+   effectively removed devices and the key-conflicted devices, so a device that was vouched only
+   through a removed device drops out, and a met device that is effectively removed is not trusted
+   either. `checkable` = T plus the effectively removed devices that are in P and not key-conflicted,
+   their entries read from the writes of vouchers that were not removed: a removal ends trust from
+   now on, not what the device wrote before or after. Hiding ("deleting") an entry ends nothing.
 
 Reasons (`deviceStatus(replica, id, { ...options, direct })`: `{ trusted, checkable, removed,
-cutoff?, reasons }`): `key-conflict`, `key-mismatch`, `relay-conflict`, `removed`, `not-vouched`.
-`listDevices` is only a display of the raw entries (what some device wrote last, whoever it was);
-`addDevice` and `removeDevice` decide against the derived state, not against the raw entry.
+reasons }`): `key-conflict`, `key-mismatch`, `relay-conflict`, `removed`, `not-vouched`.
+`listDevices` is only a display of the raw entries (what some device wrote last, whoever it was, a
+device writing its own role included): never use it for authorization. `addDevice` and `removeDevice`
+decide against the derived state, not against the raw entry. `deviceKeySource` gives the key of every
+checkable device (T plus the removed ones), derives once per replica state, and lists the device
+collection in `neverErase`.
 
 Cost. One pass over the log builds an index of the entries (kept per log array); the rounds then
 touch only the entries a newly vouching device wrote, so a chain of 400 devices derives in about 10 ms
-once its signatures are checked (checks are remembered per change). `deviceKeySource` derives once per
-replica state and answers `keyFor` and `standing` from that result.
+once its signatures are checked (checks are remembered per change). `readChanges` of a long chain is
+linear in practice because the key source is asked against the replica plus the waiting changes (see
+"Verdicts").
 
 What the derivation does not decide (limits an app handles):
 
@@ -542,7 +602,9 @@ What the derivation does not decide (limits an app handles):
   A kept `open` invitation lets a removed device answer it again only with a new device id: the old id
   stays removed.
 - A voucher can always write anything into an entry; the rules above limit what survives (keys,
-  relay ids, removals by unreachable devices), not a trusted administrator's choice of a name or a role.
+  relay ids, removals by unreachable or removed devices), not a trusted administrator's choice of a
+  name or a role.
+- Removing a device does not stop it from writing (see "What a removal means").
 - The check code (`checkCode`) carries about 13.3 bits per group; use `groups` of 8 or more where it
   is the only protection against a modified invitation link.
 
@@ -653,7 +715,10 @@ member. The same key in different objects is fine.
 - Check value: `base64url(SHA-256(UTF-8(canonical(value))))` without padding, 43 characters
   (`canonical.json`).
 - Signed text of a change: `<appId>-change:2|` and the canonical form of `{v: 2, set, device, seq, clock,
-collection, id, kind, check}`, a `redacted` change counting as `set` (`signing-text.json`).
+collection, id, kind, check[, prev]}`, a `redacted` change counting as `set`; `prev` (the link of the
+  previous change of the same device) is present exactly when `seq` is above 1 (`signing-text.json`).
+- Link of a change (what the next change of the device carries as `prev`, and what a `stand` carries
+  as a tip): its check value.
 - Signature: ECDSA P-256 / SHA-256, 64 bytes (r, s big-endian, 32 bytes each), unpadded base64url,
   **low-s only** (s at most n/2). A signer must normalise; a verifier must refuse a high s.
 - Check code of a device: `check-code.json`.

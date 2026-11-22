@@ -25,6 +25,15 @@ export function changeCheckValue(change: Change): string {
   return value;
 }
 
+/**
+ * The link a successor of this change carries as `prev`: the check value it has or will have when it
+ * is signed. An erased change keeps the one taken before its content went (undefined only for an
+ * erased change that never had one).
+ */
+export function changeLink(change: Change): string | undefined {
+  return change.check ?? (change.kind === 'redacted' ? undefined : changeCheckValue(change));
+}
+
 const memo = new WeakMap<
   Change,
   {

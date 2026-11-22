@@ -233,6 +233,7 @@ describe('a forged change aborts the exchange and the receiver keeps its replica
       tamper: forge('x', (c) => {
         c.device = 'b';
         c.seq = 99;
+        c.prev = 'p'.repeat(43);
       }),
     });
     expect(r.sy.refusal).toBe('forged');

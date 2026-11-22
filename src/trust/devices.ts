@@ -8,7 +8,6 @@ import {
   type KeySource,
   type Origin,
   type Replica,
-  type Standing,
 } from '../log/index.ts';
 import { DEVICE_COLLECTION, deriveAsync, deriveSync, entryIndex } from './derive.ts';
 import { resolveValidators } from './ids.ts';
@@ -188,11 +187,13 @@ export function setDevicePrivate(
 }
 
 /**
- * Removes a device: no device trusts it any more (what it already has stays with it). Writes
- * `removed: true` and `lastSeq`, the highest number of the removed device this device holds: changes
- * of the device above it are ignored everywhere once the removal counts (rule 5). Nothing is written
- * when this device's own word is already "removed" (what the device itself or a non-voucher wrote
- * into the entry counts for nothing, so it does not make the removal unnecessary).
+ * Removes a device: it loses its standing as a voucher and as a device that can be introduced
+ * through the chain (what it already has stays with it). It stays CHECKABLE: its signed changes,
+ * earlier and later ones, still verify. This layer does not stop a removed device from writing:
+ * the app stops exchanging with it, restricts it with `mayWrite`, treats what it wrote as untrusted
+ * (`deviceStatus`) and rotates its group keys. Writes `removed: true`. Nothing is written when this
+ * device's own word is already "removed" (what the device itself or a non-voucher wrote into the
+ * entry counts for nothing, so it does not make the removal unnecessary).
  */
 export function removeDevice(
   replica: Replica,
@@ -207,8 +208,7 @@ export function removeDevice(
     ?.get('removed')
     ?.find((w) => w.device === replica.device);
   if (mine?.value === true) return { ok: true, replica };
-  const lastSeq = Object.hasOwn(replica.vector, device) ? (replica.vector[device] as number) : 0;
-  return put(replica, o, device, { removed: true, lastSeq }, origin);
+  return put(replica, o, device, { removed: true }, origin);
 }
 
 /**
@@ -245,8 +245,8 @@ export function listDevices(replica: Replica, o: TrustOptions): DeviceEntry[] {
 
 /**
  * Whom this device trusts, derived from the log (never stored). The rules (potential trust from the
- * devices met in person, key consistency, effective removals evaluated statically, reachability,
- * write cut-off) are in `docs/wire-format.md`, "Trust derivation". The result depends on the set of
+ * devices met in person, effective removals in rank order, key consistency among the vouchers
+ * that were not removed, reachability) are in `docs/wire-format.md`, "Trust derivation". The result depends on the set of
  * changes in the log and on `direct`, never on the order records were created or arrived in.
  */
 export async function computeTrust(
@@ -257,7 +257,7 @@ export async function computeTrust(
   return (await deriveAsync(replica, direct, o)).trust;
 }
 
-/** The derived state of one device id: trusted, checkable, removed (with the cutoff) and why. */
+/** The derived state of one device id: trusted, checkable, removed and why. */
 export async function deviceStatus(
   replica: Replica,
   device: DeviceId,
@@ -268,14 +268,7 @@ export async function deviceStatus(
   const removed = t.removed.includes(device);
   const reasons = [...(t.reasons.get(device) ?? [])];
   if (!trusted && reasons.length === 0) reasons.push('not-vouched');
-  const cutoff = t.cutoffs.get(device);
-  return {
-    trusted,
-    checkable: t.checkableById.has(device),
-    removed,
-    ...(removed && cutoff !== undefined ? { cutoff } : {}),
-    reasons,
-  };
+  return { trusted, checkable: t.checkableById.has(device), removed, reasons };
 }
 
 export interface DeviceKeySourceOptions extends TrustOptions {
@@ -287,11 +280,12 @@ export interface DeviceKeySourceOptions extends TrustOptions {
 
 /**
  * A `KeySource` for `readChanges` / `judgeChanges`: the key of every device whose signatures can be
- * checked (`Trust.checkable`) and, for a removed device, the cutoff (`standing`: changes above it are
- * ignored, not refused), in the replica as it would be with everything taken so far, so a change
- * that enters a device makes that device's later changes of the same batch checkable. Unknown
- * devices give undefined: their changes stay `pending`. The derivation runs once per replica state
- * and every answer is a lookup in it. The device list is never finally deleted (`neverErase`).
+ * checked (`Trust.checkable`: the trusted devices and the removed ones, whose signed changes keep
+ * verifying; the key source says who can be checked, not who may write), in the replica as it would
+ * be with everything taken so far, so a change that enters a device makes that device's later
+ * changes of the same batch checkable. Unknown devices give undefined: their changes stay `pending`.
+ * The derivation runs once per replica state and every answer is a lookup in it. The device list is
+ * never finally deleted (`neverErase`).
  */
 export function deviceKeySource(o: DeviceKeySourceOptions): KeySource {
   const cache = new WeakMap<Replica, Promise<Trust>>();
@@ -315,16 +309,8 @@ export function deviceKeySource(o: DeviceKeySourceOptions): KeySource {
       const found = (await trustOf(state)).checkableById.get(device);
       return found ? keyOf(found.sig) : undefined;
     },
-    async standing(device, state): Promise<Standing> {
-      if (o.own && device === o.own.device) return { key: o.own.publicKey };
-      const trust = await trustOf(state);
-      const found = trust.checkableById.get(device);
-      const cutoff = trust.cutoffs.get(device);
-      return {
-        key: found ? await keyOf(found.sig) : undefined,
-        ...(cutoff !== undefined ? { cutoff } : {}),
-      };
-    },
     neverErase: [collectionOf(o)],
+    // every entry it reads is signature-checked by the derivation (own writes excepted, which settle keeps out)
+    selfVerifying: true,
   };
 }

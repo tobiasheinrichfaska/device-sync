@@ -54,9 +54,10 @@ export function randomVector(rng: Rng): VersionVector {
 /** A random change that must be accepted by the parser. */
 export function randomChange(rng: Rng): Change {
   const kind = pick(rng, ['set', 'set', 'delete', 'redacted'] as const);
+  const seq = 1 + int(rng, 1000);
   const base = {
     device: pick(rng, DEVICES),
-    seq: 1 + int(rng, 1000),
+    seq,
     clock: 1 + int(rng, 100000),
     collection: pick(rng, ['items', 'lists', 'x']),
     id: pick(rng, ['r1', 'record 2', 'ä']),
@@ -76,6 +77,8 @@ export function randomChange(rng: Rng): Change {
         }
       : {}),
     ...(rng() < 0.5 ? { check: CHECK, ...(rng() < 0.5 ? { sig: SIG } : {}) } : {}),
+    // the hash chain: every change after the first names the link of its predecessor
+    ...(seq > 1 ? { prev: CHECK } : {}),
   };
   if (kind !== 'set') return { ...base, ...optional };
   const fields = Object.fromEntries(
@@ -86,7 +89,15 @@ export function randomChange(rng: Rng): Change {
 
 export function randomMessage(rng: Rng): SyncMessage {
   const t = pick(rng, ['stand', 'changes', 'done'] as const);
-  if (t === 'stand') return { t, vector: randomVector(rng) };
+  if (t === 'stand') {
+    const vector = randomVector(rng);
+    const tips = Object.fromEntries(
+      Object.entries(vector)
+        .filter(([, seq]) => seq >= 1 && rng() < 0.6)
+        .map(([device]) => [device, CHECK]),
+    );
+    return { t, vector, tips };
+  }
   if (t === 'done') return { t, vector: randomVector(rng), fingerprint: '0123abcd'.repeat(4) };
   return {
     t,

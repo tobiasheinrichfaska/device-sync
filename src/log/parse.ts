@@ -1,6 +1,6 @@
 import { hasDuplicateKeys } from '../core/json.ts';
 import { resolveLimits, type Limits } from './limits.ts';
-import type { Change, ChangeKind, VersionVector } from './types.ts';
+import type { Change, ChangeKind, DeviceId, VersionVector } from './types.ts';
 import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from './validate.ts';
 
 /**
@@ -9,7 +9,12 @@ import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from 
  * piece) and `done` (the sender's stand and fingerprint after taking what it received).
  */
 export type SyncMessage =
-  | { readonly t: 'stand'; readonly vector: VersionVector }
+  | {
+      readonly t: 'stand';
+      readonly vector: VersionVector;
+      /** Per device the link (check value) of the change at the vector's position, see `tipsOf`. */
+      readonly tips: Readonly<Record<DeviceId, string>>;
+    }
   | {
       readonly t: 'changes';
       readonly changes: readonly Change[];
@@ -46,6 +51,7 @@ const CHANGE_MEMBERS: ReadonlySet<string> = new Set([
   'by',
   'check',
   'sig',
+  'prev',
 ]);
 
 /** Only the members named; `undefined`-valued ones count as absent. */
@@ -71,6 +77,33 @@ function vectorOf(
     const seq = raw[device];
     if (FORBIDDEN_NAMES.has(device) || deviceId(device) !== true || !count(seq)) return undefined;
     out[device] = seq;
+  }
+  return out;
+}
+
+/** The tips of a stand: at most `maxDevices`, only devices the vector counts, each a check value. */
+function tipsOfRaw(
+  raw: unknown,
+  vector: VersionVector,
+  limits: Limits,
+  deviceId: (id: string) => boolean,
+): Record<DeviceId, string> | undefined {
+  if (!isPlain(raw)) return undefined;
+  const keys = Object.keys(raw);
+  if (keys.length > limits.maxDevices) return undefined;
+  const out = dict<string>();
+  for (const device of keys) {
+    const tip = raw[device];
+    if (
+      FORBIDDEN_NAMES.has(device) ||
+      deviceId(device) !== true ||
+      (vector[device] ?? 0) < 1 ||
+      typeof tip !== 'string' ||
+      !CHECK.test(tip)
+    ) {
+      return undefined;
+    }
+    out[device] = tip;
   }
   return out;
 }
@@ -111,6 +144,11 @@ function changeOf(raw: unknown, limits: Limits, deviceId: (id: string) => boolea
   if (sig !== undefined && (typeof sig !== 'string' || !SIG.test(sig) || check === undefined)) {
     return undefined;
   }
+  // The hash chain: every change after the first names the link of its predecessor, the first none.
+  const { prev } = raw;
+  if (seq === 1 ? prev !== undefined : typeof prev !== 'string' || !CHECK.test(prev)) {
+    return undefined;
+  }
   const base = {
     device,
     seq,
@@ -123,6 +161,7 @@ function changeOf(raw: unknown, limits: Limits, deviceId: (id: string) => boolea
     ...(by !== undefined ? { by } : {}),
     ...(check !== undefined ? { check } : {}),
     ...(sig !== undefined ? { sig } : {}),
+    ...(typeof prev === 'string' ? { prev } : {}),
   } satisfies Change;
   if (kind !== 'set') return raw.fields === undefined ? base : undefined;
   const fields = fieldsOf(raw.fields, limits);
@@ -136,9 +175,10 @@ function messageOf(
 ): SyncMessage | undefined {
   if (!isPlain(raw)) return undefined;
   if (raw.t === 'stand') {
-    if (!onlyMembers(raw, new Set(['t', 'vector']))) return undefined;
+    if (!onlyMembers(raw, new Set(['t', 'vector', 'tips']))) return undefined;
     const vector = vectorOf(raw.vector, limits, deviceId);
-    return vector ? { t: 'stand', vector } : undefined;
+    const tips = vector && tipsOfRaw(raw.tips, vector, limits, deviceId);
+    return vector && tips ? { t: 'stand', vector, tips } : undefined;
   }
   if (raw.t === 'done') {
     if (!onlyMembers(raw, new Set(['t', 'vector', 'fingerprint']))) return undefined;

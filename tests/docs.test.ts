@@ -46,6 +46,22 @@ describe('docs/wire-format.md against the code', () => {
     expect(changeSigningText('demo', change, 'main')).toBe(example);
   });
 
+  it('the signed text example with prev is exactly what changeSigningText produces', () => {
+    const example = /Example with prev: `(demo-change:2\|\{[^`]+\})`/.exec(DOC)?.[1];
+    expect(example).toBeDefined();
+    const change: Change = {
+      device: 'a',
+      seq: 2,
+      clock: 4,
+      collection: 'items',
+      id: 'x',
+      kind: 'delete',
+      check: 'c2',
+      prev: 'c1',
+    };
+    expect(changeSigningText('demo', change, 'main')).toBe(example);
+  });
+
   it('the format version and the marker rule are as documented', () => {
     expect(DOC).toContain(`version \`${FORMAT_VERSION}\``);
     expect(marker('demo', 'device', FORMAT_VERSION)).toBe(`demo-device:${FORMAT_VERSION}`);

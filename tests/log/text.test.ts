@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { LIMITS, parseSyncMessageText } from '../../src/log/index.ts';
 
-const stand = JSON.stringify({ t: 'stand', vector: { a: 3 } });
+const stand = JSON.stringify({ t: 'stand', vector: { a: 3 }, tips: {} });
 
 describe('parseSyncMessageText', () => {
   it('reads a message from text', () => {
-    expect(parseSyncMessageText(stand)).toEqual({ t: 'stand', vector: { a: 3 } });
-    expect(parseSyncMessageText(` \n${stand}\n `)).toEqual({ t: 'stand', vector: { a: 3 } });
+    expect(parseSyncMessageText(stand)).toEqual({ t: 'stand', vector: { a: 3 }, tips: {} });
+    expect(parseSyncMessageText(` \n${stand}\n `)).toEqual({
+      t: 'stand',
+      vector: { a: 3 },
+      tips: {},
+    });
   });
 
   it('refuses what is not text, not JSON, or not a message; never throws', () => {
@@ -17,7 +21,7 @@ describe('parseSyncMessageText', () => {
 
   it('refuses text longer than twice maxMessageChars before reading it (limit from Limits)', () => {
     const limits = { maxMessageChars: 100 };
-    const pad = (n: number): string => `{"t":"stand","vector":{"a":3}}${' '.repeat(n)}`;
+    const pad = (n: number): string => `{"t":"stand","vector":{"a":3},"tips":{}}${' '.repeat(n)}`;
     const base = pad(0).length;
     expect(parseSyncMessageText(pad(200 - base), { limits })).toBeDefined(); // exactly 200 chars
     expect(parseSyncMessageText(pad(201 - base), { limits })).toBeUndefined(); // one over

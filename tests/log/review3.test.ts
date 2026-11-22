@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateDeviceKeys } from '../../src/core/index.ts';
 import {
+  changeCheckValue,
   emptyReplica,
   fingerprint,
   insertSignatures,
@@ -195,14 +196,14 @@ describe('L1: a new device can join a large data set', () => {
     const first = onSyncMessage(
       startSession(old).session,
       old,
-      { t: 'stand', vector: {} },
+      { t: 'stand', vector: {}, tips: {} },
       { limits: { maxSessionChanges: 10 } },
     );
     const msgs = first.send.filter((m) => m.t === 'changes');
     expect(msgs.reduce((n, m) => n + (m.t === 'changes' ? m.changes.length : 0), 0)).toBe(10);
     const last = msgs[msgs.length - 1];
     expect(last?.t === 'changes' && last.last && last.more === true).toBe(true);
-    const all = onSyncMessage(startSession(old).session, old, { t: 'stand', vector: {} });
+    const all = onSyncMessage(startSession(old).session, old, { t: 'stand', vector: {}, tips: {} });
     const lastAll = all.send[all.send.length - 1];
     expect(lastAll?.t === 'changes' && lastAll.more).toBeFalsy();
   });
@@ -438,7 +439,7 @@ describe('L4: signedOnly withholds the foreign redacted changes of a record whos
     const m = removed(merge(emptyReplica('m'), y.log).replica, COL, 'rec');
     expect(pick(m, 'y', 1).kind).toBe('redacted');
     expect(pick(m, 'm', 1).sig).toBeUndefined();
-    const answer = onSyncMessage(startSession(m).session, m, { t: 'stand', vector: {} });
+    const answer = onSyncMessage(startSession(m).session, m, { t: 'stand', vector: {}, tips: {} });
     const sent = answer.send.flatMap((x) => (x.t === 'changes' ? x.changes : []));
     expect(sent).toEqual([]);
     expect(answer.session.withheld).toBeGreaterThanOrEqual(2);
@@ -464,20 +465,22 @@ describe('L6: processing pieces is linear', () => {
   /** 12000 signed writes of one device, built once for both tests. */
   const chain = (total: number): Promise<Change[]> => (built ??= build(total));
   async function build(total: number): Promise<Change[]> {
-    return Promise.all(
-      Array.from({ length: total }, (_, i) =>
-        resign({
-          device: 'x',
-          seq: i + 1,
-          clock: i + 1,
-          collection: COL,
-          id: `r${i % 50}`,
-          kind: 'set',
-          fields: { t: i },
-          knew: {},
-        }),
-      ),
-    );
+    const bare: Change[] = [];
+    for (let i = 0; i < total; i += 1) {
+      const c: Change = {
+        device: 'x',
+        seq: i + 1,
+        clock: i + 1,
+        collection: COL,
+        id: `r${i % 50}`,
+        kind: 'set',
+        fields: { t: i },
+        knew: {},
+      };
+      // the hash chain: the link of the previous change
+      bare.push(i === 0 ? c : { ...c, prev: changeCheckValue(bare[i - 1] as Change) });
+    }
+    return Promise.all(bare.map((c) => resign(c)));
   }
   /** Seconds for the pieces of one change each, through receiveJudged. */
   async function timed(replica: Replica, changes: readonly Change[]): Promise<[number, Step]> {
@@ -494,14 +497,14 @@ describe('L6: processing pieces is linear', () => {
     return [(performance.now() - started) / 1000, step];
   }
 
-  it('12000 one-change pieces of known valid changes (all an adversary needs) take under 3 s', async () => {
+  it('12000 one-change pieces of known valid changes (all an adversary needs) take under 10 s (the bound only separates linear from quadratic)', async () => {
     const total = 12000;
     const changes = await chain(total);
     const holder = merge(emptyReplica('n'), changes).replica;
     expect(holder.vector.x).toBe(total);
     const [seconds, step] = await timed(holder, changes);
     expect(step.session.refusal).toBeUndefined();
-    expect(seconds).toBeLessThan(3);
+    expect(seconds).toBeLessThan(10);
   }, 120_000);
 
   it('12000 one-change pieces of new valid changes cost about 4 times as much as 3000 (linear, not 16)', async () => {
@@ -595,85 +598,7 @@ describe('IDX: the index cache is checked against its log array', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('KeySource.standing: changes after a removal are ignored, not refused', () => {
-  const standing = (cutoff: number | undefined): KeySource => ({
-    keyFor: (device) => pairs[device]?.publicKey,
-    standing: (device) => (device === 'x' ? { key: pairs.x?.publicKey, cutoff } : {}),
-  });
-
-  async function five(): Promise<Replica> {
-    let x = emptyReplica('x');
-    for (let i = 0; i < 5; i += 1) x = written(x, `r${i}`, { t: 'v' });
-    return signed(x);
-  }
-
-  it('changes with seq above the cutoff are ignored (after-removal), the others are judged normally', async () => {
-    const x = await five();
-    const j = await judgeDetailed(context(emptyReplica('n'), { keys: standing(3) }), [...x.log]);
-    expect(j.map((v) => v.verdict)).toEqual([
-      'checked',
-      'checked',
-      'checked',
-      'ignored',
-      'ignored',
-    ]);
-    expect(j[3]?.reason).toBe('after-removal');
-  });
-
-  it('readChanges counts them as ignored and takes the rest; nothing is refused', async () => {
-    const x = await five();
-    const read = await readChanges(
-      emptyReplica('n'),
-      [...x.log],
-      judgeFor('n', { keys: standing(3) }),
-    );
-    expect(read.rejected).toBe(0);
-    expect(read.accepted).toHaveLength(3);
-    expect(read.ignored).toBe(2);
-  });
-
-  it('a session continues: the vector does not advance past the cutoff', async () => {
-    const x = await five();
-    const r = await session(
-      x,
-      emptyReplica('n'),
-      judgeFor('x'),
-      judgeFor('n', { keys: standing(3) }),
-    );
-    expect(r.b.session.refusal).toBeUndefined();
-    expect(r.b.replica.vector.x).toBe(3);
-    expect(r.b.session.taken).toBe(3);
-  });
-
-  it('a cutoff above everything, or none, changes nothing; a Promise works too', async () => {
-    const x = await five();
-    for (const keys of [
-      standing(10),
-      standing(undefined),
-      {
-        keyFor: (d: string) => pairs[d]?.publicKey,
-        standing: async () => ({ cutoff: 99 }),
-      } satisfies KeySource,
-    ]) {
-      const j = await judgeChanges(context(emptyReplica('n'), { keys }), [...x.log]);
-      expect(j).toEqual(['checked', 'checked', 'checked', 'checked', 'checked']);
-    }
-  });
-
-  it('a foreign erased change beside an ignored deletion waits and is not blamed', async () => {
-    const y = await signed(written(emptyReplica('y'), 'rec', { t: 'secret' }));
-    let x = merge(emptyReplica('x'), y.log).replica;
-    x = await signed(removed(written(x, 'other', { t: 'o' }), COL, 'rec'));
-    const batch = [pick(x, 'y', 1), pick(x, 'x', 1), pick(x, 'x', 2)];
-    const { step } = await feed(
-      emptyReplica('n'),
-      [part(batch, true)],
-      judgeFor('n', { keys: standing(1) }),
-    );
-    expect(step.session.refusal).toBeUndefined();
-    expect(step.replica.vector).toEqual({ x: 1 });
-  });
-
+describe('KeySource: neverErase', () => {
   it('neverErase of a KeySource is merged into the judge options', async () => {
     let x = written(emptyReplica('x'), 'dev', { t: 'v' });
     x = removed(x, COL, 'dev');

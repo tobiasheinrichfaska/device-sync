@@ -1,3 +1,4 @@
+import { changeLink } from './check.ts';
 import { byDeviceThenSeq, merge, originOf } from './merge.ts';
 import type {
   Change,
@@ -73,7 +74,9 @@ export type WriteFailure =
   /** More than `maxDevices` unresolved concurrent writes to the fields: one `knew` could not name them all. */
   | 'too-many-devices'
   /** The clock or the numbering cannot count further. */
-  | 'clock-overflow';
+  | 'clock-overflow'
+  /** The log does not hold this device's previous change (a hand-built replica): the hash chain cannot continue. */
+  | 'missing-history';
 
 export type WriteResult =
   | { readonly ok: true; readonly replica: Replica }
@@ -319,6 +322,15 @@ export function knownFor(
   );
 }
 
+/** This device's own change with this number: its own changes are near the end of its log. */
+function previousOf(replica: Replica, seq: number): Change | undefined {
+  for (let i = replica.log.length - 1; i >= 0; i -= 1) {
+    const c = replica.log[i] as Change;
+    if (c.device === replica.device && c.seq === seq) return c;
+  }
+  return undefined;
+}
+
 function commit(
   replica: Replica,
   collection: string,
@@ -337,6 +349,13 @@ function commit(
   const knew = knownFor(replica, collection, id, fields ? Object.keys(fields) : null);
   if (Object.keys(knew).length > limits.maxDevices)
     return { ok: false, reason: 'too-many-devices' };
+  // Hash chain: the link of this device's previous change (numbering is gapless, so it is in the log).
+  let prev: string | undefined;
+  if (seq > 1) {
+    const before = previousOf(replica, seq - 1);
+    prev = before && changeLink(before);
+    if (prev === undefined) return { ok: false, reason: 'missing-history' };
+  }
   const base = {
     device: replica.device,
     seq,
@@ -346,6 +365,7 @@ function commit(
     kind,
     knew,
     ...originOf(origin),
+    ...(prev !== undefined ? { prev } : {}),
   };
   const change: Change = fields ? { ...base, fields } : base;
   // What a receiver reads must fit its message limit.

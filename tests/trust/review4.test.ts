@@ -1,6 +1,6 @@
 // Round 3, part B: the trust derivation is order independent (T1), a voucher cannot replace another
 // device's keys (T2), local writing decides against the derived state (T3), the derivation is
-// linear (T4) and a removal carries a write cut-off (L5).
+// linear (T4). The write cut-off of the removal (L5) was taken out again in round 3, third pass.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { base64url, generateDeviceKeys, publicKeys, checkCode } from '../../src/core/index.ts';
 import {
@@ -9,14 +9,9 @@ import {
   merge,
   readChanges,
   write,
-  receiveJudged,
   signOwnChanges,
-  startSession,
   type Change,
   type JudgeOptions,
-  type Replica,
-  type Step,
-  type SyncMessage,
 } from '../../src/log/index.ts';
 import { deriveSync } from '../../src/trust/derive.ts';
 import {
@@ -53,14 +48,14 @@ const O: TrustOptions = opts(vouchRoles(['admin']));
 const VOUCH_ADMIN = O;
 const VIEWER = 'device-' + '1'.repeat(32);
 
-describe('T1: removal is order independent and fail closed', () => {
+describe('T1: removal is order independent (equal rank: the smaller id wins)', () => {
   let a: Dev, b: Dev, r: Dev;
   beforeAll(async () => {
     [a, b, r] = [await dev('A'), await dev('B'), await dev('R')];
   });
 
   for (const order of ['R then A', 'A then R'] as const) {
-    it(`B enters ${order}; A removes R, R marks A removed: B stays trusted, A and R are both removed`, async () => {
+    it(`B enters ${order}; A removes R, R marks A removed: B stays trusted, the smaller id (A) wins, R is removed`, async () => {
       let rb = emptyOf(b);
       const first = order === 'R then A' ? r : a;
       const second = order === 'R then A' ? a : r;
@@ -70,12 +65,13 @@ describe('T1: removal is order independent and fail closed', () => {
       let rr = merge(emptyOf(r), rb.log).replica;
       rr = await signed(writeRaw(rr, DEVICE_COLLECTION, a.id, { removed: true }), r);
       const t = await computeTrust(holding(VIEWER, rb, ra, rr), [known(b, 'admin')], O);
-      expect(names(t.trusted)).toEqual(['B']);
-      expect([...t.removed].sort()).toEqual([a.id, r.id].sort());
+      expect(a.id < r.id).toBe(true);
+      expect(names(t.trusted)).toEqual(['A', 'B']);
+      expect(t.removed).toEqual([r.id]);
     });
   }
 
-  it('both met in person and removing each other: nobody is trusted (fail closed)', async () => {
+  it('both met in person and removing each other: the smaller id acts first and wins, deterministically', async () => {
     const ra = await drop(a, await enter(a, emptyOf(a), r, 'admin'), r);
     const rr = await drop(r, await enter(r, emptyOf(r), a, 'admin'), a);
     const t = await computeTrust(
@@ -83,8 +79,8 @@ describe('T1: removal is order independent and fail closed', () => {
       [known(a, 'admin'), known(r, 'admin')],
       O,
     );
-    expect(t.trusted).toEqual([]);
-    expect([...t.removed].sort()).toEqual([a.id, r.id].sort());
+    expect(names(t.trusted)).toEqual(['A']);
+    expect(t.removed).toEqual([r.id]);
   });
 });
 
@@ -346,119 +342,6 @@ deriveSync(${N} chain, no signatures): ${ms.toFixed(0)} ms
 `);
     expect(t.trusted).toHaveLength(N);
     expect(ms).toBeLessThan(1500);
-  });
-});
-
-describe('L5: a removal carries a write cut-off', () => {
-  const NOTES = 'notes';
-  let a: Dev, b: Dev, r: Dev;
-  beforeAll(async () => {
-    [a, b, r] = [await dev('A'), await dev('B'), await dev('R')];
-  });
-
-  const note = async (d: Dev, rep: Replica, id: string): Promise<Replica> =>
-    signed(writeRaw(rep, NOTES, id, { text: id }), d);
-
-  /** A enters R and B; R writes n notes. Returns what each device holds. */
-  async function setup(notes: number) {
-    const ra0 = await enter(a, emptyOf(a), r, 'member');
-    let rr = merge(emptyOf(r), ra0.log).replica;
-    for (let i = 1; i <= notes; i += 1) rr = await note(r, rr, `n${i}`);
-    return { ra0, rr };
-  }
-  const judgeFor = (me: string, direct = [known(a, 'admin')]): JudgeOptions => ({
-    appId: APP,
-    dataSet: SET,
-    ownDevice: me,
-    neverErase: deviceNeverErase(),
-    keys: deviceKeySource({ ...O, direct }),
-  });
-  const fromR = (rep: Replica) => rep.log.filter((c) => c.device === r.id);
-
-  it('removeDevice writes lastSeq = the highest number of the removed device it holds', async () => {
-    const { ra0, rr } = await setup(3);
-    const holdsTwo = merge(ra0, fromR(rr).slice(0, 2)).replica;
-    const out = ok(removeDevice(holdsTwo, O, r.id, {}));
-    const mine = out.log.filter((c) => c.device === a.id).at(-1);
-    expect(mine?.fields).toMatchObject({ removed: true, lastSeq: 2 });
-  });
-
-  it('changes above the cutoff are ignored, up to it checked; nobody is refused', async () => {
-    const { ra0, rr } = await setup(3);
-    const holdsTwo = merge(ra0, fromR(rr).slice(0, 2)).replica;
-    const ra = await signed(ok(removeDevice(holdsTwo, O, r.id, {})), a);
-    const batch = [...ra.log.filter((c) => c.device === a.id), ...fromR(rr)];
-    const res = await readChanges(emptyReplica(VIEWER), batch, judgeFor(VIEWER));
-    expect(res.rejected).toBe(0);
-    expect(res.ignored).toBe(1);
-    expect(res.accepted.filter((c) => c.device === r.id).map((c) => c.seq)).toEqual([1, 2]);
-    const s = await deviceStatus(merge(emptyOf(VIEWER), batch).replica, r.id, {
-      ...O,
-      direct: [known(a, 'admin')],
-    });
-    expect(s).toMatchObject({ trusted: false, checkable: true, removed: true, cutoff: 2 });
-  });
-
-  it('two removers with different lastSeq: the smaller cutoff at every device', async () => {
-    const { ra0, rr } = await setup(4);
-    const rb = await enter(a, ra0, b, 'admin');
-    const hold = (n: number, base: Replica) => merge(base, fromR(rr).slice(0, n)).replica;
-    const byA = await signed(ok(removeDevice(hold(3, rb), O, r.id, {})), a);
-    const byB = await signed(
-      ok(removeDevice(hold(1, merge(emptyOf(b), rb.log).replica), O, r.id, {})),
-      b,
-    );
-    const direct = [known(a, 'admin'), known(b, 'admin')];
-    const mineOnly = (rep: Replica, d: Dev) => rep.log.filter((c) => c.device === d.id);
-    const everything = [...mineOnly(byA, a), ...mineOnly(byB, b), ...fromR(rr)];
-    for (const order of [everything, [...everything].reverse()]) {
-      const res = await readChanges(emptyReplica(VIEWER), order, judgeFor(VIEWER, direct));
-      expect(res.rejected).toBe(0);
-      expect(res.accepted.filter((c) => c.device === r.id).map((c) => c.seq)).toEqual([1]);
-      expect(res.ignored).toBe(3);
-    }
-    const s = await deviceStatus(merge(emptyOf(VIEWER), everything).replica, r.id, {
-      ...O,
-      direct,
-    });
-    expect(s.cutoff).toBe(1);
-  });
-
-  it('a session with an honest peer that holds the late change still converges', async () => {
-    const { ra0, rr } = await setup(3);
-    const holdsTwo = merge(ra0, fromR(rr).slice(0, 2)).replica;
-    const ra = await signed(ok(removeDevice(holdsTwo, O, r.id, {})), a);
-    // H is honest and took everything of R before it heard of the removal
-    const h = await dev('H');
-    const hr = merge(merge(emptyOf(h), ra0.log).replica, fromR(rr)).replica;
-    // V knows the removal
-    const v = merge(emptyOf(VIEWER), ra.log).replica;
-    const direct = [known(a, 'admin')];
-    const talk = async (x: Replica, y: Replica, jx: JudgeOptions, jy: JudgeOptions) => {
-      let sx: Step = startSession(x);
-      let sy: Step = startSession(y);
-      let toX: SyncMessage[] = [...sy.send];
-      let toY: SyncMessage[] = [...sx.send];
-      for (let guard = 0; guard < 200 && (toX.length > 0 || toY.length > 0); guard += 1) {
-        const m = toY.shift();
-        if (m) {
-          sy = await receiveJudged(sy.session, sy.replica, JSON.parse(JSON.stringify(m)), jy);
-          toX = [...toX, ...sy.send];
-        }
-        const n = toX.shift();
-        if (n) {
-          sx = await receiveJudged(sx.session, sx.replica, JSON.parse(JSON.stringify(n)), jx);
-          toY = [...toY, ...sx.send];
-        }
-      }
-      return { sx, sy };
-    };
-    const { sx, sy } = await talk(v, hr, judgeFor(VIEWER, direct), {
-      ...judgeFor(h.id, direct),
-    });
-    expect(sx.session.refusal).toBeUndefined();
-    expect(sy.session.refusal).toBeUndefined();
-    expect(sx.replica.vector[r.id]).toBe(2);
   });
 });
 

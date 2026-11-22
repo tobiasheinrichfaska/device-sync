@@ -72,7 +72,7 @@ describe('vectors: canonical form', () => {
 
   it('a text entry point refuses a text with a key twice, and reads the same text without', () => {
     expect(parseSyncMessageText('{"t":"stand","vector":{"a":1,"a":2}}')).toBeUndefined();
-    expect(parseSyncMessageText('{"t":"stand","vector":{"a":1,"b":2}}')).toBeDefined();
+    expect(parseSyncMessageText('{"t":"stand","vector":{"a":1,"b":2},"tips":{}}')).toBeDefined();
   });
 
   it('a lone surrogate in a name is refused as a name, a surrogate pair is fine', () => {

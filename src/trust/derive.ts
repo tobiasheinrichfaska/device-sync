@@ -114,6 +114,12 @@ interface Member {
   voucher: boolean;
   /** The entry as the log vouches for it (for a met device it may be missing or differ from `entry`). */
   logEntry: TrustedDevice | undefined;
+  /**
+   * The signing keys the device's own writes may verify under: the one learned in person for a met
+   * device, else every signing key a counting write ever gave the entry. A voucher that writes
+   * another key into the entry cannot make the device's own writes unverifiable by it.
+   */
+  keys: ReadonlySet<string>;
 }
 type Members = Map<string, Member>;
 
@@ -139,6 +145,19 @@ function* verified(ctx: Ctx, write: Write, sigKey: string): Gen<boolean> {
   return result;
 }
 
+/** Whether the write verifies under any of the keys. */
+function* verifiedBy(ctx: Ctx, write: Write, keys: Iterable<string>): Gen<boolean> {
+  for (const key of keys) if (yield* verified(ctx, write, key)) return true;
+  return false;
+}
+
+/** A write counts when its writer is this device (it holds its own log) or a vouching member whose keys verify it. */
+function* counts(ctx: Ctx, members: Members, w: Write): Gen<boolean> {
+  if (w.device === ctx.own) return true;
+  const m = members.get(w.device);
+  return m?.voucher === true && (yield* verifiedBy(ctx, w, m.keys));
+}
+
 const sameEntry = (a: TrustedDevice, b: TrustedDevice): boolean =>
   a.name === b.name &&
   a.sig === b.sig &&
@@ -148,7 +167,28 @@ const sameEntry = (a: TrustedDevice, b: TrustedDevice): boolean =>
   a.relayId === b.relayId &&
   a.private === b.private;
 
-/** The newest valid value of a field that a vouching device wrote (this device's own writes count unchecked). */
+const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+  a.size === b.size && [...a].every((k) => b.has(k));
+
+/** The valid values of a field that counting writes wrote, newest first, each once (only the newest unless `all`). */
+function* gather(
+  ctx: Ctx,
+  members: Members,
+  target: string,
+  field: (typeof FIELDS)[number],
+  accept: (value: unknown) => boolean,
+  all = false,
+): Gen<unknown[]> {
+  const out: unknown[] = [];
+  for (const w of ctx.index.targets.get(target)?.get(field) ?? []) {
+    if (w.device === target || !accept(w.value) || out.includes(w.value)) continue;
+    if (!(yield* counts(ctx, members, w))) continue;
+    out.push(w.value);
+    if (!all) break;
+  }
+  return out;
+}
+
 function* pick(
   ctx: Ctx,
   members: Members,
@@ -156,15 +196,7 @@ function* pick(
   field: (typeof FIELDS)[number],
   accept: (value: unknown) => boolean,
 ): Gen<unknown> {
-  for (const w of ctx.index.targets.get(target)?.get(field) ?? []) {
-    if (w.device === target) continue;
-    if (w.device !== ctx.own) {
-      const m = members.get(w.device);
-      if (!m?.voucher || !(yield* verified(ctx, w, m.entry.sig))) continue;
-    }
-    if (accept(w.value)) return w.value;
-  }
-  return undefined;
+  return (yield* gather(ctx, members, target, field, accept))[0];
 }
 
 function learnedEntry(ctx: Ctx, b: KnownDevice): TrustedDevice {
@@ -179,14 +211,17 @@ function learnedEntry(ctx: Ctx, b: KnownDevice): TrustedDevice {
   };
 }
 
-function* evaluate(
-  ctx: Ctx,
-  members: Members,
-  t: string,
-): Gen<{ entry: TrustedDevice; logEntry: TrustedDevice | undefined } | undefined> {
+interface Found {
+  entry: TrustedDevice;
+  logEntry: TrustedDevice | undefined;
+  keys: ReadonlySet<string>;
+}
+
+function* evaluate(ctx: Ctx, members: Members, t: string): Gen<Found | undefined> {
   const { valid } = ctx;
   const name = yield* pick(ctx, members, t, 'name', (v) => typeof v === 'string' && valid.name(v));
-  const sig = yield* pick(ctx, members, t, 'sig', isKey);
+  const sigs = (yield* gather(ctx, members, t, 'sig', isKey, true)) as string[];
+  const sig = sigs[0];
   const dh = yield* pick(ctx, members, t, 'dh', isKey);
   // name, sig and dh were checked while picking; the rest of `parseIntroduction`:
   const intro =
@@ -221,22 +256,29 @@ function* evaluate(
     };
   }
   const learned = ctx.directById.get(t);
-  if (!learned) return logEntry ? { entry: logEntry, logEntry } : undefined;
+  if (!learned) {
+    return logEntry ? { entry: logEntry, logEntry, keys: new Set(sigs) } : undefined;
+  }
   // A device met in person keeps the keys learned in person; a role it lacks may come from the log.
   let entry = learnedEntry(ctx, learned);
   if (!entry.role && logEntry?.role && logEntry.sig === learned.sig && logEntry.dh === learned.dh) {
     entry = { ...entry, role: logEntry.role, roleVouched: logEntry.role };
   }
-  return { entry, logEntry };
+  return { entry, logEntry, keys: new Set([learned.sig]) };
 }
 
 const byDevice = (a: readonly [string, unknown], b: readonly [string, unknown]): number =>
   a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
 
 /**
- * Potential trust: the least fixpoint from the devices met in person (rule 1), in synchronous rounds.
- * A round looks only at the state at its start and adds its results together, so the result does not
- * depend on any order. `excluded` devices never join (met ones that are excluded are left out too).
+ * The devices that vouch from the start: the ones met in person. `excluded` devices never join (met
+ * ones that are excluded are left out too).
+ *
+ * Potential trust (rule 1): in synchronous rounds a device joins when its entry, as the counting
+ * writes give it, is valid. A round looks only at the state at its start and adds its results
+ * together, so the result does not depend on any order. Membership only grows (a device that joined
+ * stays), the voucher flag follows the newest entry (a later write of another role can withdraw it);
+ * the number of rounds is bounded.
  */
 function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
   const members: Members = new Map();
@@ -252,7 +294,12 @@ function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
   for (const d of ctx.direct) {
     if (excluded.has(d.device) || members.has(d.device)) continue;
     const entry = learnedEntry(ctx, d);
-    members.set(d.device, { entry, voucher: false, logEntry: undefined });
+    members.set(d.device, {
+      entry,
+      voucher: false,
+      logEntry: undefined,
+      keys: new Set([d.sig]),
+    });
     position.set(d.device, entries.length);
     entries.push(entry);
   }
@@ -264,7 +311,7 @@ function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
   for (const t of ctx.index.byWriter.get(ctx.own) ?? []) dirty.add(t);
   const maxRounds = 64 + 4 * (ctx.index.targets.size + ctx.direct.length);
   for (let round = 0; dirty.size > 0 && round < maxRounds; round += 1) {
-    const staged: [string, { entry: TrustedDevice; logEntry: TrustedDevice | undefined }][] = [];
+    const staged: [string, Found][] = [];
     for (const t of dirty) {
       if (t === ctx.own || excluded.has(t)) continue;
       const found = yield* evaluate(ctx, members, t);
@@ -275,17 +322,24 @@ function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
     for (const [t, found] of staged) {
       const there = members.get(t);
       if (!there) {
-        members.set(t, { entry: found.entry, voucher: false, logEntry: found.logEntry });
+        members.set(t, {
+          entry: found.entry,
+          voucher: false,
+          logEntry: found.logEntry,
+          keys: found.keys,
+        });
         position.set(t, entries.length);
         entries.push(found.entry);
         changed.push(t);
       } else {
         there.logEntry = found.logEntry;
+        const keysChanged = !sameKeys(there.keys, found.keys);
+        there.keys = found.keys;
         if (!sameEntry(there.entry, found.entry)) {
           there.entry = found.entry;
           entries[position.get(t) as number] = found.entry;
           changed.push(t);
-        }
+        } else if (keysChanged) changed.push(t);
       }
     }
     const next = new Set<string>();
@@ -302,14 +356,131 @@ function* closure(ctx: Ctx, excluded: ReadonlySet<string>): Gen<Members> {
 
 const NONE: ReadonlySet<string> = new Set();
 
+/**
+ * Rule 2 and 3: the effective removals, in a fixed total order, on the potential trust. Every device
+ * of the potential trust that is reachable from the met devices (and this device) gets a RANK, its
+ * distance in the vouching graph (met devices and this device: 0). Devices act in the order rank
+ * ascending, then device id ascending. A device that is not removed when its turn comes, that vouches
+ * and that is reachable by a chain that does not pass through the target removes every device it
+ * wrote a verified `removed: true` into. A device that is already removed at its turn removes nobody,
+ * so a removal by a device of lower rank cannot be neutralised by the removed one, and two devices of
+ * one rank that remove each other are decided by the smaller id (deliberate, deterministic). This
+ * device itself never loses the right to remove (it holds its own log).
+ */
+function* removalsOf(ctx: Ctx, members: Members): Gen<Set<string>> {
+  const adjacent = new Map<string, string[]>();
+  const reaches = new Map<string, Set<string>>();
+  const vouches = (id: string): boolean => id === ctx.own || members.get(id)?.voucher === true;
+  const wroteBy = function* (u: string, write: Write): Gen<boolean> {
+    return u === ctx.own || (yield* verifiedBy(ctx, write, members.get(u)?.keys ?? []));
+  };
+
+  /** The entries a voucher wrote (verified) identity fields of, that are in the potential trust. */
+  function* edges(u: string): Gen<string[]> {
+    const known = adjacent.get(u);
+    if (known) return known;
+    const found: string[] = [];
+    for (const w of ctx.index.byWriter.get(u) ?? []) {
+      if (!members.has(w)) continue;
+      let wrote = false;
+      for (const field of IDENTITY) {
+        for (const write of ctx.index.targets.get(w)?.get(field) ?? []) {
+          if (write.device !== u) continue;
+          if (yield* wroteBy(u, write)) {
+            wrote = true;
+            break;
+          }
+        }
+        if (wrote) break;
+      }
+      if (wrote) found.push(w);
+    }
+    adjacent.set(u, found);
+    return found;
+  }
+
+  const roots = [ctx.own, ...ctx.direct.map((d) => d.device)].filter(
+    (id) => members.has(id) || id === ctx.own,
+  );
+
+  /** Everything reachable from the roots without passing through `avoid`, and (for no `avoid`) the distances. */
+  function* walk(avoid: string | undefined): Gen<Map<string, number>> {
+    const rank = new Map<string, number>();
+    const queue: string[] = [];
+    for (const id of roots) {
+      if (id !== avoid && !rank.has(id)) {
+        rank.set(id, 0);
+        queue.push(id);
+      }
+    }
+    for (let i = 0; i < queue.length; i += 1) {
+      const u = queue[i] as string;
+      if (!vouches(u)) continue;
+      for (const w of yield* edges(u)) {
+        if (w !== avoid && !rank.has(w)) {
+          rank.set(w, (rank.get(u) as number) + 1);
+          queue.push(w);
+        }
+      }
+    }
+    return rank;
+  }
+  function* reachAvoiding(avoid: string): Gen<Set<string>> {
+    const known = reaches.get(avoid);
+    if (known) return known;
+    const set = new Set((yield* walk(avoid)).keys());
+    reaches.set(avoid, set);
+    return set;
+  }
+
+  // The `removed: true` writes per writer and target (a write by the target itself counts for nothing).
+  const claims = new Map<string, Map<string, Write[]>>();
+  for (const [t, fields] of ctx.index.targets) {
+    for (const w of fields.get('removed') ?? []) {
+      if (w.value !== true || w.device === t) continue;
+      let perWriter = claims.get(w.device);
+      if (!perWriter) claims.set(w.device, (perWriter = new Map()));
+      const list = perWriter.get(t);
+      if (list) list.push(w);
+      else perWriter.set(t, [w]);
+    }
+  }
+
+  const removed = new Set<string>();
+  const order = [...(yield* walk(undefined))].sort((a, b) =>
+    a[1] !== b[1] ? a[1] - b[1] : a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0,
+  );
+  for (const [r] of order) {
+    if (r !== ctx.own && removed.has(r)) continue;
+    if (!vouches(r)) continue;
+    for (const [t, writes] of claims.get(r) ?? []) {
+      if (removed.has(t)) continue;
+      let said = false;
+      // Only a verified write counts: an unverifiable newer one does not shadow a verified older one.
+      for (const w of writes) {
+        if (yield* wroteBy(r, w)) {
+          said = true;
+          break;
+        }
+      }
+      if (said && (yield* reachAvoiding(t)).has(r)) removed.add(t);
+    }
+  }
+  return removed;
+}
+
 interface Analysis {
   readonly keyConflict: Set<string>;
   readonly keyMismatch: Set<string>;
   readonly relayConflict: Set<string>;
 }
 
-/** Rule 2: all values vouching devices ever wrote for the keys and the relay id of each entry. */
-function* analyse(ctx: Ctx, members: Members): Gen<Analysis> {
+/**
+ * Rule 4: all values vouching devices that were not removed ever wrote for the keys and the relay id
+ * of each entry. A device that is removed, or whose removal this derivation could not see, carries no
+ * authority: what a removed device wrote does not count for a conflict.
+ */
+function* analyse(ctx: Ctx, members: Members, removed: ReadonlySet<string>): Gen<Analysis> {
   const out: Analysis = {
     keyConflict: new Set(),
     keyMismatch: new Set(),
@@ -328,7 +499,9 @@ function* analyse(ctx: Ctx, members: Members): Gen<Analysis> {
         if (w.device === t || typeof w.value !== 'string' || !fine(w.value)) continue;
         if (w.device !== ctx.own) {
           const m = members.get(w.device);
-          if (!m?.voucher || !(yield* verified(ctx, w, m.entry.sig))) continue;
+          if (!m?.voucher || removed.has(w.device) || !(yield* verifiedBy(ctx, w, m.keys))) {
+            continue;
+          }
         }
         seen[field].add(w.value);
       }
@@ -347,94 +520,6 @@ function* analyse(ctx: Ctx, members: Members): Gen<Analysis> {
     }
   }
   return out;
-}
-
-/** Rule 3: the effective removals, evaluated statically on the potential trust (never on the shrinking result). */
-function* removalsOf(ctx: Ctx, members: Members): Gen<Map<string, number[]>> {
-  const removed = new Map<string, number[]>();
-  const adjacent = new Map<string, string[]>();
-  const reaches = new Map<string, Set<string>>();
-  const vouches = (id: string): boolean => id === ctx.own || members.get(id)?.voucher === true;
-
-  /** The entries a voucher wrote (verified) identity fields of, that are in the potential trust. */
-  function* edges(u: string): Gen<string[]> {
-    const known = adjacent.get(u);
-    if (known) return known;
-    const found: string[] = [];
-    for (const w of ctx.index.byWriter.get(u) ?? []) {
-      if (!members.has(w)) continue;
-      let wrote = false;
-      for (const field of IDENTITY) {
-        for (const write of ctx.index.targets.get(w)?.get(field) ?? []) {
-          if (write.device !== u) continue;
-          if (
-            u === ctx.own ||
-            (yield* verified(ctx, write, (members.get(u) as Member).entry.sig))
-          ) {
-            wrote = true;
-            break;
-          }
-        }
-        if (wrote) break;
-      }
-      if (wrote) found.push(w);
-    }
-    adjacent.set(u, found);
-    return found;
-  }
-
-  /** Everything reachable from the met devices (and this device) without passing through `avoid`. */
-  function* reachAvoiding(avoid: string): Gen<Set<string>> {
-    const known = reaches.get(avoid);
-    if (known) return known;
-    const seen = new Set<string>();
-    const queue: string[] = [];
-    const roots = [ctx.own, ...ctx.direct.map((d) => d.device)].filter(
-      (id) => members.has(id) || id === ctx.own,
-    );
-    for (const id of roots) {
-      if (id !== avoid && !seen.has(id)) {
-        seen.add(id);
-        queue.push(id);
-      }
-    }
-    for (let i = 0; i < queue.length; i += 1) {
-      const u = queue[i] as string;
-      if (!vouches(u)) continue;
-      for (const w of yield* edges(u)) {
-        if (w !== avoid && !seen.has(w)) {
-          seen.add(w);
-          queue.push(w);
-        }
-      }
-    }
-    reaches.set(avoid, seen);
-    return seen;
-  }
-
-  for (const [t, fields] of ctx.index.targets) {
-    const writes = fields.get('removed');
-    if (!writes) continue;
-    const spoken = new Set<string>();
-    for (const w of writes) {
-      // Per writer only its newest "true" counts; nobody takes a removal back by writing "false".
-      if (w.value !== true || spoken.has(w.device)) continue;
-      spoken.add(w.device);
-      if (w.device === t || !vouches(w.device)) continue;
-      if (
-        w.device !== ctx.own &&
-        !(yield* verified(ctx, w, (members.get(w.device) as Member).entry.sig))
-      ) {
-        continue;
-      }
-      if (!(yield* reachAvoiding(t)).has(w.device)) continue;
-      const list = removed.get(t) ?? [];
-      const last = w.change.fields?.lastSeq;
-      if (Number.isSafeInteger(last) && (last as number) >= 0) list.push(last as number);
-      removed.set(t, list);
-    }
-  }
-  return removed;
 }
 
 export interface Derived {
@@ -464,13 +549,12 @@ export function* derive(
     memo: new Map(),
   };
   const p0 = yield* closure(ctx, NONE);
-  const analysis = yield* analyse(ctx, p0);
-  const p1 = analysis.keyConflict.size === 0 ? p0 : yield* closure(ctx, analysis.keyConflict);
-  const removals = yield* removalsOf(ctx, p1);
-  const removedIds = [...removals.keys()].filter((id) => id !== ctx.own).sort();
+  const removals = yield* removalsOf(ctx, p0);
+  const removedIds = [...removals].filter((id) => id !== ctx.own).sort();
+  const analysis = yield* analyse(ctx, p0, removals);
   const t =
-    removedIds.length === 0
-      ? p1
+    removedIds.length === 0 && analysis.keyConflict.size === 0
+      ? p0
       : yield* closure(ctx, new Set([...analysis.keyConflict, ...removedIds]));
 
   const dropRelay = (id: string, e: TrustedDevice): TrustedDevice => {
@@ -479,17 +563,18 @@ export function* derive(
     return rest;
   };
   const trusted = [...t].map(([id, m]) => dropRelay(id, m.entry)).sort(byName);
+  // A removed device stays checkable (its signed changes keep verifying): its entry is read as the
+  // vouchers that were not removed give it.
+  const sanitized: Members = new Map(
+    [...p0].map(([id, m]) => [id, removals.has(id) ? { ...m, voucher: false } : m]),
+  );
   const gone: TrustedDevice[] = [];
   for (const id of removedIds) {
-    const m = p1.get(id);
-    if (m) gone.push({ ...dropRelay(id, m.entry), removed: true });
+    if (!p0.has(id) || analysis.keyConflict.has(id)) continue;
+    const found = yield* evaluate(ctx, sanitized, id);
+    if (found) gone.push({ ...dropRelay(id, found.entry), removed: true });
   }
   const checkable = [...trusted, ...gone].sort(byName);
-  const cutoffs = new Map<string, number>();
-  for (const id of removedIds) {
-    const list = removals.get(id) ?? [];
-    if (list.length > 0) cutoffs.set(id, Math.min(...list));
-  }
   const reasons = new Map<string, TrustReason[]>();
   const add = (id: string, reason: TrustReason): void => {
     const list = reasons.get(id);
@@ -507,7 +592,6 @@ export function* derive(
       removed: removedIds,
       selfRemoved: removals.has(ctx.own),
       checkableById: new Map(checkable.map((d) => [d.device, d])),
-      cutoffs,
       reasons,
     },
     logEntries: new Map(

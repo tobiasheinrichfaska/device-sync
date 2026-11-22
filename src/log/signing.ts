@@ -1,33 +1,35 @@
 import { FORMAT_VERSION, canonical, marker, signText, verifyText } from '../core/index.ts';
-import { changeCheckValue } from './check.ts';
+import { heldIn, idOf } from './chain.ts';
+import { changeCheckValue, changeLink } from './check.ts';
 import { LogCache } from './logCache.ts';
 import { merge } from './merge.ts';
 import type { Change, DeviceId, Replica } from './types.ts';
 import { own } from './validate.ts';
+import { seen as seenIn } from './vector.ts';
 
 /**
  * How a received change is judged: 'checked' (to be taken), 'pending' (its author cannot be checked
- * yet, or its deletion waits so: not taken, not passed on, it comes again), 'ignored' (its author
- * was removed and the change comes after the removal: not taken, not passed on, NOT a refusal, see
- * `KeySource.standing`) or 'false' (see `judgeChange`).
+ * yet, or its deletion waits so: not taken, not passed on, it comes again) or 'false' (see
+ * `judgeChange`).
  */
-export type Verdict = 'checked' | 'pending' | 'false' | 'ignored';
+export type Verdict = 'checked' | 'pending' | 'false';
 
 /**
- * Why a change was judged 'false' (or 'ignored'). What an app does:
+ * Why a change was judged 'false'. What an app does:
  * - `own-history`: a change under THIS device's own id, correctly signed with its key, that this
  *   device does not hold: its own state is older than the world's (a restored backup, a cloned
  *   profile). It must stop writing and enrol again with a NEW device id; writing on would create
  *   equivocation. It is decided only after the signature verified: an unsigned or forged change
  *   under the own id is `unsigned` / `bad-signature` and says nothing about this device.
- * - `equivocation`: the same device and number was signed twice with different content. The author
- *   (`Rejection.change.device`) is faulty or malicious; the app should stop trusting that device
- *   (remove it from the device list). It is only seen when two histories meet in one replica.
- * - `after-removal` (verdict 'ignored', never a refusal): the change is from a device that was
- *   removed, with a number above the cutoff the key source names.
+ * - `equivocation`: the same device and number was signed twice with different content, or a
+ *   change does not continue the hash chain of the version of its predecessor that is held (`prev`),
+ *   or a `stand` names another version than the one held. The author (`Rejection.change.device`,
+ *   `Session.refusalDevice`) is faulty or malicious; the app should stop trusting that device.
+ * - `bad-prev`: the hash chain is not spelled right: no `prev` after the first change, or one on
+ *   the first.
  * - the others name the rule that failed: `unsigned`, `bad-check`, `bad-signature`,
  *   `unknown-member` (a member of the change that the signature does not cover; an erased change
- *   may only have device, seq, clock, collection, id, kind, check and sig), `not-allowed`
+ *   may only have device, seq, clock, collection, id, kind, check, prev and sig), `not-allowed`
  *   (`mayWrite` or `special`), `delete-not-allowed` (no `allowFinalDelete`, or it said no),
  *   `never-erase`, `redacted-without-deletion`.
  */
@@ -35,16 +37,16 @@ export type Reason =
   | 'unsigned'
   | 'bad-check'
   | 'bad-signature'
+  | 'bad-prev'
   | 'unknown-member'
   | 'not-allowed'
   | 'delete-not-allowed'
   | 'never-erase'
   | 'redacted-without-deletion'
   | 'equivocation'
-  | 'own-history'
-  | 'after-removal';
+  | 'own-history';
 
-/** A verdict with the reason when it is 'false' (or 'ignored'). */
+/** A verdict with the reason when it is 'false'. */
 export interface Judgement {
   readonly verdict: Verdict;
   readonly reason?: Reason;
@@ -56,20 +58,11 @@ export interface Rejection {
   readonly reason: Reason;
 }
 
-/** What a key source knows of one device: its key and, once it was removed, the last number still valid. */
-export interface Standing {
-  /** The device's public signing key; when absent `KeySource.keyFor` is asked. */
-  readonly key?: CryptoKey | undefined;
-  /**
-   * When a number: changes of the device with `seq` above it are 'ignored' (reason `after-removal`):
-   * not taken, not forwarded, not a refusal, the session goes on. The device's entry in the version
-   * vector does not advance past the gap, so the sender offers them again in every session (they
-   * cost the sender some bandwidth, nothing else). Changes up to the cutoff are judged as usual.
-   */
-  readonly cutoff?: number | undefined;
-}
-
-/** Where the author's public signing key comes from; the trust layer will provide one. */
+/**
+ * Where the author's public signing key comes from; the trust layer provides one. A key source says
+ * who can be CHECKED, not who may write: a removed device stays checkable, and what it may still do
+ * is the app's `mayWrite` (see docs/wire-format.md, "Trust derivation").
+ */
 export interface KeySource {
   /**
    * The key of a device, or undefined when this device cannot check it yet. `acceptedSoFar` is the
@@ -81,15 +74,18 @@ export interface KeySource {
     acceptedSoFar: Replica,
   ): CryptoKey | undefined | Promise<CryptoKey | undefined>;
   /**
-   * Optional: the device's key and removal cutoff (see `Standing`), for the replica as it would be
-   * with everything taken so far. Without it only `keyFor` is used.
-   */
-  standing?(device: DeviceId, acceptedSoFar: Replica): Standing | Promise<Standing>;
-  /**
    * Optional: collections whose records are never finally deleted (e.g. the device list itself);
    * merged into `JudgeOptions.neverErase`.
    */
   readonly neverErase?: readonly string[];
+  /**
+   * Optional: `keyFor` believes nothing in the replica it is given that it cannot verify itself (the
+   * trust layer checks the signature of every entry it reads), so `settle` may hand it a replica that
+   * also holds changes that are not taken yet. An author that such changes introduce is then known
+   * at once: a chain of devices that each introduce the next is read in one round instead of one
+   * round per link. A source that reads the device list without verifying it must not set this.
+   */
+  readonly selfVerifying?: boolean;
 }
 
 export interface JudgeOptions {
@@ -108,7 +104,8 @@ export interface JudgeOptions {
   readonly special?: (change: Change) => Verdict | undefined;
   /**
    * Receiver-side right to write: `false` = this author may not write this change. Gets the replica
-   * the change is judged against, so a rule can look at the data (e.g. who owns the record).
+   * the change is judged against, so a rule can look at the data (e.g. who owns the record). This is
+   * where an app restricts what a removed device may still do.
    */
   readonly mayWrite?: (author: DeviceId, change: Change, state: Replica) => boolean;
   /**
@@ -132,6 +129,8 @@ export interface JudgeOptions {
 /** `JudgeOptions` with the replica the changes are judged against (what is known, and for the keys). */
 export interface JudgeContext extends JudgeOptions {
   readonly state: Replica;
+  /** What `KeySource.keyFor` is asked against, when it is not `state` (see `KeySource.selfVerifying`). */
+  readonly keyState?: Replica;
 }
 
 /** A batch sorted out: what to take, what waits, how many are false (then nothing is taken). */
@@ -141,15 +140,21 @@ export interface ReadResult {
   readonly rejected: number;
   /** Every refused change with its reason (empty when nothing was refused). */
   readonly rejections: readonly Rejection[];
-  /** Changes of removed devices after their cutoff (verdict 'ignored'): not taken, no refusal. */
-  readonly ignored: number;
   /** Reading ended early at a limit, or what is still unverifiable was cut at `maxPendingChanges`. */
   readonly truncated: boolean;
 }
 
-const idOf = (c: Change): string => `${c.device}#${c.seq}`;
-
-const COMMON_MEMBERS = ['device', 'seq', 'clock', 'collection', 'id', 'kind', 'check', 'sig'];
+const COMMON_MEMBERS = [
+  'device',
+  'seq',
+  'clock',
+  'collection',
+  'id',
+  'kind',
+  'check',
+  'sig',
+  'prev',
+];
 
 /**
  * The only members a change may have. Anything else is not covered by the signature (it signs the
@@ -171,14 +176,15 @@ const REDACTED_MEMBERS: ReadonlySet<string> = new Set(COMMON_MEMBERS);
 
 /**
  * What is signed: the marker (app, kind 'change', format version), then the canonical form of
- * version, data set, head and the content's check value. A redacted change counts as 'set'. A
- * signature made for one app or data set therefore never verifies in another.
+ * version, data set, head (with `prev`, the link to the previous change, when there is one) and the
+ * content's check value. A redacted change counts as 'set'. A signature made for one app or data set
+ * therefore never verifies in another.
  */
 export function changeSigningText(appId: string, change: Change, dataSet: string): string {
   if (typeof dataSet !== 'string' || dataSet.length === 0) {
     throw new TypeError('changeSigningText: the data set must be a non-empty string');
   }
-  const { device, seq, clock, collection, id } = change;
+  const { device, seq, clock, collection, id, prev } = change;
   const kind = change.kind === 'redacted' ? 'set' : change.kind;
   const check = change.check ?? changeCheckValue(change);
   const body = canonical({
@@ -191,6 +197,7 @@ export function changeSigningText(appId: string, change: Change, dataSet: string
     id,
     kind,
     check,
+    ...(prev !== undefined ? { prev } : {}),
   });
   return `${marker(appId, 'change', FORMAT_VERSION)}|${body}`;
 }
@@ -243,15 +250,17 @@ export function insertSignatures(replica: Replica, signed: readonly Change[]): R
   return changed ? { ...replica, log } : replica;
 }
 
-const heldCache = new LogCache<Map<string, Change>>();
-
-/** The changes of a log by device and number (kept per log array, which a merge never changes later). */
-function heldIn(log: readonly Change[]): Map<string, Change> {
-  return heldCache.getOrBuild(log, () => new Map(log.map((c) => [idOf(c), c])));
+/** What judging remembers of a verified change: its signed text and its place in the hash chain. */
+export interface SeenChange {
+  /** The signed text: what two versions of one device and number are compared by. */
+  readonly text: string;
+  /** Its link (check value): what its successor's `prev` must name. */
+  readonly link: string;
+  readonly prev: string | undefined;
 }
 
 interface Judged extends Judgement {
-  /** The signed text of a verified change: what two versions of one device and number are compared by. */
+  /** The signed text of a verified change. */
   readonly text?: string;
 }
 
@@ -268,12 +277,10 @@ async function judgeOne(
   }
   const special = context.special?.(change);
   if (special) return special === 'false' ? no('not-allowed') : { verdict: special };
-  const standing = await context.keys.standing?.(change.device, context.state);
-  if (typeof standing?.cutoff === 'number' && change.seq > standing.cutoff) {
-    return { verdict: 'ignored', reason: 'after-removal' };
-  }
   const known = held.get(idOf(change));
   if (!change.sig || !change.check) return no('unsigned');
+  // The hash chain is spelled one way: the first change has no `prev`, every later one has it.
+  if (change.seq > 1 !== (change.prev !== undefined)) return no('bad-prev');
   if (
     change.kind === 'delete' &&
     (context.neverErase?.includes(change.collection) ||
@@ -284,7 +291,7 @@ async function judgeOne(
   if (change.kind !== 'redacted' && changeCheckValue(change) !== change.check) {
     return no('bad-check');
   }
-  const key = standing?.key ?? (await context.keys.keyFor(change.device, context.state));
+  const key = await context.keys.keyFor(change.device, context.keyState ?? context.state);
   if (!key) return { verdict: 'pending' };
   const text = changeSigningText(context.appId, change, context.dataSet);
   // The very change (same signed text, same signature) this replica holds was verified when it was
@@ -300,6 +307,11 @@ async function judgeOne(
   if (known && changeSigningText(context.appId, known, context.dataSet) !== text) {
     return no('equivocation');
   }
+  // The hash chain against the predecessor this replica holds (numbering is gapless: a replica never
+  // holds a successor without it).
+  const before = change.seq > 1 ? held.get(`${change.device}#${change.seq - 1}`) : undefined;
+  const beforeLink = before && changeLink(before);
+  if (beforeLink !== undefined && beforeLink !== change.prev) return no('equivocation');
   if (
     change.kind === 'delete' &&
     context.allowFinalDelete?.(change.device, change, context.state) !== true
@@ -314,22 +326,27 @@ async function judgeOne(
 
 /**
  * Judges each change on its own (see `judgeDetailed` for the order of the rules), and two different
- * versions of one device and number against each other (`seen` holds what the batch, or the
- * session, has verified so far; it is added to).
+ * versions of one device and number, or a broken hash chain, against each other (`seen` holds what
+ * the batch, or the session, has verified so far; it is added to).
  */
 async function judgeEach(
   context: JudgeContext,
   changes: readonly Change[],
-  seen: Map<string, string>,
+  seen: Map<string, SeenChange>,
 ): Promise<Judged[]> {
   const held = heldIn(context.state.log);
   const judged = await Promise.all(changes.map((c) => judgeOne(context, held, c)));
   return judged.map((j, i) => {
     const change = changes[i] as Change;
     if (j.verdict !== 'checked' || j.text === undefined) return j;
+    const link = change.check as string;
     const before = seen.get(idOf(change));
-    if (before !== undefined && before !== j.text) return no('equivocation');
-    seen.set(idOf(change), j.text);
+    if (before !== undefined && before.text !== j.text) return no('equivocation');
+    const lower = change.seq > 1 ? seen.get(`${change.device}#${change.seq - 1}`) : undefined;
+    if (lower !== undefined && lower.link !== change.prev) return no('equivocation');
+    const upper = seen.get(`${change.device}#${change.seq + 1}`);
+    if (upper?.prev !== undefined && upper.prev !== link) return no('equivocation');
+    seen.set(idOf(change), { text: j.text, link, prev: change.prev });
     return j;
   });
 }
@@ -349,11 +366,121 @@ function isDeletedIn(state: Replica, c: Change): boolean {
 }
 
 /**
+ * The erased changes that can NEVER be applied beside a deletion, found in one worklist pass (no
+ * merge). A deletion applies only when its author's earlier numbers are all there (erased changes
+ * fill gaps) and the numbers its `knew` names are reached. An erased change that is dropped (its
+ * record has no deletion that can still apply) opens a gap at its number, which kills the later
+ * deletions of that author and the deletions whose `knew` names a number past the gap, which in turn
+ * leaves other erased changes without a deletion, and so on. This over-approximates what can apply
+ * (clock jumps are not looked at), so it only ever names changes the exact fixpoint drops as well;
+ * the exact check in `appliedErasures` then runs on the rest. Linear in the changes.
+ */
+function unsupportedErasures(
+  state: Replica,
+  base: readonly Change[],
+  erased: readonly Change[],
+): Set<Change> {
+  const doomed = new Set<Change>();
+  if (erased.length === 0) return doomed;
+  const have = new Map<DeviceId, Set<number>>();
+  for (const c of [...base, ...erased]) {
+    let seqs = have.get(c.device);
+    if (!seqs) have.set(c.device, (seqs = new Set()));
+    seqs.add(c.seq);
+  }
+  const reach = new Map<DeviceId, number>();
+  const reachOf = (device: DeviceId): number => {
+    let r = reach.get(device);
+    if (r === undefined) {
+      r = seenIn(state.vector, device);
+      const seqs = have.get(device);
+      while (seqs?.has(r + 1)) r += 1;
+      reach.set(device, r);
+    }
+    return r;
+  };
+
+  const byRecord = new Map<string, Change[]>();
+  for (const c of erased) {
+    if (isDeletedIn(state, c)) continue;
+    const key = recordKey(c);
+    const list = byRecord.get(key);
+    if (list) list.push(c);
+    else byRecord.set(key, [c]);
+  }
+  const queue: Change[] = [];
+  const alive = new Set<Change>();
+  const aliveCount = new Map<string, number>();
+  const ofDevice = new Map<DeviceId, Change[]>();
+  const byKnew = new Map<DeviceId, { readonly n: number; readonly del: Change }[]>();
+  const ofDevicePos = new Map<DeviceId, number>();
+  const byKnewPos = new Map<DeviceId, number>();
+
+  const deletions = base
+    .filter((c) => c.kind === 'delete' && c.seq > seenIn(state.vector, c.device))
+    .sort((a, b) => a.seq - b.seq);
+  for (const del of deletions) {
+    if (!byRecord.has(recordKey(del))) continue;
+    const named = Object.entries(del.knew ?? {});
+    if (del.seq > reachOf(del.device) || named.some(([d, n]) => n > reachOf(d))) continue;
+    alive.add(del);
+    aliveCount.set(recordKey(del), (aliveCount.get(recordKey(del)) ?? 0) + 1);
+    const list = ofDevice.get(del.device);
+    if (list) list.push(del);
+    else ofDevice.set(del.device, [del]);
+    for (const [d, n] of named) {
+      const entries = byKnew.get(d);
+      if (entries) entries.push({ n, del });
+      else byKnew.set(d, [{ n, del }]);
+    }
+  }
+  for (const entries of byKnew.values()) entries.sort((a, b) => a.n - b.n);
+
+  const kill = (del: Change): void => {
+    if (!alive.delete(del)) return;
+    const key = recordKey(del);
+    const left = (aliveCount.get(key) ?? 1) - 1;
+    aliveCount.set(key, left);
+    if (left === 0) queue.push(...(byRecord.get(key) ?? []));
+  };
+  const lower = (device: DeviceId, to: number): void => {
+    reach.set(device, to);
+    const list = ofDevice.get(device);
+    if (list) {
+      let at = ofDevicePos.get(device) ?? list.length - 1;
+      while (at >= 0 && (list[at] as Change).seq > to) kill(list[at--] as Change);
+      ofDevicePos.set(device, at);
+    }
+    const entries = byKnew.get(device);
+    if (entries) {
+      let at = byKnewPos.get(device) ?? entries.length - 1;
+      while (at >= 0 && (entries[at] as { n: number }).n > to) {
+        kill((entries[at--] as { del: Change }).del);
+      }
+      byKnewPos.set(device, at);
+    }
+  };
+
+  for (const [key, list] of byRecord) if ((aliveCount.get(key) ?? 0) === 0) queue.push(...list);
+  while (queue.length > 0) {
+    const c = queue.pop() as Change;
+    if (doomed.has(c)) continue;
+    doomed.add(c);
+    if (c.seq > seenIn(state.vector, c.device) && c.seq - 1 < reachOf(c.device)) {
+      lower(c.device, c.seq - 1);
+    }
+  }
+  return doomed;
+}
+
+/**
  * The erased changes of `candidates` that are really applied beside their record's final deletion
  * when `base` and they are merged into `state`: the greatest set that is consistent with itself.
  * An erased change fills the gap of its own number (so a deletion right after it applies), but one
  * whose deletion merge holds back (a gap, a missing `knew`, a clock jump) is left out, and so is
- * every deletion that only applied by the help of an erased change that was left out.
+ * every deletion that only applied by the help of an erased change that was left out. The cascade is
+ * found by one linear pass over the dependencies (`unsupportedErasures`), the exact result by a few
+ * merges: a chain of erased changes that each need the next one no longer costs one merge per link.
  */
 function appliedErasures(
   state: Replica,
@@ -362,8 +489,10 @@ function appliedErasures(
 ): Set<Change> {
   let erased = candidates;
   for (;;) {
-    const now = merge(state, [...base, ...erased]).replica;
-    const next = erased.filter((c) => isDeletedIn(now, c));
+    const doomed = unsupportedErasures(state, base, erased);
+    const live = doomed.size === 0 ? erased : erased.filter((c) => !doomed.has(c));
+    const now = merge(state, [...base, ...live]).replica;
+    const next = live.filter((c) => isDeletedIn(now, c));
     if (next.length === erased.length) return new Set(erased);
     erased = next;
   }
@@ -374,13 +503,13 @@ const withoutText = ({ verdict, reason }: Judged): Judgement =>
 
 /**
  * Judges the changes of one batch, in this order: a member the signature does not cover (false,
- * `unknown-member`); the special case; a device removed earlier and a number above its cutoff
- * (ignored, `after-removal`); unsigned or without check value (false); final deletion in a
- * `neverErase` collection (false); content not matching its check value (false; an erased change
- * has no content to match); author's key unknown (pending); signature wrong (false); under the own id
- * without being held here (false, `own-history`); another version of the same device and number,
- * held or in the batch (false, `equivocation`); final deletion without `allowFinalDelete` saying yes
- * (false); not allowed by `mayWrite` (false); else checked. An erased change then counts only
+ * `unknown-member`); the special case; unsigned or without check value (false); a hash chain that is
+ * not spelled right (false, `bad-prev`); final deletion in a `neverErase` collection (false); content
+ * not matching its check value (false; an erased change has no content to match); author's key
+ * unknown (pending); signature wrong (false); under the own id without being held here (false,
+ * `own-history`); another version of the same device and number, or a `prev` that does not name
+ * the held predecessor held or in the batch (false, `equivocation`); final deletion without `allowFinalDelete` saying yes (false); not allowed
+ * by `mayWrite` (false); else checked. An erased change then counts only
  * beside its record's final deletion that is, in the replica as it would be with the batch's
  * verified changes merged, REALLY APPLIED (or already in the log); a deletion that is judged right
  * but that `merge` holds back (a gap, a missing `knew`, a clock jump) or that waits for a key makes
@@ -447,16 +576,12 @@ export interface Judging {
   readonly pending: Change[];
   /** Records of every verified final deletion so far: carried over all rounds and pieces. */
   readonly deletions: Set<string>;
-  /** Records whose final deletion was 'ignored' (after a removal): their erased changes wait, unblamed. */
-  readonly ignoredDeletions: Set<string>;
-  /** The signed text of every verified change by device and number (to see equivocation). */
-  readonly seen: Map<string, string>;
+  /** Every verified change by device and number: to see equivocation and a broken hash chain. */
+  readonly seen: Map<string, SeenChange>;
   /** Verified changes per author (for the quota). A Map: any device id is an ordinary key. */
   readonly counts: Map<string, number>;
   /** JSON length of everything held. */
   chars: number;
-  /** Changes judged 'ignored' so far. */
-  ignored: number;
   /** Reading has ended at a limit: later pieces are skipped, what is held is settled and taken. */
   truncated: boolean;
   /** Which limit ended it. */
@@ -468,11 +593,9 @@ export const emptyJudging = (): Judging => ({
   erased: [],
   pending: [],
   deletions: new Set(),
-  ignoredDeletions: new Set(),
   seen: new Map(),
   counts: new Map(),
   chars: 0,
-  ignored: 0,
   truncated: false,
 });
 
@@ -534,11 +657,6 @@ export async function admit(
   if (rejections.length > 0) return { ok: false, rejections };
   for (const [i, j] of judged.entries()) {
     const change = kept[i] as Change;
-    if (j.verdict === 'ignored') {
-      judging.ignored += 1;
-      if (change.kind === 'delete') judging.ignoredDeletions.add(recordKey(change));
-      continue;
-    }
     if (j.verdict === 'pending') {
       judging.pending.push(change);
     } else {
@@ -566,7 +684,6 @@ const refusedResult = (rejections: readonly Rejection[]): ReadResult => ({
   pending: [],
   rejected: rejections.length,
   rejections,
-  ignored: 0,
   truncated: false,
 });
 
@@ -587,6 +704,11 @@ export interface SettleOptions {
  * deletion that merge holds back, for a gap, a missing `knew` or a clock jump, leaves the erased
  * change waiting). Repeats until nothing more can be decided. One false change and nothing is taken.
  *
+ * Each round judges only the waiting changes whose author has become checkable (one key lookup per
+ * waiting author, not one judgement per waiting change) and merges only what the round added to the
+ * replica of the round before, so a chain of devices that each introduce the next, delivered in any
+ * order, costs one cheap round per link instead of a re-merge and re-judgement of everything waiting.
+ *
  * What is still unverifiable at the end is capped at `limits.maxPendingChanges` (cut, and the result
  * `truncated`), not refused. A `quota` that says no for an author while pending changes become
  * verifiable stops taking that author's further changes (`truncated`). An erased change whose
@@ -602,43 +724,69 @@ export async function settle(
   const seen = new Map(judging.seen);
   const counts = new Map(judging.counts);
   const deletions = new Set(judging.deletions);
-  const ignoredDeletions = new Set(judging.ignoredDeletions);
   const accepted = [...judging.accepted];
   let erased = [...judging.erased];
   let pending = [...judging.pending];
-  let ignored = judging.ignored;
   let truncated = judging.truncated;
   const blocked = new Set<DeviceId>();
   const dropped: Change[] = [];
   let taken: Change[] = [];
+  // The replica as it would be with everything verified so far, extended round by round.
+  let upTo = state;
+  let carry: Change[] = [];
+  let merged = 0;
+  const mergedTaken = new Set<Change>();
   // Every round that goes on decided at least one waiting change, so this many rounds are enough;
   // the bound only guarantees the loop ends whatever a key source does.
   const maxRounds = pending.length + erased.length + 3;
   for (let round = 0; round < maxRounds; round += 1) {
-    const upTo = merge(state, [...accepted, ...taken]).replica;
+    const fresh = [...accepted.slice(merged), ...taken.filter((c) => !mergedTaken.has(c))];
+    merged = accepted.length;
+    for (const c of taken) mergedTaken.add(c);
+    if (fresh.length > 0 || carry.length > 0) {
+      const result = merge(upTo, [...carry, ...fresh]);
+      upTo = result.replica;
+      carry = [...result.held];
+    }
     let progress = false;
     if (pending.length > 0) {
-      const judged = await judgeEach({ ...options, state: upTo }, pending, seen);
+      // A self-verifying key source may see what is waiting, too (never a change claiming this
+      // device's own id: the derivation believes the own log without a signature check).
+      const keyState = options.keys.selfVerifying
+        ? merge(
+            upTo,
+            pending.filter((c) => c.device !== upTo.device),
+          ).replica
+        : upTo;
+      // Without a special-case hook only the key decides pending: look at each waiting author once.
+      let ready: Set<DeviceId> | undefined;
+      if (!options.special) {
+        ready = new Set();
+        for (const author of new Set(pending.map((c) => c.device))) {
+          if (await options.keys.keyFor(author, keyState)) ready.add(author);
+        }
+      }
+      const todo = ready ? pending.filter((c) => ready.has(c.device)) : pending;
+      const judged = await judgeEach({ ...options, state: upTo, keyState }, todo, seen);
       const rejections: Rejection[] = [];
       judged.forEach((j, i) => {
         if (j.verdict === 'false') {
-          rejections.push({ change: pending[i] as Change, reason: j.reason ?? 'not-allowed' });
+          rejections.push({ change: todo[i] as Change, reason: j.reason ?? 'not-allowed' });
         }
       });
       if (rejections.length > 0) return refusedResult(rejections);
-      const rest: Change[] = [];
+      const stillWaiting = new Set<Change>(
+        ready ? pending.filter((c) => !ready.has(c.device)) : [],
+      );
       const verified: Change[] = [];
       for (const [i, j] of judged.entries()) {
-        const change = pending[i] as Change;
+        const change = todo[i] as Change;
         if (j.verdict === 'pending') {
-          rest.push(change);
+          stillWaiting.add(change);
           continue;
         }
         progress = true;
-        if (j.verdict === 'ignored') {
-          ignored += 1;
-          if (change.kind === 'delete') ignoredDeletions.add(recordKey(change));
-        } else verified.push(change);
+        verified.push(change);
       }
       // By device and number, so a quota that ends one author keeps a gapless prefix of it.
       for (const change of verified.sort(byDeviceSeq)) {
@@ -657,7 +805,7 @@ export async function settle(
         else accepted.push(change);
         if (change.kind === 'delete') deletions.add(recordKey(change));
       }
-      pending = rest;
+      pending = pending.filter((c) => stillWaiting.has(c));
     }
     // What was taken stays taken: more verified changes only make a deletion more likely to apply.
     const candidates = [...taken, ...erased];
@@ -671,12 +819,7 @@ export async function settle(
     if (!progress) break;
   }
   const open = new Set(pending.filter((c) => c.kind === 'delete').map(recordKey));
-  const lost = erased.filter(
-    (c) =>
-      !open.has(recordKey(c)) &&
-      !deletions.has(recordKey(c)) &&
-      !ignoredDeletions.has(recordKey(c)),
-  );
+  const lost = erased.filter((c) => !open.has(recordKey(c)) && !deletions.has(recordKey(c)));
   if (lost.length > 0 && !truncated && config.more !== true) {
     return refusedResult(
       lost.map((change) => ({ change, reason: 'redacted-without-deletion' as const })),
@@ -693,7 +836,6 @@ export async function settle(
     pending: waitingChanges,
     rejected: 0,
     rejections: [],
-    ignored,
     truncated,
   };
 }

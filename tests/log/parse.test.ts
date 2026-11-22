@@ -82,6 +82,7 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
         id: 'r1',
         kind: 'delete',
         knew: {},
+        prev: CHECK,
       }),
     ).toBeDefined();
     expect(parseSyncMessage({ t: 'changes', changes: [], last: true })).toEqual({
@@ -97,8 +98,8 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
     ['a text', 'stand'],
     ['a number', 1],
     ['stand without vector', { t: 'stand' }],
-    ['stand with negative count', { t: 'stand', vector: { a: -1 } }],
-    ['stand with fractional count', { t: 'stand', vector: { a: 1.5 } }],
+    ['stand with negative count', { t: 'stand', vector: { a: -1 }, tips: {} }],
+    ['stand with fractional count', { t: 'stand', vector: { a: 1.5 }, tips: {} }],
     ['done with a bad fingerprint', { t: 'done', vector: {}, fingerprint: 'xyz' }],
     [
       'done with an upper-case fingerprint',
@@ -111,7 +112,7 @@ describe('strict reading: what is not exactly the shape is undefined', () => {
     ['changes is not a list', { t: 'changes', changes: {}, last: true }],
     ['an unknown type', { t: 'other' }],
     ['no type', { vector: {} }],
-    ['an unknown member of a stand', { t: 'stand', vector: {}, extra: 1 }],
+    ['an unknown member of a stand', { t: 'stand', vector: {}, tips: {}, extra: 1 }],
     [
       'an unknown member of done',
       { t: 'done', vector: {}, fingerprint: '01234567'.repeat(4), extra: 1 },
@@ -343,8 +344,12 @@ describe('every limit, at the limit and one over (driven by LIMITS)', () => {
       Object.fromEntries(Array.from({ length: n }, (_, i) => [`d${i}`, i]));
     expect(parseVector(vector(LIMITS.maxDevices))).toBeDefined();
     expect(parseVector(vector(LIMITS.maxDevices + 1))).toBeUndefined();
-    expect(parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices) })).toBeDefined();
-    expect(parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices + 1) })).toBeUndefined();
+    expect(
+      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices), tips: {} }),
+    ).toBeDefined();
+    expect(
+      parseSyncMessage({ t: 'stand', vector: vector(LIMITS.maxDevices + 1), tips: {} }),
+    ).toBeUndefined();
     expect(parseChange(change({ knew: vector(LIMITS.maxDevices) }))).toBeDefined();
     expect(parseChange(change({ knew: vector(LIMITS.maxDevices + 1) }))).toBeUndefined();
   });
@@ -352,7 +357,9 @@ describe('every limit, at the limit and one over (driven by LIMITS)', () => {
   it('maxChanges (one message)', () => {
     const many = (n: number) => ({
       t: 'changes',
-      changes: Array.from({ length: n }, (_, i) => change({ seq: i + 1 })),
+      changes: Array.from({ length: n }, (_, i) =>
+        change({ seq: i + 1, ...(i > 0 ? { prev: CHECK } : {}) }),
+      ),
       last: true,
     });
     expect(parseSyncMessage(many(LIMITS.maxChanges))).toBeDefined();
@@ -420,7 +427,7 @@ describe('limits override (partial, per call)', () => {
     ).toBeUndefined();
     const three = {
       t: 'changes',
-      changes: [change(), change({ seq: 2 }), change({ seq: 3 })],
+      changes: [change(), change({ seq: 2, prev: CHECK }), change({ seq: 3, prev: CHECK })],
       last: true,
     };
     expect(parseSyncMessage(three, { limits: tight })).toBeUndefined();
@@ -580,6 +587,7 @@ describe('fuzzing (seeded)', () => {
       'by',
       'check',
       'sig',
+      'prev',
     ];
     for (const key of Object.keys(c)) expect(allowed).toContain(key);
     expect(DEFAULT_DEVICE_ID.test(c.device)).toBe(true);
@@ -685,7 +693,13 @@ describe('fuzzing (seeded)', () => {
           expect(typeof m.last).toBe('boolean');
         }
         if (m.t === 'done') expect(m.fingerprint).toMatch(/^[0-9a-f]{32}$/);
-        expect(Object.keys(m).length).toBe(m.t === 'stand' ? 2 : 3);
+        if (m.t === 'stand') {
+          for (const [device, tip] of Object.entries(m.tips)) {
+            expect(m.vector[device] ?? 0).toBeGreaterThanOrEqual(1);
+            expect(tip).toMatch(/^[A-Za-z0-9_-]{43}$/);
+          }
+        }
+        expect(Object.keys(m).length).toBe(3);
       },
     );
     expect(out.runs).toBeGreaterThanOrEqual(5000);
@@ -779,6 +793,7 @@ describe('regression: the size of a whole message is bounded', () => {
     kind: 'set',
     fields: Object.fromEntries(Array.from({ length: 40 }, (_, j) => [`f${j}`, 'y'.repeat(size)])),
     knew: {},
+    ...(i > 0 ? { prev: 'c'.repeat(43) } : {}),
   });
   const message = (count: number, size: number): unknown => ({
     t: 'changes',

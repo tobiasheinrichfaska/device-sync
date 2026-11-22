@@ -1,8 +1,8 @@
 {
-  "about": "text = \"<appId>-change:2|\" + canonical({v:2, set:dataSet, device, seq, clock, collection, id, kind (redacted counts as set), check}); the content is bound through check.",
+  "about": "text = \"<appId>-change:2|\" + canonical({v:2, set:dataSet, device, seq, clock, collection, id, kind (redacted counts as set), check, prev (only when the change has one: every change after the first carries the link of its predecessor)}); the content is bound through check, the hash chain through prev. Changed with the hash chain (round 3, third pass): changes with seq above 1 now carry prev; the first change's text is unchanged.",
   "cases": [
     {
-      "name": "a set",
+      "name": "a set (the first change has no prev)",
       "appId": "demo",
       "dataSet": "main",
       "change": {
@@ -17,7 +17,7 @@
       "text": "demo-change:2|{\"check\":\"c1\",\"clock\":3,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"set\",\"seq\":1,\"set\":\"main\",\"v\":2}"
     },
     {
-      "name": "a delete keeps kind delete",
+      "name": "a delete keeps kind delete and names the link of its predecessor",
       "appId": "demo",
       "dataSet": "main",
       "change": {
@@ -27,9 +27,10 @@
         "collection": "items",
         "id": "x",
         "kind": "delete",
-        "check": "c2"
+        "check": "c2",
+        "prev": "c1"
       },
-      "text": "demo-change:2|{\"check\":\"c2\",\"clock\":4,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"delete\",\"seq\":2,\"set\":\"main\",\"v\":2}"
+      "text": "demo-change:2|{\"check\":\"c2\",\"clock\":4,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"delete\",\"prev\":\"c1\",\"seq\":2,\"set\":\"main\",\"v\":2}"
     },
     {
       "name": "a redacted change is signed as a set",
@@ -47,6 +48,22 @@
       "text": "demo-change:2|{\"check\":\"c1\",\"clock\":3,\"collection\":\"items\",\"device\":\"a\",\"id\":\"x\",\"kind\":\"set\",\"seq\":1,\"set\":\"main\",\"v\":2}"
     },
     {
+      "name": "a redacted change keeps its prev: the text equals the one of the original set",
+      "appId": "demo",
+      "dataSet": "main",
+      "change": {
+        "device": "a",
+        "seq": 2,
+        "clock": 5,
+        "collection": "items",
+        "id": "y",
+        "kind": "redacted",
+        "check": "c4",
+        "prev": "c1"
+      },
+      "text": "demo-change:2|{\"check\":\"c4\",\"clock\":5,\"collection\":\"items\",\"device\":\"a\",\"id\":\"y\",\"kind\":\"set\",\"prev\":\"c1\",\"seq\":2,\"set\":\"main\",\"v\":2}"
+    },
+    {
       "name": "the data set and the app are part of the text; non-ASCII stays raw",
       "appId": "other",
       "dataSet": "münch",
@@ -57,9 +74,10 @@
         "collection": "käse",
         "id": "😀",
         "kind": "set",
-        "check": "c3"
+        "check": "c3",
+        "prev": "c0"
       },
-      "text": "other-change:2|{\"check\":\"c3\",\"clock\":99,\"collection\":\"käse\",\"device\":\"d-1\",\"id\":\"😀\",\"kind\":\"set\",\"seq\":12,\"set\":\"münch\",\"v\":2}"
+      "text": "other-change:2|{\"check\":\"c3\",\"clock\":99,\"collection\":\"käse\",\"device\":\"d-1\",\"id\":\"😀\",\"kind\":\"set\",\"prev\":\"c0\",\"seq\":12,\"set\":\"münch\",\"v\":2}"
     }
   ]
 }

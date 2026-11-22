@@ -296,11 +296,12 @@ function byNoticeKey(a: Notice, b: Notice): number {
 }
 
 /**
- * The head, the check value of the content (taken now if the author had not set it yet) and the
- * signature stay: the head remains checkable and the numbering gapless.
+ * The head, the link to the previous change, the check value of the content (taken now if the
+ * author had not set it yet) and the signature stay: the head remains checkable, the numbering
+ * gapless and the hash chain unbroken.
  */
 export function redacted(change: Change): Change {
-  const { device, seq, clock, collection, id, sig } = change;
+  const { device, seq, clock, collection, id, sig, prev } = change;
   return {
     device,
     seq,
@@ -309,6 +310,7 @@ export function redacted(change: Change): Change {
     id,
     kind: 'redacted',
     check: change.check ?? changeCheckValue(change),
+    ...(prev !== undefined ? { prev } : {}),
     ...(sig ? { sig } : {}),
   };
 }

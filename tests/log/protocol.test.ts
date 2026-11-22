@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LIMITS,
+  tipsOf,
   PIECE_BYTES,
   emptyReplica,
   findRecord,
@@ -125,7 +126,12 @@ describe('exchange protocol', () => {
   it('a stand is answered with exactly what the sender lacks', () => {
     const a = many('a', 4);
     const b = merge(emptyReplica('b'), a.log.slice(0, 2)).replica;
-    const step = onSyncMessage(startSession(a).session, a, { t: 'stand', vector: b.vector }, PLAIN);
+    const step = onSyncMessage(
+      startSession(a).session,
+      a,
+      { t: 'stand', vector: b.vector, tips: tipsOf(b) },
+      PLAIN,
+    );
     expect(step.session.sent).toBe(2);
     const sent = step.send.flatMap((m) => (m.t === 'changes' ? m.changes : []));
     expect(sent.map((c) => c.seq)).toEqual([3, 4]);
@@ -241,7 +247,7 @@ describe('exchange protocol', () => {
     const step = onSyncMessage(
       startSession(a).session,
       a,
-      { t: 'stand', vector: {} },
+      { t: 'stand', vector: {}, tips: {} },
       { limits: { maxChanges: 2 }, ...PLAIN },
     );
     expect(step.send.map((m) => (m.t === 'changes' ? m.changes.length : -1))).toEqual([2, 2, 2]);
@@ -337,7 +343,7 @@ describe('a refused message ends the session and takes nothing', () => {
     step = receive(step.session, step.replica, json(valid()));
     expect(step.replica.log).toHaveLength(0);
     expect(step.send).toEqual([]);
-    step = receive(step.session, step.replica, json({ t: 'stand', vector: {} }));
+    step = receive(step.session, step.replica, json({ t: 'stand', vector: {}, tips: {} }));
     expect(step.send).toEqual([]);
     const direct = onSyncMessage(step.session, step.replica, valid());
     expect(direct.replica.log).toHaveLength(0);

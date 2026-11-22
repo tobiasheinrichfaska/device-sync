@@ -1,5 +1,6 @@
 import { canonical, sha256Text } from '../core/index.ts';
 import { resolveLimits } from './limits.ts';
+import { tipConflict, tipsOf } from './chain.ts';
 import { merge } from './merge.ts';
 import { parseSyncMessage, type ParseOptions, type SyncMessage } from './parse.ts';
 import {
@@ -141,8 +142,6 @@ export interface Session {
   readonly peerMore?: boolean;
   /** This device cut its answer at its limit: another session is needed. */
   readonly sentMore?: boolean;
-  /** Changes of removed devices after their cutoff, skipped (`KeySource.standing`). */
-  readonly ignored?: number;
   /** What `receiveJudged` has decided of the pieces so far. */
   readonly judging?: Judging;
   /** Set when a message could not be read or a change was forged: nothing is taken any more. */
@@ -165,7 +164,7 @@ export function startSession(replica: Replica): Step {
   return {
     session: { sent: 0, taken: 0, waiting: 0, allReceived: false, ownDone: false, withheld: 0 },
     replica,
-    send: [{ t: 'stand', vector: replica.vector }],
+    send: [{ t: 'stand', vector: replica.vector, tips: tipsOf(replica) }],
   };
 }
 
@@ -254,6 +253,11 @@ export function onSyncMessage(
   if (session.refusal) return { session, replica, send: [] };
   if (message.t === 'stand') {
     if (session.standReceived) return refused(session, replica, 'unexpected', 'repeated-stand');
+    // The other's history must be the one this device holds: a tip that names another version of a number
+    // is equivocation, seen at once and without any signature work.
+    const conflict = tipConflict(replica, message.vector, message.tips);
+    if (conflict !== undefined)
+      return refused(session, replica, 'forged', 'equivocation', conflict);
     const { changes, withheld, more } = answerFor(replica, message.vector, options);
     return {
       session: {
@@ -403,7 +407,6 @@ export async function receiveJudged(
       ...step.session,
       waiting: step.session.waiting + read.pending.length,
       ...(read.truncated ? { truncated: true } : {}),
-      ...(read.ignored > 0 ? { ignored: read.ignored } : {}),
     },
   };
 }

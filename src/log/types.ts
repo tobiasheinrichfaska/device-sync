@@ -36,6 +36,13 @@ export interface Change {
    */
   readonly check?: string;
   readonly sig?: string;
+  /**
+   * Hash chain: the check value of the same device's previous change (`seq - 1`, see
+   * `changeLink`). Present on every change with `seq > 1`, absent on the first. It is part of the
+   * signed head and survives redaction, so two versions of one number can never both be followed by
+   * an honest successor, and a session's `stand` can prove which version a device holds.
+   */
+  readonly prev?: string;
 }
 
 /** Who wrote and when; the caller supplies it, the logic never reads a clock. */

@@ -364,6 +364,45 @@
         "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log",
         "extra": 1
       }
+    },
+    {
+      "name": "prev on the first change (the first change has none; the signed text would differ, too)",
+      "change": {
+        "device": "dev-a",
+        "seq": 1,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log",
+        "prev": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g"
+      }
+    },
+    {
+      "name": "no prev after the first change (a signature made without the chain does not make it valid)",
+      "change": {
+        "device": "dev-a",
+        "seq": 2,
+        "clock": 1,
+        "collection": "items",
+        "id": "r1",
+        "kind": "set",
+        "fields": {
+          "title": "Hello"
+        },
+        "knew": {},
+        "time": 1700000000000,
+        "by": "user",
+        "check": "EF8CsI8BTFVZCla5HlxTGHS1rW6oXEsMHxpDaaB2e7g",
+        "sig": "HKQZjqPZ7DJCdUFI0joZ7IMYiuYwBWB__72piPH0sBcn2c1pA0k9dfv4QqLLQmjKGAzEFoO1o6Z_XlDDPO1log"
+      }
     }
   ]
 }

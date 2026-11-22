@@ -14,7 +14,7 @@ export interface DeviceEntry extends Introduction {
   readonly role?: string;
   /** The id the relay gave the device at enrolment (opaque; the app's `relayId` predicate checks it). */
   readonly relayId?: string;
-  /** A removed device is trusted no more; its entry stays. */
+  /** A removed device is trusted no more (not as a voucher, not as introduced); its entry stays and its signatures still verify. */
   readonly removed: boolean;
   /** The "private device" flag. */
   readonly private: boolean;
@@ -46,7 +46,7 @@ export type TrustReason =
   | 'key-mismatch'
   /** Vouching devices wrote more than one relay id: the relay id is dropped, the device stays trusted. */
   | 'relay-conflict'
-  /** A removal counts (see `docs/wire-format.md`, "Trust derivation", rule 3). */
+  /** A removal counts (see `docs/wire-format.md`, "Trust derivation", rule 3). The device stays checkable. */
   | 'removed'
   /** Nobody trusted vouches for it (or not completely). */
   | 'not-vouched';
@@ -56,10 +56,8 @@ export interface DeviceStatus {
   readonly trusted: boolean;
   /** Its signatures can be checked: trusted, or removed with keys that were vouched for. */
   readonly checkable: boolean;
-  /** An effective removal exists. */
+  /** An effective removal exists: no standing as a voucher or as a device introduced through the chain. */
   readonly removed: boolean;
-  /** Changes of a removed device with a number above this are ignored (the smallest `lastSeq` of its removals). */
-  readonly cutoff?: number;
   readonly reasons: readonly TrustReason[];
 }
 
@@ -75,8 +73,6 @@ export interface Trust {
   readonly selfRemoved: boolean;
   /** The checkable devices by id. */
   readonly checkableById: ReadonlyMap<DeviceId, TrustedDevice>;
-  /** Per removed device the cutoff (smallest `lastSeq` of its effective removals), when one was given. */
-  readonly cutoffs: ReadonlyMap<DeviceId, number>;
   /** Per device the reasons worth reporting (only devices that have some). */
   readonly reasons: ReadonlyMap<DeviceId, readonly TrustReason[]>;
 }

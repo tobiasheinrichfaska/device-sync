@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { generateDeviceKeys } from '../../src/core/index.ts';
 import {
   LIMITS,
+  tipsOf,
   changeSigningText,
   emptyReplica,
   insertSignatures,
@@ -371,7 +372,7 @@ describe('H6: memory before any signature check', () => {
 describe('H4b: unsigned own changes are not delivered', () => {
   const answer = (step: Step): Change[] =>
     step.send.flatMap((m) => (m.t === 'changes' ? m.changes : []));
-  const stand: SyncMessage = { t: 'stand', vector: {} };
+  const stand: SyncMessage = { t: 'stand', vector: {}, tips: {} };
 
   it('by default only signed changes answer a stand; the rest is counted as withheld', async () => {
     let a = written(written(emptyReplica('x'), 'r1', { t: '1' }), 'r2', { t: '2' });
@@ -406,7 +407,11 @@ describe('H4b: unsigned own changes are not delivered', () => {
   it('an honest device with an unsigned change does not make the other refuse the session', async () => {
     let a = written(emptyReplica('x'), 'r1', { t: '1' });
     const b = emptyReplica('n');
-    const step = onSyncMessage(startSession(a).session, a, { t: 'stand', vector: b.vector });
+    const step = onSyncMessage(startSession(a).session, a, {
+      t: 'stand',
+      vector: b.vector,
+      tips: tipsOf(b),
+    });
     const { step: got } = await feed(
       b,
       step.send.map((m) => m),
@@ -551,7 +556,7 @@ describe('N3: the signing text needs a data set', () => {
 
 // ---------------------------------------------------------------------------------------------
 describe('N4: one stand and one done per session', () => {
-  const stand: SyncMessage = { t: 'stand', vector: {} };
+  const stand: SyncMessage = { t: 'stand', vector: {}, tips: {} };
   const done: SyncMessage = { t: 'done', vector: {}, fingerprint: '0'.repeat(32) };
 
   it('a second stand ends the session (unexpected / repeated-stand) and sends nothing', () => {

@@ -49,7 +49,6 @@ function shape(t: Trust): string {
     checkable: t.checkable.map(entry),
     removed: t.removed,
     selfRemoved: t.selfRemoved,
-    cutoffs: [...(t.cutoffs ?? [])].sort(),
     reasons: [...(t.reasons ?? [])].sort(),
   });
 }
@@ -80,7 +79,7 @@ async function scenario(seed: number): Promise<Scenario> {
     else if (what < 0.55) fields = { dh: pick(pool).intro.dh };
     else if (what < 0.61) fields = { relayId: pick(['relay-1', 'relay-2']) };
     else if (what < 0.66) fields = { role };
-    else if (what < 0.95) fields = { removed: true, lastSeq: Math.floor(rnd() * 4) };
+    else if (what < 0.95) fields = { removed: true };
     else fields = { removed: false };
     writers.set(w.id, writeRaw(mine, DEVICE_COLLECTION, t.id, fields));
   }
