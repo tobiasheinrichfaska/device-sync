@@ -419,10 +419,16 @@ describe('N6: the fixpoint of erased changes is not quadratic', () => {
     const full = await attack(2001);
     const results: Record<number, number> = {};
     for (const size of sizes) {
-      const r = await timedSettle(full.slice(0, size));
-      expect(r.refused).toBe(false);
-      expect(r.taken).toBe(0);
-      results[size] = r.ms;
+      // The best of three runs: one slow run (garbage collection, a loaded machine) is noise, a
+      // quadratic settle is slow in every run (ratio about 4 for a doubled size).
+      let best = Infinity;
+      for (let run = 0; run < 3; run += 1) {
+        const r = await timedSettle(full.slice(0, size));
+        expect(r.refused).toBe(false);
+        expect(r.taken).toBe(0);
+        best = Math.min(best, r.ms);
+      }
+      results[size] = best;
     }
     process.stderr.write(
       `\nsettle of the erasure chain: ${sizes.map((s) => `${s}: ${(results[s] as number).toFixed(0)} ms`).join(', ')}\n`,
