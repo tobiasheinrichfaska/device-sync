@@ -7,7 +7,7 @@
 import { base64url, sha256Text } from './encoding.ts';
 import { isDay } from './day.ts';
 import { importPublicKey } from './keys.ts';
-import { FORMAT_VERSION, marker } from './markers.ts';
+import { marker } from './markers.ts';
 import { signText, verifyText } from './signature.ts';
 import {
   TAG_BYTES,
@@ -25,6 +25,13 @@ import {
   readBytes,
   sha256,
 } from './secure.ts';
+
+/**
+ * The version of the envelope's own markers (envelope, id, header, slot, commitment, signature). It
+ * is 3 since the key commitment `kc`; the other formats of the package stay at their own version.
+ */
+export const ENVELOPE_VERSION = 3;
+const V = ENVELOPE_VERSION;
 
 const utf8 = new TextEncoder();
 const AGREEMENT = { name: 'ECDH', namedCurve: 'P-256' } as const;
@@ -111,6 +118,8 @@ export interface EnvelopeParts {
   readonly day: string;
   readonly eph: string;
   readonly iv: string;
+  /** Key commitment: SHA-256 over the commitment text and the content key (32 bytes). */
+  readonly kc: string;
   readonly ct: string;
   readonly k: readonly string[];
 }
@@ -120,16 +129,16 @@ export interface EnvelopeParts {
  * characters). A changed copy cannot pass under the id of the real envelope.
  */
 export function envelopeId(appId: string, parts: EnvelopeParts): string {
-  const text = `${marker(appId, 'envid', FORMAT_VERSION)}|${field(parts.day)}|${field(
+  const text = `${marker(appId, 'envid', V)}|${field(parts.day)}|${field(
     parts.eph,
-  )}|${field(parts.iv)}|${field(parts.ct)}|${parts.k.length}|${parts.k.map(field).join('|')}`;
+  )}|${field(parts.iv)}|${field(parts.kc)}|${field(parts.ct)}|${parts.k.length}|${parts.k.map(field).join('|')}`;
   return base64url(sha256Text(text).slice(0, ID_BYTES));
 }
 
 const envelopeText = (appId: string, id: string, p: EnvelopeParts): string =>
-  `{"m":"${marker(appId, 'envelope', FORMAT_VERSION)}","id":"${id}","day":"${p.day}","eph":"${
+  `{"m":"${marker(appId, 'envelope', V)}","id":"${id}","day":"${p.day}","eph":"${
     p.eph
-  }","iv":"${p.iv}","ct":"${p.ct}","k":[${p.k.map((slot) => `"${slot}"`).join(',')}]}`;
+  }","iv":"${p.iv}","kc":"${p.kc}","ct":"${p.ct}","k":[${p.k.map((slot) => `"${slot}"`).join(',')}]}`;
 
 /**
  * An envelope from its parts (the id is computed). Lower level than `sealEnvelope`: nothing is
@@ -157,14 +166,15 @@ export function envelopeFromValue(
   raw: unknown,
   limits?: Partial<EnvelopeLimits>,
 ): Envelope | undefined {
-  const m = marker(appId, 'envelope', FORMAT_VERSION);
+  const m = marker(appId, 'envelope', V);
   const lim = resolveEnvelopeLimits(limits);
-  if (!isPlain(raw) || !hasMembers(raw, ['m', 'id', 'day', 'eph', 'iv', 'ct', 'k'])) {
+  if (!isPlain(raw) || !hasMembers(raw, ['m', 'id', 'day', 'eph', 'iv', 'kc', 'ct', 'k'])) {
     return undefined;
   }
-  const { id, day, eph, iv, ct, k } = raw;
+  const { id, day, eph, iv, kc, ct, k } = raw;
   if (raw.m !== m || typeof id !== 'string' || !readBytes(id, ID_BYTES, ID_BYTES)) return undefined;
   if (!isDay(day) || typeof eph !== 'string' || typeof iv !== 'string') return undefined;
+  if (typeof kc !== 'string' || !readBytes(kc, KEY_BYTES, KEY_BYTES)) return undefined;
   if (typeof ct !== 'string' || readBytes(eph, 65, 65)?.[0] !== 4) return undefined;
   if (!readBytes(iv, IV_BYTES, IV_BYTES) || !readBytes(ct, TAG_BYTES, payloadCeiling(lim))) {
     return undefined;
@@ -176,7 +186,7 @@ export function envelopeFromValue(
     if (typeof slot !== 'string' || !readBytes(slot, SLOT_BYTES, SLOT_BYTES)) return undefined;
     slots.push(slot);
   }
-  const parts: EnvelopeParts = { day, eph, iv, ct, k: slots };
+  const parts: EnvelopeParts = { day, eph, iv, kc, ct, k: slots };
   if (envelopeId(appId, parts) !== id) return undefined;
   const text = envelopeText(appId, id, parts);
   return text.length > lim.maxEnvelopeBytes ? undefined : make(appId, id, day, text, slots.length);
@@ -190,7 +200,7 @@ export function readEnvelope(
 ): Envelope | undefined {
   const lim = resolveEnvelopeLimits(limits);
   if (typeof text !== 'string' || text.length > lim.maxEnvelopeBytes) return undefined;
-  if (!text.startsWith(`{"m":"${marker(appId, 'envelope', FORMAT_VERSION)}","id":"`)) {
+  if (!text.startsWith(`{"m":"${marker(appId, 'envelope', V)}","id":"`)) {
     return undefined;
   }
   const envelope = envelopeFromValue(appId, parseJson(text), lim);
@@ -199,7 +209,21 @@ export function readEnvelope(
 
 /** The members every key and the content tag are bound to: app, day and the ephemeral key. */
 const headerText = (appId: string, day: string, eph: string): string =>
-  `${marker(appId, 'envelope', FORMAT_VERSION)}|header|${field(day)}|${field(eph)}`;
+  `${marker(appId, 'envelope', V)}|header|${field(day)}|${field(eph)}`;
+
+/**
+ * The key commitment: SHA-256 over `<appId>-envelope:3|commit|` + the header text + `|` + the 32 raw
+ * bytes of the content key. AES-GCM does not commit to its key (one ciphertext can open under two
+ * keys), so every reader checks this value against the key its slot gave it before it decrypts: all
+ * readers then use the one key the author committed to and get the same bytes.
+ */
+async function commitment(appId: string, header: string, contentKey: Uint8Array): Promise<string> {
+  const prefix = utf8.encode(`${marker(appId, 'envelope', V)}|commit|${header}|`);
+  const all = new Uint8Array(prefix.length + contentKey.length);
+  all.set(prefix, 0);
+  all.set(contentKey, prefix.length);
+  return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', all)));
+}
 
 async function slotKey(
   appId: string,
@@ -210,7 +234,7 @@ async function slotKey(
   return aesKey(
     secret,
     await sha256(header),
-    `${marker(appId, 'envelope', FORMAT_VERSION)}|slot|${field(dh)}`,
+    `${marker(appId, 'envelope', V)}|slot|${field(dh)}`,
   );
 }
 
@@ -222,7 +246,7 @@ const signedText = (
   day: string,
   body: string,
 ): string =>
-  `${marker(appId, 'envsig', FORMAT_VERSION)}|${field(from)}|${field(channel)}|${field(day)}|${field(
+  `${marker(appId, 'envsig', V)}|${field(from)}|${field(channel)}|${field(day)}|${field(
     body,
   )}`;
 
@@ -285,7 +309,7 @@ export type EnvelopeSealed =
  */
 export async function sealEnvelope(params: EnvelopeSealParams): Promise<EnvelopeSealed> {
   const { appId, author, recipients, channel, day, body, random } = params;
-  marker(appId, 'envelope', FORMAT_VERSION);
+  marker(appId, 'envelope', V);
   const lim = resolveEnvelopeLimits(params.limits);
   const refuse = (reason: EnvelopeSealRefusal): EnvelopeSealed => ({ ok: false, reason });
   if (!isPlain(author) || !isDeviceText(author.device)) return refuse('bad-author');
@@ -360,6 +384,7 @@ export async function sealEnvelope(params: EnvelopeSealParams): Promise<Envelope
       slots.push(base64url(new Uint8Array(slot)));
     }
     for (const slot of padding) slots.push(base64url(slot as Uint8Array));
+    const kc = await commitment(appId, header, contentKey);
     const key = await crypto.subtle.importKey('raw', contentKey, 'AES-GCM', false, ['encrypt']);
     const ct = new Uint8Array(
       await crypto.subtle.encrypt(
@@ -372,6 +397,7 @@ export async function sealEnvelope(params: EnvelopeSealParams): Promise<Envelope
       day,
       eph,
       iv: base64url(iv),
+      kc,
       ct: base64url(ct),
       k: shuffled(slots, order),
     };
@@ -405,6 +431,7 @@ export type EnvelopeRefusal =
   | 'bad-point'
   | 'not-for-me'
   | 'damaged'
+  | 'key-mismatch'
   | 'unknown-author'
   | 'bad-signature';
 
@@ -427,7 +454,7 @@ export type EnvelopeOpened =
  */
 export async function openEnvelope(params: EnvelopeOpenParams): Promise<EnvelopeOpened> {
   const { appId, own } = params;
-  marker(appId, 'envelope', FORMAT_VERSION);
+  marker(appId, 'envelope', V);
   const lim = resolveEnvelopeLimits(params.limits);
   const refuse = (reason: EnvelopeRefusal): EnvelopeOpened => ({ ok: false, reason });
   if (!isPlain(own) || typeof params.authorKey !== 'function') return refuse('bad-own');
@@ -437,12 +464,13 @@ export async function openEnvelope(params: EnvelopeOpenParams): Promise<Envelope
   const read = readEnvelope(appId, typeof given === 'string' ? given : given?.text, lim);
   const parsed = read && (parseJson(read.text) as Record<string, unknown>);
   if (!read || !parsed) return refuse('not-an-envelope');
-  const { eph, iv, ct } = parsed as { eph: string; iv: string; ct: string };
+  const { eph, iv, kc, ct } = parsed as { eph: string; iv: string; kc: string; ct: string };
   const slots = parsed.k as string[];
   const ephemeral = await importPoint(eph);
   if (!ephemeral) return refuse('bad-point');
   const header = headerText(appId, read.day, eph);
   let contentKey: Uint8Array<ArrayBuffer> | undefined;
+  let wrongKey = false;
   try {
     const kek = await slotKey(
       appId,
@@ -459,8 +487,12 @@ export async function openEnvelope(params: EnvelopeOpenParams): Promise<Envelope
             new Uint8Array(readBytes(slot, SLOT_BYTES, SLOT_BYTES) as Uint8Array),
           ),
         );
-        contentKey = bytes;
-        break;
+        // the slot opened; it counts only if it holds the key the author committed to
+        if ((await commitment(appId, header, bytes)) === kc) {
+          contentKey = bytes;
+          break;
+        }
+        wrongKey = true;
       } catch {
         // not our slot
       }
@@ -468,7 +500,7 @@ export async function openEnvelope(params: EnvelopeOpenParams): Promise<Envelope
   } catch {
     return refuse('bad-own');
   }
-  if (!contentKey) return refuse('not-for-me');
+  if (!contentKey) return refuse(wrongKey ? 'key-mismatch' : 'not-for-me');
   let plain: string | undefined;
   try {
     const key = await crypto.subtle.importKey('raw', contentKey, 'AES-GCM', false, ['decrypt']);

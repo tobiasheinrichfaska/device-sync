@@ -1007,6 +1007,10 @@ vectors in `tests/vectors/envelope.json` and `tests/vectors/mailbox.json` are ch
 text with `node:crypto` (`tests/core/envelope-reference.ts`). The common rules of the end-to-end layer
 (primitives, length-prefixed fields, device ids, points, one spelling, refusals are codes) hold here too.
 
+The envelope's own markers (`envelope`, `envid`, `envsig`, the header, slot and commitment texts) carry the
+version `:3` since the key commitment `kc` was added (`ENVELOPE_VERSION`); the markers of the mailbox and the
+exchange (`post`, `postday`, `postbox`, `poststand`) stay at `:2`. An envelope of version 2 is not an envelope.
+
 ## Envelope
 
 ### Wire text
@@ -1014,13 +1018,20 @@ text with `node:crypto` (`tests/core/envelope-reference.ts`). The common rules o
 UTF-8 (in fact ASCII) bytes of one compact JSON text, members in this order:
 
 ```
-{"m":"<appId>-envelope:2","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}
+{"m":"<appId>-envelope:3","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","kc":"<32 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}
 ```
 
 - `day` is a real calendar day, `YYYY-MM-DD`, year 1970 to 9999 (`2026-02-30` is not one). A carrier drops
   the envelope after a while (see the mailbox).
 - `eph` is a fresh ephemeral ECDH P-256 point per envelope (87 characters, canonical, first byte 4).
 - `iv` is the 12-byte nonce of the content (16 characters); `ct` is at least 16 bytes.
+- `kc` is the **key commitment** (32 bytes, 43 characters): SHA-256 over the UTF-8 text
+  `<appId>-envelope:3|commit|<header text>|` followed by the 32 raw bytes of the content key (the header
+  text is defined below). AES-GCM does not commit to its key: an author could craft one ciphertext and tag
+  that decrypt under two different keys and wrap one key for reader A and the other for reader B, so that
+  the two readers would get different signed bodies under one id. Every reader checks `kc` against the
+  key its slot gave it before it decrypts the content (see "Opening"), so every reader that gets a
+  content at all gets the same one. A hash of a random 256-bit key tells a carrier nothing.
 - `k` is the **fan**: 8, 16, 24 ... up to `maxFans` slots, each exactly 48 bytes (64 characters, the
   wrapped 32-byte content key plus the 16-byte tag). Some slots are real, the rest are random bytes of the
   same size; their order is shuffled, so no slot can be told from another.
@@ -1036,7 +1047,7 @@ UTF-8 (in fact ASCII) bytes of one compact JSON text, members in this order:
 `<n>:<text>` with `<n>` the UTF-8 byte length (the count of slots is a plain decimal):
 
 ```
-<appId>-envid:2|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...
+<appId>-envid:3|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<kc>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...
 ```
 
 A changed copy cannot pass under the id of the real envelope, and the id is the same on every device, so a
@@ -1052,17 +1063,18 @@ twice is one reader. Steps:
 1. Sign (below), make a fresh ephemeral ECDH key `E` (WebCrypto), draw 32 random bytes as the **content
    key** `CK`, 12 as `iv`, 48 for every padding slot and 4 per slot for the shuffle (all from the
    `random(n)` the caller passes; sealing itself uses no clock and draws nothing else except `E`).
-2. Header text: `<appId>-envelope:2|header|<n>:<day>|<n>:<eph>` (the same text for every reader).
+2. Header text: `<appId>-envelope:3|header|<n>:<day>|<n>:<eph>` (the same text for every reader).
 3. For every reader with agreement point `dh`: `secret = ECDH(E, dh)` (the 32-byte X coordinate), key
    encryption key `KEK = HKDF-SHA-256(ikm = secret, salt = SHA-256(header text), info =
-"<appId>-envelope:2|slot|<n>:<dh>")` (32 bytes), slot = AES-256-GCM(`KEK`, **zero nonce**, no additional
+"<appId>-envelope:3|slot|<n>:<dh>")` (32 bytes), slot = AES-256-GCM(`KEK`, **zero nonce**, no additional
    data, `CK`) = 48 bytes. A zero nonce is safe because `KEK` is unique per envelope and reader (fresh `E`,
    `dh` in the info).
 4. Pad with random 48-byte slots to the next multiple of 8, then shuffle the list (Fisher-Yates from the
    last element down, `j = u32(bytes[4i .. 4i+4]) mod (i + 1)`, big endian; the modulo bias is below
    2^-26 per step).
-5. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
-6. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
+5. `kc` = SHA-256(`<appId>-envelope:3|commit|<header text>|` followed by `CK`), base64url.
+6. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
+7. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
 
 Making is refused with a code, changing nothing: `bad-author` (device id unusable, or the signing key is not an ECDSA private key that can sign),
 `bad-channel`, `bad-day`, `bad-input` (the content is not bytes), `bad-random` (the source is not a
@@ -1082,7 +1094,7 @@ The **author's signature** (ECDSA P-256 / SHA-256, low-s, 64 bytes, as the log l
 UTF-8 text
 
 ```
-<appId>-envsig:2|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>
+<appId>-envsig:3|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>
 ```
 
 so it binds the app, the author's device id, the channel, the day and the content. The recipients are not
@@ -1098,15 +1110,19 @@ function `authorKey(from)` that gives the author's signing public point as the t
 nothing). Refused with a code: `bad-own` (no usable agreement pair), `not-an-envelope` (not exactly the
 spelling above, another marker or app id, too long, wrong id), `bad-point` (the ephemeral point is not on
 the curve), `not-for-me` (no slot opens with this device's key: the answer for every stranger, and also for
-an envelope whose day or ephemeral key was changed), `damaged` (a slot opened but the content does not
+an envelope whose day or ephemeral key was changed), `key-mismatch` (a slot opened, but not one holds the
+key that `kc` commits to: the author wrapped another key for this reader; nothing was decrypted),
+`damaged` (the slot with the committed key opened but the content does not
 decrypt or its inside is not exactly the spelling above), `unknown-author` (`authorKey` gave nothing, a
 point that is not on the curve, or threw), `bad-signature`.
 
 Cost of an envelope that is **not for this device**: one point check, one ECDH, one HKDF derivation and at
 most `maxFans` small AES-GCM trials (one per slot); nothing else (the test counts the calls). Cost of one that
 is: the same, one decryption of the content, one `authorKey` call (made once, with the author found
-**inside**) and one signature check. The first slot that opens decides: a sealer that wraps the key for
-one reader in several slots cannot make the reader decrypt more than once.
+**inside**) and one signature check. The first slot that opens **and holds the committed key** decides (a slot that opens but holds another key
+is skipped; if none holds the committed one the answer is `key-mismatch`): a sealer that wraps the key for
+one reader in several slots cannot make the reader decrypt the content more than once, and the extra work
+is one SHA-256 per slot that opened.
 
 ### Limits
 
@@ -1377,7 +1393,7 @@ collection, id, kind, check[, prev]}`, a `redacted` change counting as `set`; `p
   HKDF (salt = SHA-256 of the header text, info names the reader's point); the author signature is over
   the `envsig` text. `envelope.json` holds the author's PUBLIC signing point and two readers' throw-away
   private keys (JWK), the id's hashed text, the header text, the salt, each reader's key encryption key,
-  slot index and content key, the inside text and the signature, and variants that must be refused with
+  slot index and content key, the commitment prefix and value, the inside text and the signature, and variants that must be refused with
   the code that is written down; `mailbox.json` holds three envelopes without crypto content, the check
   value texts with their hashes, and one message of each kind. A port derives the keys from the JWKs and
   must reproduce every hex value and open the envelope.

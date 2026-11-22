@@ -39,6 +39,9 @@ interface EnvelopeVectors {
   idHashHex: string;
   headerText: string;
   saltHex: string;
+  slotInfo: string;
+  commitmentPrefix: string;
+  commitmentHex: string;
   readers: {
     agreementPrivateJwk: PrivateJwk;
     agreementPoint: string;
@@ -70,10 +73,11 @@ describe('envelope vectors', () => {
       day: string;
       eph: string;
       iv: string;
+      kc: string;
       ct: string;
       k: string[];
     };
-    const text = `demo-envid:2|${field(parts.day)}|${field(parts.eph)}|${field(parts.iv)}|${field(parts.ct)}|${parts.k.length}|${parts.k.map(field).join('|')}`;
+    const text = `demo-envid:3|${field(parts.day)}|${field(parts.eph)}|${field(parts.iv)}|${field(parts.kc)}|${field(parts.ct)}|${parts.k.length}|${parts.k.map(field).join('|')}`;
     expect(text).toBe(v.idHashedText);
     expect(sha(text).toString('hex')).toBe(v.idHashHex);
     expect(base64url(sha(text).subarray(0, 16))).toBe(v.id);
@@ -91,6 +95,20 @@ describe('envelope vectors', () => {
       expect(o?.kek.toString('hex')).toBe(r.kekHex);
       expect(o?.contentKey.toString('hex')).toBe(r.contentKeyHex);
       expect(o?.inner).toBe(v.innerText);
+    }
+  });
+
+  it('the key commitment is SHA-256 over the documented prefix and the content key', () => {
+    const parts = JSON.parse(v.envelope) as { kc: string };
+    expect(v.commitmentPrefix).toBe(`demo-envelope:3|commit|${v.headerText}|`);
+    expect(v.slotInfo).toBe('demo-envelope:3|slot|<n>:<reader agreement point>');
+    for (const r of v.readers) {
+      const hash = createHash('sha256')
+        .update(v.commitmentPrefix)
+        .update(Buffer.from(r.contentKeyHex, 'hex'))
+        .digest();
+      expect(hash.toString('hex')).toBe(v.commitmentHex);
+      expect(base64url(hash)).toBe(parts.kc);
     }
   });
 

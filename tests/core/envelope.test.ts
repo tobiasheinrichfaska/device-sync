@@ -55,8 +55,8 @@ const authors = (...ms: Member[]): Record<string, string> =>
   Object.fromEntries(ms.map((m) => [m.device, m.sig]));
 
 const partsOf = (e: Envelope): EnvelopeParts => {
-  const { day, eph, iv, ct, k } = JSON.parse(e.text) as EnvelopeParts;
-  return { day, eph, iv, ct, k };
+  const { day, eph, iv, kc, ct, k } = JSON.parse(e.text) as EnvelopeParts;
+  return { day, eph, iv, kc, ct, k };
 };
 
 describe('sealing and opening (cases of both earlier implementations)', () => {
@@ -596,7 +596,7 @@ describe('tamper sweeps', () => {
     const p = partsOf(e);
     let tried = 0;
     let refused = 0;
-    for (const name of ['day', 'eph', 'iv', 'ct'] as const) {
+    for (const name of ['day', 'eph', 'iv', 'kc', 'ct'] as const) {
       const value = p[name];
       for (let i = 0; i < value.length; i += 1) {
         const ch = value[i] as string;
@@ -653,6 +653,7 @@ describe('ids', () => {
       { ...p, day: '2026-11-11' },
       { ...p, eph: `${p.eph.slice(0, 5)}B${p.eph.slice(6)}` },
       { ...p, iv: `${p.iv.slice(0, 5)}B${p.iv.slice(6)}` },
+      { ...p, kc: `${p.kc.slice(0, 5)}B${p.kc.slice(6)}` },
       { ...p, ct: `${p.ct.slice(0, 5)}B${p.ct.slice(6)}` },
       { ...p, k: p.k.slice(1) },
       { ...p, k: [...p.k].reverse() },
@@ -678,6 +679,7 @@ describe('ids', () => {
       day: DAY,
       eph: `B${'A'.repeat(86)}`,
       iv: 'A'.repeat(16),
+      kc: 'A'.repeat(43),
       ct: 'A'.repeat(40),
       k: Array.from({ length: 8 }, () => 'A'.repeat(64)),
     };
