@@ -89,7 +89,7 @@ export interface DirectOptions {
   /** Milliseconds on a clock that never jumps back (`performance.now`). */
   readonly clock: () => number;
   /** The caller's session id: 16 lower-case hex characters, drawn by the caller. */
-  readonly session?: string;
+  readonly session?: string | undefined;
   readonly handshake?: Partial<HandshakeConfig>;
   /** How long to wait for candidates before the description is taken as it is (default 5000). */
   readonly gatherWaitMs?: number;
@@ -165,7 +165,7 @@ export class DirectConnection {
   }
 
   private afterChange(): void {
-    this.o.timers.clear(this.deadlineHandle);
+    if (this.deadlineHandle !== undefined) this.o.timers.clear(this.deadlineHandle);
     this.deadlineHandle = undefined;
     const s = this.state;
     if (s.phase === 'failed' || s.phase === 'closed') {

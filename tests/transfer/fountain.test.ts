@@ -388,7 +388,8 @@ describe('boundaries and limits', () => {
     const seqs = [...Array.from({ length: 1_024 }, (_, i) => i).filter((i) => i % 7 !== 0)];
     for (let q = 1_024; q < 1_400; q++) seqs.push(q);
     feed(rx, s, seqs);
-    expect(rx.payload()).toEqual({ ok: true, value: p });
+    const got = rx.payload();
+    expect(got.ok && Buffer.from(got.value).equals(Buffer.from(p))).toBe(true);
   }, 60_000);
 
   it('refuses what is over the limits', () => {

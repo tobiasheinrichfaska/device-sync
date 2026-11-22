@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust, post, relay, push and browser exist)
+# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push and browser exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -12,12 +12,12 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 | **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                         |
 | **post**     | Mailbox for sealed envelopes carried by third devices                                                    |
 | **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring               |
-| **transfer** | Fountain QR, tone acknowledgement, direct connection (optional entry points)                             |
+| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)  |
 | **push**     | Web Push encryption and VAPID, ring request, service worker template                                     |
 | **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
 
 `core`, `log`, `trust`, `post` and `push` are pure: no clock, no randomness, no I/O (both are passed
-in) and testable without a UI. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
+in) and testable without a UI. `transfer` is pure apart from its adapter over an injected WebRTC peer. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
 
 ## Parameters instead of constants
 
@@ -183,5 +183,24 @@ type).
 - **`leader`, `listener`**: one listener per app and device. Web Locks when available; otherwise a heartbeat
   election over a channel whose rules are a pure state machine (leases measured by the clock, claims ordered by
   time and id), tested by seeded simulations of joins, crashes, releases and pauses.
-- **`media`**: `CameraSource`, `AudioSource`, `AudioSink` interfaces for the later `transfer` layer; an adapter
+- **`media`**: `CameraSource`, `AudioSource`, `AudioSink` interfaces for the `transfer` layer; an adapter
   that maps permission errors to codes and always stops every track; strict readers of frames and samples.
+
+## Transfer layer (`src/transfer/`, `docs/transfer.md`)
+
+Optional: device-to-device transfer without a server of its own, carrying **opaque bytes** and authenticating
+nothing (the app puts a sealed file or a session of the core layer inside). Pure except for what is passed in:
+transfer id, session id, time (a monotonic clock), timers, the peer factory (`RTCPeerConnection`), camera and
+audio (the interfaces of `browser/media`). Depends on `core` (markers, base64url) and on `browser` only for
+the timer type and the sample limit.
+
+- **`fountain`**: a payload becomes an endless sequence of frames; the receiver collects them in any order with
+  loss and repeats (GF(2) elimination, bit sets) and checks a payload check value and the zero padding when it
+  is complete. Strict frame reader, limits, deterministic from the transfer id.
+- **`tone`**: a message of 1 to 16 octets as tones (framed, checked, sent twice), pure samples in and out at any
+  rate the plan fits; a streaming listener for a microphone. The two plans are data.
+- **`direct`**: offer and answer texts with a strict SDP reader (a data channel only), a pure handshake state
+  machine (deadlines are parameters, a text that does not fit changes nothing), chunking and reassembly of
+  messages with limits, and a thin adapter over an injected peer (inbox from the first moment, queued sends with
+  backpressure, `drain`, protocol violations close the connection). Network helpers keep the kind of an address,
+  never the address.
