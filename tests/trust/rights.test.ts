@@ -143,7 +143,7 @@ describe("the earlier implementation's acceptance cases", () => {
 
   it("the order is the app's rank: without one, by device id, the LB edit is asked first and refused with its code", async () => {
     const { direct, batch } = await sameBatch();
-    const noRank = { ...rights(() => direct), rank: undefined } as RightsOptions<TrustView>;
+    const { rank: _rank, ...noRank } = rights(() => direct);
     const read = await readChanges(
       emptyOf(recv),
       batch,
@@ -459,7 +459,7 @@ describe('cost', () => {
     const got: unknown[] = [];
     checkRights(emptyReplica('recv'), twice, {
       view: () => 0,
-      mayWrite: (_a, c, state) => {
+      mayWrite: (_a, _c, state) => {
         got.push(findRecord(state, 'plan', 'r')?.fields.n?.value);
         return true;
       },

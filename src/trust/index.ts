@@ -73,3 +73,19 @@ export type {
 } from './invitation.ts';
 export { computeTrustSync, rightsView, trustView } from './view.ts';
 export type { TrustView } from './view.ts';
+export {
+  REMOVAL_LIMITS,
+  judgeRemovalNotice,
+  looksLikeRemovalNotice,
+  readRemovalNotice,
+  removalMark,
+  removalNotice,
+  writeRemovalNotice,
+} from './removal.ts';
+export type {
+  NoticeFailure,
+  NoticeReason,
+  NoticeResult,
+  NoticeVerdict,
+  RemovalReadOptions,
+} from './removal.ts';
