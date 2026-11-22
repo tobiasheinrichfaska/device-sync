@@ -1,0 +1,121 @@
+{
+  "description": "A fixed session between two devices with throw-away keys. Derive the keys from the private JWKs as docs/wire-format.md \"Session\" says and decrypt every message; every other implementation must get the same bytes.",
+  "appId": "demo",
+  "devices": {
+    "a": {
+      "device": "device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "staticPrivateJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "vWJ1Z1W3qvn9BPvIXbKBgnzMzXcmaruW3ZXBiaq9Cgw",
+        "y": "Cn69pK-Lb6teUbQMIUmWPqkj8_uFuNQ8A4pzFB4Ov7o",
+        "d": "RKvtx3-WqBEgMxx5qPh_Vr2I5s3jTe5LAcaOxERgH0k"
+      },
+      "staticPoint": "BL1idWdVt6r5_QT7yF2ygYJ8zM13Jmq7lt2VwYmqvQoMCn69pK-Lb6teUbQMIUmWPqkj8_uFuNQ8A4pzFB4Ov7o",
+      "ephemeralPrivateJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "mgMZ1LZ9gUp4_2FZBEJMobfzT9E_ooDKrqlmApDyK_Q",
+        "y": "7EZORLziCk_OuV1jhJPhmod1m7VVKeujsu1pKIqovdM",
+        "d": "VBgIjRnNsu2lISh0BpwgxTgSicVKXoMte2CnfdJDGeQ"
+      }
+    },
+    "b": {
+      "device": "device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "staticPrivateJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "nXl_dvZRBTk9wNs0PWDb6V-8799nVrdHoOW7pk6geUg",
+        "y": "C0JmYNaKr1ezEjOBMF2EIOEFgCJyLYPCszFkSX8pEU0",
+        "d": "zZ4fOI2jtiaxcpHK1fdu1KkAX7p4Q_6zHqMG0kbOgAc"
+      },
+      "staticPoint": "BJ15f3b2UQU5PcDbND1g2-lfvO_fZ1a3R6Dlu6ZOoHlIC0JmYNaKr1ezEjOBMF2EIOEFgCJyLYPCszFkSX8pEU0",
+      "ephemeralPrivateJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "_TFktmgqWjUwQzk0dN7z03K3FkoGzyTM2eql7pXla_Y",
+        "y": "ufAc_skORKKUnBOTxOJCH9CY_qaCHgdjfXQPAv7jEME",
+        "d": "_M7q2ZLC0YghyarZzJBm4CscfaCo4RkKEyZOHwR5Fb8"
+      }
+    }
+  },
+  "hellos": {
+    "a": "{\"m\":\"demo-hello:2\",\"device\":\"device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"eph\":\"BJoDGdS2fYFKeP9hWQRCTKG380_RP6KAyq6pZgKQ8iv07EZORLziCk_OuV1jhJPhmod1m7VVKeujsu1pKIqovdM\"}",
+    "b": "{\"m\":\"demo-hello:2\",\"device\":\"device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"eph\":\"BP0xZLZoKlo1MEM5NHTe89NytxZKBs8kzNnqpe6V5Wv2ufAc_skORKKUnBOTxOJCH9CY_qaCHgdjfXQPAv7jEME\"}"
+  },
+  "lo": "a",
+  "transcript": "demo-session:2|39:device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1|87:BL1idWdVt6r5_QT7yF2ygYJ8zM13Jmq7lt2VwYmqvQoMCn69pK-Lb6teUbQMIUmWPqkj8_uFuNQ8A4pzFB4Ov7o|87:BJoDGdS2fYFKeP9hWQRCTKG380_RP6KAyq6pZgKQ8iv07EZORLziCk_OuV1jhJPhmod1m7VVKeujsu1pKIqovdM|39:device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2|87:BJ15f3b2UQU5PcDbND1g2-lfvO_fZ1a3R6Dlu6ZOoHlIC0JmYNaKr1ezEjOBMF2EIOEFgCJyLYPCszFkSX8pEU0|87:BP0xZLZoKlo1MEM5NHTe89NytxZKBs8kzNnqpe6V5Wv2ufAc_skORKKUnBOTxOJCH9CY_qaCHgdjfXQPAv7jEME",
+  "saltHex": "f07e7331815d43c745b0f01c5621e0a6988b631890d8641aec11d54c81d84ccd",
+  "secrets": {
+    "ee": "e0439aa06df18c4b174112c2f720717e4841d0ce7fc87962c713b82093d1813d",
+    "loEphemeralHiStatic": "c571d33664d28bff9df2231b4abc57e79215aff7f009ca5ba653519693e7d856",
+    "loStaticHiEphemeral": "ec97e151ea48069e5c3fa0f1261a6a9af8113b952c74da90d6f8de608f47d7a7",
+    "ss": "d080f8855a0236e645069e52014e19972097607bffaa9cc5e8b3e2e874aa006f"
+  },
+  "ikmHex": "e0439aa06df18c4b174112c2f720717e4841d0ce7fc87962c713b82093d1813dc571d33664d28bff9df2231b4abc57e79215aff7f009ca5ba653519693e7d856ec97e151ea48069e5c3fa0f1261a6a9af8113b952c74da90d6f8de608f47d7a7d080f8855a0236e645069e52014e19972097607bffaa9cc5e8b3e2e874aa006f",
+  "keysBySender": {
+    "device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": "fdabd1b501bb71236c7fe995cb0ac80a7a2e43eaadd704bde9d6457249f9d2a2",
+    "device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": "edd498f94bfab93fcfbab651b257d381f800caa0591b289be8e2844b28364d23"
+  },
+  "messages": [
+    {
+      "from": "a",
+      "n": 0,
+      "plaintextHex": "6669727374206d6573736167652066726f6d2041",
+      "aad": "demo-msg:2|39:device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1|39:device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2|0",
+      "nonceHex": "000000000000000000000000",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":0,\"ct\":\"JbwZlaO15f5RrDagOcoigHD9auR0DJ3YMdfsd3Ewpe27XsGt\"}"
+    },
+    {
+      "from": "a",
+      "n": 1,
+      "plaintextHex": "000102fdfeff",
+      "aad": "demo-msg:2|39:device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1|39:device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2|1",
+      "nonceHex": "000000000000000000000001",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":1,\"ct\":\"HgM-97CEw7CfwqqMIMTCxI7zdP5O6A\"}"
+    },
+    {
+      "from": "b",
+      "n": 0,
+      "plaintextHex": "616e737765722066726f6d20422c207769746820756d6c617574733a20c3a420c3b620c3bc",
+      "aad": "demo-msg:2|39:device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2|39:device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1|0",
+      "nonceHex": "000000000000000000000000",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":0,\"ct\":\"b6UVQzvKfGUw0KLpiS7uxZnqm4iRd1wp26UEy_Dthf3eSdn1HQGbULH1gRiB4Lt081f2Zpc\"}"
+    },
+    {
+      "from": "a",
+      "n": 2,
+      "plaintextHex": "",
+      "aad": "demo-msg:2|39:device-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1|39:device-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2|2",
+      "nonceHex": "000000000000000000000002",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":2,\"ct\":\"e85jggpvG2OuJzO7bC1elg\"}"
+    }
+  ],
+  "mustRefuse": [
+    {
+      "name": "A's first message fed back to A (reflection)",
+      "to": "a",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":0,\"ct\":\"JbwZlaO15f5RrDagOcoigHD9auR0DJ3YMdfsd3Ewpe27XsGt\"}"
+    },
+    {
+      "name": "B's message fed back to B (reflection)",
+      "to": "b",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":0,\"ct\":\"b6UVQzvKfGUw0KLpiS7uxZnqm4iRd1wp26UEy_Dthf3eSdn1HQGbULH1gRiB4Lt081f2Zpc\"}"
+    },
+    {
+      "name": "counter 1 before counter 0 (gap)",
+      "to": "b",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":1,\"ct\":\"HgM-97CEw7CfwqqMIMTCxI7zdP5O6A\"}"
+    },
+    {
+      "name": "other app marker",
+      "to": "b",
+      "wire": "{\"m\":\"other-msg:2\",\"n\":0,\"ct\":\"JbwZlaO15f5RrDagOcoigHD9auR0DJ3YMdfsd3Ewpe27XsGt\"}"
+    },
+    {
+      "name": "ciphertext changed in its first character",
+      "to": "b",
+      "wire": "{\"m\":\"demo-msg:2\",\"n\":0,\"ct\":\"AbwZlaO15f5RrDagOcoigHD9auR0DJ3YMdfsd3Ewpe27XsGt\"}"
+    }
+  ]
+}

@@ -38,6 +38,19 @@ in) and testable without a UI. Only `browser` and `relay` touch `fetch`, Indexed
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.
 
+## Session and encrypted file (core layer)
+
+`core/session.ts` and `core/file.ts` move bytes between two devices that know each other's agreement key
+(the trust layer verified it; the caller passes it in). The **session** is symmetric (both sides send a
+`hello` with a fresh ephemeral key; keys from ephemeral x ephemeral, the two crossed terms and static x
+static; one key per direction; the counter in clear is the nonce; strictly in order; forward secret against
+a later leak of the static keys). The **file** is one message for one named recipient (fresh ephemeral key,
+recipient's static key, sender's static key). Both bind the app id and both identities into the key and
+the authenticated data, read every text strictly (one spelling) and answer refusals as codes. The payload is
+opaque bytes; the app decides what is in it. What they do NOT protect (metadata, truncation, replay of a
+file, forging by the holder of the recipient's key, no ratchet) is listed in `docs/wire-format.md`. The
+envelope (one message for several readers, sender hidden from the carrier) is a later piece.
+
 ## Trust derivation (trust layer)
 
 Trust is never stored; it is derived from the log and the devices met in person, and the result is a
@@ -57,8 +70,8 @@ is every device of the potential trust without a key conflict, trusted or not, s
 is held back for ever by changes it cannot check. The package does not revoke a removed device's ability to write; the
 app stops exchanging with it at the transport, treats data authored by removed devices as untrusted
 at presentation (`deviceStatus`), restricts writes with `mayWrite` / `allowFinalDelete` (hooks that
-look at state can differ between devices), and the encryption layer (not built yet) must rotate the
-group keys on removal. A removed device stays removed: coming back means a new device id.
+look at state can differ between devices), and the encryption layer (session and file exist; group keys
+and the envelope do not) must rotate the group keys on removal. A removed device stays removed: coming back means a new device id.
 
 `derive.ts` holds one engine (a generator that asks for signature checks): `computeTrust` and
 `deviceKeySource` run it with real checks, `addDevice` and `removeDevice` run it on this device's own

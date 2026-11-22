@@ -1,7 +1,7 @@
 # Critical User Paths — device-sync
 
 **Purpose:** Core workflows that must not break. Audit validates these end-to-end.
-Status: core (partly) and log (model, signing, exchange protocol) implemented; the rest is the target.
+Status: core (incl. session and encrypted file), log (model, signing, exchange protocol) and trust implemented; the rest is the target.
 
 ## Library behaviour (target)
 
@@ -9,7 +9,9 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 - [x] **A forged or altered change is refused** (log layer: `tests/log/signing.test.ts`; exchange: `tests/log/exchange.test.ts`, the session ends with `forged` and the receiver's replica is unchanged) — a bad signature, a change under a foreign device id or a change outside its data set is judged false and nothing of that exchange is taken
 - [ ] **An envelope opens only for its readers** — a carrier sees neither sender, readers nor their number
 - [x] **A new device joins by invitation** and is trusted only through the vouching strategy of the app (`tests/trust/fullstack.test.ts`: invitation text exchange, entry in the log, signed changes of the new device judged by a third replica with `readChanges` + `deviceKeySource`; a device nobody vouches for stays pending; chains, removal, forged entries; tamper sweeps and fuzzing of the three parsers in `tests/trust/meeting|invitation|fuzz.test.ts`)
-- [~] **Two apps never share bytes** (covered: markers, check code and change signatures per appId; key derivation pending) — different `appId`s give different signatures and keys
+- [x] **Two apps never share bytes** (markers, check code, change signatures, session keys and file keys per appId: `tests/core/session.test.ts`, `tests/core/file.test.ts`, `tests/core/secure.test.ts`) — different `appId`s give different signatures and keys
+- [x] **A session carries messages in order and nothing else** (`tests/core/session.test.ts`: tamper sweeps, replay, duplication, reordering, dropping, reflection, counter limit; `tests/vectors-session.test.ts`) — an altered, replayed, reordered, dropped or reflected message is refused and changes no state
+- [x] **A file opens only for its recipient, only from its sender** (`tests/core/file.test.ts`, `tests/vectors-session.test.ts`)
 - [ ] **A relay client survives errors** — it acts on the error code, never on its text
 
 | Path                          | Impact                              | Audit Check                                    |
@@ -48,3 +50,9 @@ Status: core (partly) and log (model, signing, exchange protocol) implemented; t
 | One signature, one spelling; check code unambiguous | malleable signatures, colliding codes | `tests/core/review2.test.ts` (N1 low-s, N2 length-prefixed text) |
 | Other implementations get the same bytes | cross-language ambiguity | `tests/vectors.test.ts` + `tests/vectors/*.json` |
 | Parsers are strict            | a lenient parser opens a hole       | `tests/log/parse.test.ts`: seeded fuzzing (6000 inputs per parser), limit boundaries, depth bombs |
+| A nonce never repeats under one key | AES-GCM breaks if a nonce repeats | `tests/core/session.test.ts` (counter = nonce, 3000 messages, concurrent seals, one ephemeral pair one session, counter limit that never wraps); the file has a fresh key per file (600 files) |
+| The two session directions never share a key | a message could be reflected, a keystream reused | `tests/core/session.test.ts` (reflection at counter 0, same plaintext at the same counter in both directions), mutation: same key for both directions fails 5 tests |
+| An invalid point is never used | off-curve points leak or break the key | `tests/core/session.test.ts` (zero, (1,1), x at the field prime, infinity, wrong length, second spelling), `tests/core/file.test.ts` |
+| A stolen static key does not let anyone speak as the peer | key-compromise impersonation | `tests/core/session.test.ts` (crossed terms, with the independent derivation as control) |
+| A later leak of both static keys does not open a recorded session | forward secrecy | `tests/core/session.test.ts` (shows that the static-computable values are not enough; not a proof) |
+| The end-to-end texts are held to the document and an independent derivation | another implementation could not interoperate | `tests/vectors-session.test.ts`, `tests/core/docs-session.test.ts`, `tests/core/reference.ts` (`node:crypto` only) |

@@ -738,6 +738,263 @@ in it are only as trustworthy as the channel it travels on (compare the check co
 `mayInvite(inviter, role)` decides who may invite which role; a private device must have a role the
 app's `privateRoles` predicate allows.
 
+# Wire format: end-to-end layer (session and encrypted file)
+
+Two ways to move data between two devices that know each other's agreement key (the trust layer
+verified it; this layer never decides whom to trust): a **session** (many messages, both directions,
+forward secret) and an **encrypted file** (one message to one named recipient, handed over by any
+channel). Implemented in `src/core/session.ts` and `src/core/file.ts`; the vectors in
+`tests/vectors/session.json` and `tests/vectors/file.json` are checked by `tests/vectors-session.test.ts`
+against the code AND against an independent derivation written from this text with `node:crypto`.
+
+## Common rules
+
+- **Primitives.** ECDH P-256 (the shared secret is the 32-byte big-endian X coordinate, as WebCrypto
+  `deriveBits` gives it), HKDF-SHA-256 (RFC 5869: extract with the salt, expand with the info text to 32
+  bytes), AES-256-GCM (12-byte nonce, 16-byte tag appended to the ciphertext, additional data as below),
+  SHA-256. Nothing else.
+- **Markers.** `marker(appId, kind, 2)` with the kinds `hello`, `msg`, `session` and `file` (the app id
+  enters every key, salt and additional data, so two apps never share bytes).
+- **Length-prefixed fields.** `<n>:<text>` where `<n>` is the decimal UTF-8 byte length of the text.
+  Every variable field of a hashed or authenticated text is written this way, so no field can be shifted
+  into another.
+- **Device ids** (this layer's own rule; the trust layer may be stricter): 1 to 200 UTF-16 units, no
+  control character (`\p{Cc}`), no format character (`\p{Cf}`), no lone surrogate, no `|`.
+- **Points.** A public key travels as the uncompressed point, 65 bytes, canonical unpadded base64url, 87
+  characters (the spare bits of the last character are zero: one point has one text). Every point is
+  checked **on the curve** before it is used (WebCrypto `importKey` refuses the point at infinity (it has
+  no uncompressed form), a point with a coordinate at or above the field prime and any point off the
+  curve); the cofactor of P-256 is 1.
+- **One spelling.** Every text is compact JSON with its members in exactly the documented order. A reader
+  parses the text, rebuilds the text from the parsed values and accepts only an exact match, so a second
+  spelling (spaces, other member order, escapes, a duplicate or unknown member, a `__proto__` member,
+  non-canonical base64url, a leading zero in a number, a byte order mark) is refused. Reading is bounded
+  before parsing (the cap is a function of the limits) and answers `undefined`, never throws.
+- **Refusals are codes** (`reason`), never sentences, and a refusal leaves every state exactly as it was.
+
+## Session
+
+Both sides send a `hello` at the same moment (no initiator, no responder), each with a **fresh ephemeral
+ECDH P-256 key**. The session key comes from the ephemeral keys and the two static keys together.
+
+### Hello
+
+```
+{"m":"<appId>-hello:2","device":"<device id>","eph":"<ephemeral point>"}
+```
+
+It carries no signature: it need not be secret and cannot be forged into a session, because a session
+made from a changed hello does not interoperate with the real peer (first message fails). The caller
+passes the peer's hello, the peer's expected device id and the peer's static agreement point `dh` (from
+the trust layer). The reader checks the text only; the point is checked on the curve when the session is
+opened.
+
+### Opening (refusals, in this order)
+
+The caller supplies: `appId`, own `device` and agreement pair, the `peer` (`device`, `dh`), the own
+ephemeral pair and both hellos. Refused with a code: `bad-own`, `bad-peer`, `bad-hello` (a hello that is
+not exactly device and eph), `own-hello-mismatch` (own hello has another device id or another point than
+the ephemeral pair), `wrong-device` (the peer's hello names another device than `peer.device`),
+`same-device`, `mirrored` (both hellos carry the same ephemeral point: a message fed back), `bad-peer-key`
+(not a point), `same-key` (the peer's static point is this device's own), `bad-point` (the peer's
+ephemeral point is not on the curve), `ephemeral-reused`, `crypto-failure`. An invalid app id is a
+`TypeError` (programming error). **One ephemeral pair opens one session**: the same pair would derive the
+same keys again and a second session would repeat nonces; the library remembers the pair (in memory, per
+process) and refuses a second use. A refused opening leaves the pair usable (it is marked only when a
+session is made).
+
+### Key derivation
+
+Let `lo` be the device whose id is smaller by **UTF-8 byte order** (not UTF-16 order, not locale order) and
+`hi` the other. Write `S` for static, `E` for ephemeral keys. Four 32-byte ECDH secrets, concatenated in this
+order, are the input keying material (128 bytes):
+
+```
+ee = ECDH(E_lo, E_hi)      ephemeral x ephemeral   (forward secrecy)
+t1 = ECDH(E_lo, S_hi)      lo's ephemeral key with hi's static key
+t2 = ECDH(S_lo, E_hi)      lo's static key with hi's ephemeral key
+ss = ECDH(S_lo, S_hi)      static x static
+ikm = ee || t1 || t2 || ss
+```
+
+Both sides compute the same four values (each has the secret half of one operand of each).
+
+Transcript text and **HKDF salt** (SHA-256 of the UTF-8 text):
+
+```
+<appId>-session:2|<n>:<lo device>|<n>:<lo dh>|<n>:<lo eph>|<n>:<hi device>|<n>:<hi dh>|<n>:<hi eph>
+```
+
+It binds the app, both device ids, both static public keys and both ephemeral public keys. **HKDF info**
+for the key that protects messages SENT BY device `X`: `<appId>-session:2|key|<n>:<X>`. So there are two
+keys, one per direction.
+
+### Messages
+
+```
+{"m":"<appId>-msg:2","n":<counter>,"ct":"<base64url of ciphertext || tag>"}
+```
+
+- `n` is the sender's counter, 0, 1, 2, ... a canonical decimal safe integer, in clear.
+- **Nonce** (12 bytes): four zero bytes, then `n` as an 8-byte big-endian integer. AES-GCM nonces are
+  therefore **counter-based**: unique under one key because each direction has its own key and the counter
+  only grows. Nothing random is involved in sealing.
+- **Additional data** (UTF-8): `<appId>-msg:2|<n>:<sender>|<n>:<receiver>|<counter>`.
+- **Plaintext**: opaque bytes (the app decides what they are, e.g. UTF-8 JSON). At most `maxPlaintextBytes`.
+  Empty is allowed (the ciphertext is then the 16-byte tag).
+- **Receiving**: the next accepted counter is the number of messages accepted so far. A message with a
+  smaller counter is `replayed`, with a larger counter `gap` (something was dropped or reordered), at or
+  above `maxMessages` `counter-limit`; these are decided from the clear counter before any decryption, and
+  again after it (two openings of one message at the same moment: one wins, the other is `replayed`).
+  Other refusals: `bad-message` (not exactly the spelling above, too long, ciphertext shorter than a tag
+  or longer than `maxPlaintextBytes + 16`), `bad-seal` (the tag does not verify). **Only a message that
+  verifies moves the counter**, so refused or forged input never changes the session and the real next
+  message is still accepted.
+- **Sending**: the counter is taken (before the first `await`, so concurrent seals get different numbers)
+  and moves; at `maxMessages` sealing is refused (`counter-limit`) and nothing moves; a plaintext over the
+  limit is `too-large`. The counter never wraps.
+- `confirmed` becomes true when the first message of the peer has verified: only then is it shown that the
+  peer holds the keys.
+
+### Limits
+
+| Limit               | Default                            | Meaning                                                            |
+| ------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `maxPlaintextBytes` | 1 MiB (1 048 576 bytes)            | Largest plaintext per message; the wire text is capped from it     |
+| `maxMessages`       | 2^32 (4 294 967 296) per direction | Messages under one key; clamped to 1 to 2^32 whatever is asked for |
+
+A partial override (`resolveSessionLimits`) takes own, safe, non-negative integers only; anything else
+keeps the default. The longest wire text is `ceil((maxPlaintextBytes + 16) * 4 / 3) + 256` characters
+(`maxSealedChars`); a hello is at most 1024 characters.
+
+### What the session protects, and what it does not
+
+Protected (each point has tests, `tests/core/session.test.ts`):
+
+- **Confidentiality and integrity** of every message against anyone who lacks the static secrets and the
+  ephemeral secrets; every message carries a GCM tag over its counter, sender and receiver.
+- **Both identities are bound.** The keys depend on the app id, both device ids, both static points and
+  both hellos. A third party that knows every public key and both hellos cannot make a message either side
+  accepts; a renamed hello, a wrong peer key, a wrong device id or another app id gives a session that
+  cannot talk.
+- **Implicit mutual authentication**: only the holders of the two static secrets can derive the keys.
+  Explicit confirmation is only the first message that verifies (`confirmed`); a `hello` alone proves
+  nothing.
+- **Key-compromise impersonation resistance** (the crossed terms `t1`, `t2`): someone who stole device A's
+  static secret still cannot speak as B to A in a new session, because the term that combines A's
+  ephemeral key with B's static key needs A's ephemeral secret or B's static secret.
+- **Forward secrecy** against a later leak of BOTH static secrets: the recorded session stays closed
+  because `ee` needs an ephemeral secret, which only exists for the length of the session. The test shows
+  that the values computable from the static secrets and the public hellos are not enough and that the
+  ephemeral term is; it is not a proof of the property. It holds only while the ephemeral pair is
+  discarded: the pair is a non-extractable WebCrypto key that lives as long as the caller (or the garbage
+  collector) keeps it, and nothing can wipe memory in JavaScript. **There is no forward secrecy within a
+  session**: the leak of a session key opens that session, both directions.
+- **Replay, duplication, reordering, dropping and reflection** inside a session are refused: counters are
+  strictly in order and the two directions use different keys (a message sent by A, fed back to A, never
+  verifies; the sender id in the additional data is a second guard).
+- Bounded memory and work per message (the wire text is capped before parsing, one AES-GCM operation).
+
+Not protected:
+
+- **Metadata.** The hello carries the device id in clear; messages show their length (plaintext + 16
+  bytes), their number and timing; the transport sees who talks to whom. There is no padding.
+- **Truncation.** A dropped LAST message cannot be noticed (no closing message); a dropped earlier one shows
+  as `gap` when a later one arrives, and then the stream cannot continue: start a new session. Nothing is
+  retransmitted here.
+- **The hello is not authenticated by itself.** An attacker on the path can replace it; the result is a
+  session that fails at its first message (denial of service), never one that accepts forged messages.
+- **No post-compromise security and no ratchet**: one pair of keys per session, up to 2^32 messages per
+  direction; then open a new session.
+- **State is in memory only.** The counters are the nonces: never restore a session from storage with an
+  older counter (it would repeat nonces). After a restart make new hellos. The "one pair, one session" guard
+  is per process; the caller must never keep an ephemeral pair across a restart.
+- **No deniability claim and no signatures**: the peer has the same keys and could have made any message
+  itself; nobody else can be convinced who wrote one. A cloned device (the same keys on two devices) is not
+  detected here.
+- **Whom to trust** is not decided here: `peer.dh` must come from the trust layer. An endpoint compromise,
+  a compromised random generator and quantum attacks on P-256 are out of scope.
+
+## Encrypted file
+
+One message for one named recipient, as bytes: it can be mailed, put on a stick or sent in a chat. It is
+made for exactly one `to` device by exactly one `from` device and opens only for that device, only from that
+sender.
+
+### Layout
+
+UTF-8 bytes of one compact JSON text (members in this order, no byte order mark):
+
+```
+{"m":"<appId>-file:2","from":"<device id>","to":"<device id>","eph":"<ephemeral point>","iv":"<12 bytes>","ct":"<base64url of ciphertext || tag>"}
+```
+
+`iv` is exactly 12 bytes (16 characters), `ct` at least 16 bytes, at most `maxPlaintextBytes + 16`; `from`
+and `to` are valid device ids and differ; the whole file is at most `maxFileBytes` bytes (a function of
+`maxPlaintextBytes`; a reader refuses longer input before it parses).
+
+### Key derivation
+
+The sender makes a fresh ephemeral ECDH P-256 key `E` for this file and discards its secret half.
+`S_from` and `S_to` are the static keys. Input keying material (64 bytes):
+
+```
+ikm = ECDH(E, S_to) || ECDH(S_from, S_to)
+```
+
+(the recipient computes `ECDH(S_to, E)` and `ECDH(S_to, S_from)`). **Header text**, used both as the HKDF
+salt (SHA-256 of it) and as the AES-GCM additional data (UTF-8):
+
+```
+<appId>-file:2|<n>:<from>|<n>:<to>|<n>:<from dh>|<n>:<to dh>|<n>:<eph>
+```
+
+HKDF info: `<appId>-file:2|key`. The key is therefore unique per file and bound to app, both ids, both static
+points and the ephemeral point; changing any header member (or swapping members of two files) breaks the
+tag.
+
+**Nonce.** The `iv` is 12 random bytes the caller supplies (`random`; sealing itself uses no randomness
+besides WebCrypto's key generation). Every file has a key of its own, so a repeated nonce would still be
+harmless; the caller should nevertheless pass fresh random bytes.
+
+### Opening (refusals)
+
+`bad-own`, `bad-sender` (the sender's id or point is malformed), `not-a-file` (not exactly the spelling above,
+another marker or app id, too long, `from` equals `to`), `wrong-recipient` (`to` is not this device),
+`wrong-sender` (`from` is not the named sender), `bad-point` (the ephemeral or the sender's point is not on
+the curve), `cannot-open` (the tag does not verify: not from this sender, not for this key, or altered).
+`readFileHeader` reads `{from, to}` without any key, to find the sender's key before opening.
+Making a file is refused with `bad-own`, `bad-recipient`, `same-device`, `same-key`, `bad-random`
+(not 12 bytes), `bad-input` (payload is not bytes), `too-large`, `crypto-failure`.
+
+### Limits
+
+| Limit               | Default                   | Meaning                                                       |
+| ------------------- | ------------------------- | ------------------------------------------------------------- |
+| `maxPlaintextBytes` | 32 MiB (33 554 432 bytes) | Largest payload; a larger file is refused before it is parsed |
+
+### What the file protects, and what it does not
+
+Protected: confidentiality and integrity of the payload for the named recipient; a file only the recipient
+opens, only from the named sender (the static-static term authenticates the sender to the recipient); a file
+of another app never opens; the sender's later compromise does not open its old files (the ephemeral secret
+is gone).
+
+Not protected:
+
+- **No forward secrecy against the recipient's static key**: whoever gets it opens every file ever made for
+  it (the test `tests/core/file.test.ts` shows it).
+- **Recipient key compromise allows forging**: whoever holds the recipient's static secret can make a file
+  that opens as "from A" for any A (the sender is authenticated by a Diffie-Hellman value the recipient can
+  compute itself). There is no signature, so a file proves nothing to a third party (deniable).
+- **No replay protection and no freshness**: the same file can be fed twice, later or never; the app must
+  be idempotent (the change log is). The `iv` and the ephemeral key identify a file but nothing is
+  remembered here.
+- **Metadata**: sender and recipient ids and the app id are in clear in the header; the size shows
+  (payload + 16 bytes, base64url); no padding.
+- **Payload meaning**: bytes only. Whether they make sense (and what to do with a stale file) is for the app.
+  What was said for the session about endpoint compromise, trust and P-256 holds here too.
+
 # Cross-language notes
 
 What another implementation (another language, another JSON library) must do to produce and accept
@@ -804,3 +1061,11 @@ collection, id, kind, check[, prev]}`, a `redacted` change counting as `set`; `p
   their links, the signed erased version of the second, a `stand` with `tips`, a stand with a changed tip,
   two signed versions of one number (a double signature: what `proveEquivocation` proves) and the
   tampered variants that must be refused or not proven.
+- Session and encrypted file (`session.json`, `file.json`): every text is the exact JSON spelling
+  documented in "Wire format: end-to-end layer" (a reader accepts only that spelling); fields in hashed and
+  authenticated texts are length-prefixed by their UTF-8 byte length; the order of two device ids is the
+  byte order of their UTF-8 forms; ECDH secrets are the 32-byte X coordinates; the session nonce is the
+  counter (four zero bytes, then 8 bytes big endian). `session.json` holds throw-away private keys (JWK),
+  both hellos, the transcript text, the four secrets, the salt, the two keys and four messages; `file.json`
+  holds one file with the header text, the salt, the secret input and the key. A port derives the keys
+  from the JWKs and must reproduce every hex value and decrypt every message.

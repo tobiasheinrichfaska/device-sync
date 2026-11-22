@@ -1,0 +1,26 @@
+{
+  "description": "One encrypted file with throw-away keys. Derive the key from the recipient private JWK and the header text as docs/wire-format.md \"Encrypted file\" says and decrypt it.",
+  "appId": "demo",
+  "sender": {
+    "device": "device-f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+    "staticPoint": "BP2fasHXk4dBQdguS-NqDkbtN0uUcE3L35cvbBhZ7ii8M6DyBUUBjlTsBnl2ljmRnT51rL6L7aDn1BnnoC518Mk"
+  },
+  "recipient": {
+    "device": "device-f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2",
+    "staticPrivateJwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "y6FE7SA0PIAHmZkrdzuxz_lB1cFsQNoMI5tqgWZ89mw",
+      "y": "aBXP2xjaUk_McCP64XhY77zD__13DMzcfjbmHJqncPc",
+      "d": "NLm4LW4fBFUhvSthtS_4Qk9MA-meUG2RgQFiRjlckpg"
+    },
+    "staticPoint": "BMuhRO0gNDyAB5mZK3c7sc_5QdXBbEDaDCObaoFmfPZsaBXP2xjaUk_McCP64XhY77zD__13DMzcfjbmHJqncPc"
+  },
+  "file": "{\"m\":\"demo-file:2\",\"from\":\"device-f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1\",\"to\":\"device-f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2\",\"eph\":\"BE6afyiPRaLaM86iCXZCvfZwPWSTgmyrQ7Z10ZEBwDLr7d8vtuyB4LCBpw9tMIc_8Um2IoUiDrXH1vWYQiUtarM\",\"iv\":\"EBESExQVFhcYGRob\",\"ct\":\"EL4Kk0Xv4kj-sIoz2vsoaMvB6jI7-wfd6U6PtFXarU5nMQETw-5yhxDjMtQ\"}",
+  "headerText": "demo-file:2|39:device-f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1|39:device-f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2|87:BP2fasHXk4dBQdguS-NqDkbtN0uUcE3L35cvbBhZ7ii8M6DyBUUBjlTsBnl2ljmRnT51rL6L7aDn1BnnoC518Mk|87:BMuhRO0gNDyAB5mZK3c7sc_5QdXBbEDaDCObaoFmfPZsaBXP2xjaUk_McCP64XhY77zD__13DMzcfjbmHJqncPc|87:BE6afyiPRaLaM86iCXZCvfZwPWSTgmyrQ7Z10ZEBwDLr7d8vtuyB4LCBpw9tMIc_8Um2IoUiDrXH1vWYQiUtarM",
+  "saltHex": "9728c47168b288b6f4c343c48308cfd3ae6a96882b7122c2b7abcc73a270e291",
+  "ikmHex": "3f1506ce98489c9d990858d200b4869a6ccf02ea2c169772b4ebe8cfaa87ca990ceabadb367d433d632c0c879a6e7d6e00859f3e20b54071a1f7fa66c0d7d27c",
+  "keyHex": "318c4ef24215e56df0de986f5678566b402b4b570537d988f480c13e72ec78d8",
+  "nonceHex": "101112131415161718191a1b",
+  "plaintextHex": "7b2268656c6c6f223a2266696c65222c226e223a5b312c322c335d7d"
+}

@@ -28,12 +28,16 @@ export async function publicKeys(keys: DeviceKeys): Promise<PublicKeys> {
   return { sig: await raw(keys.signing.publicKey), dh: await raw(keys.agreement.publicKey) };
 }
 
-/** A P-256 point as it travels: 65 bytes, uncompressed (first byte 4), 87 base64url characters. */
+/**
+ * A P-256 point as it travels: 65 bytes, uncompressed (first byte 4), 87 base64url characters in
+ * the canonical spelling (the two spare bits of the last character are zero, so one point has one
+ * text: a second spelling would give the same key a second check code).
+ */
 export function isPoint(text: unknown): text is string {
   if (typeof text !== 'string' || text.length !== 87) return false;
   try {
     const bytes = fromBase64url(text);
-    return bytes.length === 65 && bytes[0] === 4;
+    return bytes.length === 65 && bytes[0] === 4 && base64url(bytes) === text;
   } catch {
     return false;
   }

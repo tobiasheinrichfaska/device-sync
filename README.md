@@ -5,12 +5,12 @@ device, end-to-end encrypted transfer (files, envelopes, sessions), device trust
 client for a simple message relay, and Web Push helpers. The package is app-independent: record
 shapes, merge rules on a business level, rights, texts and UI belong to your app.
 
-> **Not security-reviewed by a human — do not use for real data.** Four adversarial AI review rounds have been run; the latest still found high-severity availability and consistency issues, which are being fixed. There is no end-to-end encryption yet.
+> **Not security-reviewed by a human — do not use for real data.** Four adversarial AI review rounds have been run; the latest still found high-severity availability and consistency issues, which are being fixed. The end-to-end session and the encrypted file are new and have had no review round yet.
 
 **Status: work in progress (0.0.0).** Implemented and exported so far: the `core` layer (canonical
-JSON, check values, device keys, signatures), the `log` layer (change log, merge, signing and judging,
+JSON, check values, device keys, signatures, end-to-end session, encrypted file), the `log` layer (change log, merge, signing and judging,
 the exchange protocol with strict parsers and partial sessions) and the `trust` layer (device list,
-derived trust, meeting code, invitation). Not yet there: envelope, session encryption, relay client,
+derived trust, meeting code, invitation). Not yet there: envelope, relay client,
 push, transfer, browser. The package is not published to npm. See
 [docs/architecture.md](docs/architecture.md) for the layers.
 
