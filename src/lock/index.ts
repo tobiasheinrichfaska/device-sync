@@ -1,0 +1,47 @@
+export {
+  DAY_MS,
+  LOCK_LIMITS,
+  LOCK_STATE_VERSION,
+  isSourceName as isLockSource,
+  lockCheck,
+  lockMarkWiped,
+  lockObserve,
+  lockRemoved,
+  lockSetDays,
+  lockStart,
+  lockStatus,
+  readLockState,
+  recordContact as recordLockContact,
+  storeLockState,
+} from './state.ts';
+export type {
+  ContactInfo as LockContactInfo,
+  ContactResult as LockContactResult,
+  NotCounted as LockNotCounted,
+  LockCheck,
+  LockConfig,
+  LockHooks,
+  LockKind,
+  LockReason,
+  LockRefusal,
+  LockResult,
+  LockState,
+  LockStatus,
+  WipeOn,
+} from './state.ts';
+export {
+  MAX_ORDER_CHARS,
+  ORDER_VERSION,
+  applyLockOrder,
+  readLockOrder,
+  signLockOrder,
+} from './order.ts';
+export type {
+  ApplyOrderParams,
+  ApplyOrderResult,
+  LockOp,
+  LockOrder,
+  OrderRefusal,
+  SignOrderParams,
+  SignedOrder,
+} from './order.ts';
