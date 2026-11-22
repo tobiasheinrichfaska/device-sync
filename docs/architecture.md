@@ -5,17 +5,18 @@ approval, texts, storage names) is passed in as a parameter, a hook or a strateg
 
 ## Layers
 
-| Layer        | Content                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------- |
-| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out |
-| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange  |
-| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                         |
-| **post**     | Mailbox for sealed envelopes carried by third devices                                                    |
-| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring               |
-| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)  |
-| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt   |
-| **push**     | Web Push encryption and VAPID, ring request, service worker template                                     |
-| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
+| Layer        | Content                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out             |
+| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange              |
+| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                                     |
+| **post**     | Mailbox for sealed envelopes carried by third devices                                                                |
+| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring                           |
+| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)              |
+| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt               |
+| **sync**     | Driver: pull rounds of the log exchange over the relay, sealed per trusted device; removal enforced at the transport |
+| **push**     | Web Push encryption and VAPID, ring request, service worker template                                                 |
+| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                            |
 
 `core`, `log`, `trust`, `post`, `group` and `push` are pure: no clock, no randomness, no I/O (both are passed
 in) and testable without a UI. `transfer` is pure apart from its adapter over an injected WebRTC peer. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
@@ -226,3 +227,11 @@ per-message key derived from the epoch key, with epoch, key id, data set and the
 authenticated. The state is a plain value with a strict reader. A removed device keeps every key it
 already held; there is no forward secrecy and no post-compromise security beyond rotation
 (`docs/group.md`).
+
+## Sync driver (`src/sync/`, `docs/sync.md`)
+
+Wires log, trust, core (sealed file) and relay: `syncOnce(config, state, replica, nowMs)` collects, filters
+at the transport (only trusted peers, the sender is the key that opens the file, never the relay's `from`),
+judges and merges, answers asks, asks present peers and drops bounded batches. Recipients come from the
+trust derivation; a removal stops outbound at once and is reported (`newlyRemoved`); `groupAdapter.ts` is
+the only file that touches the group layer.
