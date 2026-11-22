@@ -8,7 +8,13 @@
 //  - what comes in is filtered at the transport, before any merge: first by the relay id (a bound on
 //    what is assembled), then by the sender named in the file and the key that opens it;
 //  - the sender is the device whose agreement key opens the file, never the relay's `from`.
-import { openFile, readFileHeader, sealFile, type DeviceKeys } from '../core/index.ts';
+import {
+  openFile,
+  readFileHeader,
+  sealFile,
+  type DeviceKeys,
+  type Envelope,
+} from '../core/index.ts';
 import {
   deviceNeverErase,
   computeTrust,
@@ -18,7 +24,24 @@ import {
   type Trust,
   type TrustOptions,
 } from '../trust/index.ts';
+import { channelKeys } from '../channel/keys.ts';
 import {
+  EMPTY_MAILBOX,
+  addEnvelopes,
+  applyReceipts,
+  keepNewest,
+  mailboxCheck,
+  postDone,
+  postStart,
+  postStep,
+  pruneMailbox,
+  readPostMessage,
+  readReceipts,
+  resolvePostLimits,
+  type Mailbox,
+} from '../post/index.ts';
+import {
+  emptyReplica,
   insertSignatures,
   onSyncMessage,
   receiveJudged,
@@ -49,12 +72,15 @@ import {
   frameOf,
   peerState,
   queuedFrames,
+  setPeer,
   type PeerState,
   type Queued,
   type Round,
+  type SetPeerState,
   type SyncState,
 } from './state.ts';
-import { looksLikePacket, readPacket, writePacket } from './wire.ts';
+import type { PostConfig, SetConfig, SyncHeld } from './sets.ts';
+import { isSetName, looksLikePacket, readPacket, writePacket, writePostPacket } from './wire.ts';
 
 /** What the step needs from the relay client (a `RelayClient` is one; a test may wrap it). */
 export type SyncRelay = Pick<RelayClient, 'deviceId' | 'collectAll' | 'drop'>;
@@ -76,6 +102,14 @@ export interface SyncConfig {
   readonly limits?: Partial<SyncLimits>;
   /** Overrides of the log layer's limits (not the round budget, which `limits` sets). */
   readonly log?: Partial<LogLimits>;
+  /**
+   * More data sets besides the main one (`trust.dataSet`), by name, with the app's rules for each. A set
+   * that is registered here is exchanged with every peer its `mayExchange` allows; its replica comes in
+   * `held.sets` and goes out in `SyncResult.sets`. A set not registered is refused (`unknown-set`).
+   */
+  readonly sets?: Readonly<Record<string, SetConfig>>;
+  /** Envelope traffic: with it the mailbox travels with the sync (`held.mailbox`); without it none does. */
+  readonly post?: PostConfig;
 }
 
 export interface SyncEvent {
@@ -113,6 +147,10 @@ export interface SyncReport {
   readonly dropped: Readonly<Record<string, number>>;
   /** Files of trusted devices that are not sync packets. */
   readonly passed: readonly PassedFile[];
+  /** Envelopes that came into the mailbox at this step (open the ones for this device: `openChannel`). */
+  readonly received: readonly Envelope[];
+  /** Envelopes dropped from the mailbox at this step because an allowed receipt covered them. */
+  readonly acknowledged: number;
   readonly events: readonly SyncEvent[];
   /** Something is still going on (a round, queued frames, a cut answer): call again soon. */
   readonly busy: boolean;
@@ -123,7 +161,16 @@ export interface SyncReport {
 }
 
 export type SyncResult =
-  | { readonly ok: true; readonly replica: Replica; readonly report: SyncReport }
+  | {
+      readonly ok: true;
+      /** The main replica. */
+      readonly replica: Replica;
+      /** The registered sets' replicas (every registered name, changed or not). */
+      readonly sets: Readonly<Record<string, Replica>>;
+      /** The mailbox (pruned, with what came in; the one given when there is no `cfg.post`). */
+      readonly mailbox: Mailbox;
+      readonly report: SyncReport;
+    }
   | { readonly ok: false; readonly reason: 'busy' | 'not-enrolled' | 'bad-input' };
 
 const vectorKey = (v: VersionVector): string => JSON.stringify(Object.entries(v).sort());
@@ -147,17 +194,42 @@ export async function syncOnce(
   state: SyncState,
   replica: Replica,
   nowMs: number,
+  held: SyncHeld = {},
 ): Promise<SyncResult> {
   if (state.busy) return { ok: false, reason: 'busy' };
-  if (!Number.isFinite(nowMs) || replica.device !== cfg.own.device) {
+  if (
+    !Number.isFinite(nowMs) ||
+    !Number.isFinite(new Date(nowMs).getTime()) ||
+    replica.device !== cfg.own.device ||
+    !registryOk(cfg, held)
+  ) {
     return { ok: false, reason: 'bad-input' };
   }
   state.busy = true;
   try {
-    return await run(cfg, state, replica, nowMs);
+    return await run(cfg, state, replica, nowMs, held);
   } finally {
     state.busy = false;
   }
+}
+
+/** The registry is well-formed: names of one spelling, not the main set, at most `maxSets`; held replicas are this device's. */
+function registryOk(cfg: SyncConfig, held: SyncHeld): boolean {
+  const names = Object.keys(cfg.sets ?? {});
+  if (names.length > resolveSyncLimits(cfg.limits).maxSets) return false;
+  if (names.some((n) => !isSetName(n) || n === cfg.trust.dataSet)) return false;
+  return Object.entries(held.sets ?? {}).every(
+    ([n, r]) => names.includes(n) && r.device === cfg.own.device,
+  );
+}
+
+interface SetCtx {
+  readonly name: string;
+  readonly isMain: boolean;
+  replica: Replica;
+  judged: JudgeOptions;
+  readonly options: SessionOptions;
+  readonly config: SetConfig | undefined;
 }
 
 async function run(
@@ -165,6 +237,7 @@ async function run(
   state: SyncState,
   start: Replica,
   now: number,
+  held: SyncHeld,
 ): Promise<SyncResult> {
   const { appId, dataSet } = cfg.trust;
   const lim = resolveSyncLimits(cfg.limits);
@@ -199,22 +272,26 @@ async function run(
     maxSessionChanges: changes,
     maxSessionChars: chars,
   });
-  const sessionOptions: SessionOptions = {
+  const optionsFor = (approval: ApprovalOptions | undefined): SessionOptions => ({
     limits: roundLimits(lim.answerChanges, lim.answerChars),
     signedOnly: true,
     deviceId: valid.deviceId,
-    ...(cfg.approval ? { approval: cfg.approval } : {}),
-  };
+    ...(approval ? { approval } : {}),
+  });
   const parseOptions = {
     limits: roundLimits(lim.answerChanges, lim.answerChars),
     deviceId: valid.deviceId,
   };
+  const postCfg = cfg.post;
+  const postLim = resolvePostLimits(postCfg?.limits);
+  const today = new Date(now).toISOString().slice(0, 10);
 
   // 1. Own changes get their signatures (an unsigned change is never sent: numbering is gapless).
-  let replica = insertSignatures(
+  const mainReplica = insertSignatures(
     start,
     await signOwnChanges(appId, own.keys.signing.privateKey, start, dataSet),
   );
+  let replica = mainReplica;
 
   // 2. Trust and roster, from the replica as it stands.
   let direct = directNow();
@@ -230,16 +307,73 @@ async function run(
     }),
     ...cfg.judge,
   });
-  let judged = judge();
   let trust = await computeTrust(replica, direct, cfg.trust);
   let trustedFor = replica;
   let roster = buildRoster(trust, own.device, ownRelay);
+
+  // The data sets: the main one and the registered ones (keys for the others come from the same trust).
+  const ctxs = new Map<string, SetCtx>();
+  ctxs.set(dataSet, {
+    name: dataSet,
+    isMain: true,
+    replica,
+    judged: judge(),
+    options: optionsFor(cfg.approval),
+    config: undefined,
+  });
+  const otherKeys = channelKeys(() => trust, {
+    device: own.device,
+    publicKey: own.keys.signing.publicKey,
+  }).keys;
+  for (const [name, config] of Object.entries(cfg.sets ?? {})) {
+    const held0 = held.sets?.[name] ?? emptyReplica(own.device);
+    const signed = insertSignatures(
+      held0,
+      await signOwnChanges(appId, own.keys.signing.privateKey, held0, name),
+    );
+    ctxs.set(name, {
+      name,
+      isMain: false,
+      replica: signed,
+      judged: {
+        appId,
+        dataSet: name,
+        ownDevice: own.device,
+        keys: otherKeys,
+        ...config.judge,
+      },
+      options: optionsFor(config.approval),
+      config,
+    });
+  }
+  const mainCtx = ctxs.get(dataSet) as SetCtx;
   const refresh = async (): Promise<void> => {
-    if (trustedFor === replica) return;
+    if (trustedFor === mainCtx.replica) return;
+    replica = mainCtx.replica;
     trust = await computeTrust(replica, direct, cfg.trust);
     trustedFor = replica;
     roster = buildRoster(trust, own.device, ownRelay);
   };
+  const may = (ctx: SetCtx, peer: Peer): boolean => {
+    try {
+      return ctx.config?.mayExchange ? ctx.config.mayExchange(peer, trust) === true : true;
+    } catch {
+      return false;
+    }
+  };
+  const mayCarry = (peer: Peer): boolean => {
+    try {
+      return postCfg?.mayCarry ? postCfg.mayCarry(peer, trust) === true : true;
+    } catch {
+      return false;
+    }
+  };
+
+  // The mailbox: pruned once per step, kept only when envelope traffic is configured.
+  let mailbox: Mailbox = held.mailbox ?? EMPTY_MAILBOX;
+  if (postCfg) mailbox = pruneMailbox(appId, mailbox, today, postLim) ?? mailbox;
+  const received: Envelope[] = [];
+  let acknowledged = 0;
 
   let applied = 0;
   let collectedCount = 0;
@@ -264,8 +398,11 @@ async function run(
     const newlyRemoved = trust.removed.filter((id) => !state.removed.has(id));
     state.removed = new Set(trust.removed);
     const busy =
-      [...state.peers.values()].some((p) => p.round !== undefined || p.again) ||
-      [...state.outbox.values()].some((q) => q.length > 0);
+      [...state.peers.values()].some(
+        (p) =>
+          p.post.round !== undefined ||
+          [...p.sets.values()].some((sp) => sp.round !== undefined || sp.again),
+      ) || [...state.outbox.values()].some((q) => q.length > 0);
     const report: SyncReport = {
       trust,
       selfRemoved: trust.selfRemoved,
@@ -278,12 +415,16 @@ async function run(
       messagesSent,
       dropped,
       passed,
+      received,
+      acknowledged,
       events,
       busy,
       ...(relayFailure ? { relay: relayFailure } : {}),
       nextMs: nextDelay(busy),
     };
-    return { ok: true, replica, report };
+    const sets: Record<string, Replica> = {};
+    for (const [name, ctx] of ctxs) if (!ctx.isMain) sets[name] = ctx.replica;
+    return { ok: true, replica: mainCtx.replica, sets, mailbox, report };
   };
 
   const forget = (device: string): void => {
@@ -313,11 +454,18 @@ async function run(
 
   // 4. Time passes: rounds and queued frames the relay would have dropped by now.
   for (const [device, p] of state.peers) {
-    if (p.round && now - p.round.startedMs >= lim.roundMs) {
-      p.round = undefined;
-      p.again = true;
-      p.endedMs = now;
-      note('round-timeout', device);
+    for (const sp of p.sets.values()) {
+      if (sp.round && now - sp.round.startedMs >= lim.roundMs) {
+        sp.round = undefined;
+        sp.again = true;
+        sp.endedMs = now;
+        note('round-timeout', device);
+      }
+    }
+    if (p.post.round && now - p.post.round.startedMs >= lim.roundMs) {
+      p.post.round = undefined;
+      p.post.endedMs = now;
+      note('round-timeout', device, 'post');
     }
   }
   for (const [device, list] of state.outbox) {
@@ -358,11 +506,13 @@ async function run(
   for (const message of collected) {
     await takeIn(message);
   }
+  takeReceipts();
 
   // 7. Ask the present peers that are due.
   await refresh();
   if (relayFailure === undefined || relayFailure.class === 'retry') {
     await askPeers();
+    await askPost();
   }
 
   // 8. Drop what is queued.
@@ -406,23 +556,30 @@ async function run(
       if (passed.length < lim.maxPassedPerStep) passed.push({ from: peer.device, file });
       return;
     }
-    const packet = readPacket(appId, opened.payload, parseOptions);
+    const packet = readPacket(appId, opened.payload, parseOptions, postCfg?.limits);
     if (!packet) return note('bad-packet', peer.device);
+    if (packet.kind === 'post') return takePost(peer, packet.round, transfer, packet.text);
+    const ctx = ctxs.get(packet.set);
+    if (!ctx) return note('unknown-set', peer.device);
+    if (!may(ctx, peer)) return note('set-not-allowed', peer.device);
     const m = packet.message;
-    if (m.t === 'stand') return answerAsk(peer, packet.round, m);
-    if (m.t === 'changes') return takeAnswer(peer, packet.round, transfer, packet.raw, m.last);
+    if (m.t === 'stand') return answerAsk(ctx, peer, packet.round, m);
+    if (m.t === 'changes') {
+      return takeAnswer(ctx, peer, packet.round, transfer, packet.raw, m.last);
+    }
     if (m.t === 'overflow') return note('stand-too-large', peer.device);
     return note('ignored-message', peer.device, m.t);
   }
 
   async function takeAnswer(
+    ctx: SetCtx,
     peer: Peer,
     roundId: string,
     transfer: string,
     raw: unknown,
     last: boolean,
   ): Promise<void> {
-    const ps = state.peers.get(peer.device);
+    const ps = state.peers.get(peer.device)?.sets.get(ctx.name);
     const round = ps?.round;
     if (!ps || !round || round.id !== roundId) return note('stale-round', peer.device);
     if (round.seen.has(transfer)) return note('duplicate-piece', peer.device);
@@ -433,7 +590,7 @@ async function run(
       ps.endedMs = now;
       return note('round-overflow', peer.device);
     }
-    const step = await receiveJudged(round.session, replica, raw, judged, sessionOptions);
+    const step = await receiveJudged(round.session, ctx.replica, raw, ctx.judged, ctx.options);
     if (step.session.refusal) {
       ps.round = undefined;
       ps.endedMs = now;
@@ -444,8 +601,8 @@ async function run(
       );
     }
     round.session = step.session;
-    if (step.replica !== replica) {
-      replica = step.replica;
+    if (step.replica !== ctx.replica) {
+      ctx.replica = step.replica;
     }
     if (!last) return;
     applied += step.session.taken;
@@ -457,24 +614,25 @@ async function run(
   }
 
   async function answerAsk(
+    ctx: SetCtx,
     peer: Peer,
     roundId: string,
     ask: Extract<SyncMessage, { t: 'stand' }>,
   ): Promise<void> {
-    const ps = peerState(state, peer.device);
+    const ps = setPeer(state, peer.device, ctx.name);
     if (ps.answered.includes(roundId)) return note('duplicate-ask', peer.device);
     ps.asks = ps.asks.filter((t) => now - t < lim.askWindowMs);
     if (ps.asks.length >= lim.maxAsksPerWindow) return note('ask-rate-limited', peer.device);
     ps.asks.push(now);
     ps.answered.push(roundId);
     if (ps.answered.length > lim.rememberedAsks) ps.answered.shift();
-    if (isAhead(ask.vector, replica.vector)) ps.ahead = true;
+    if (isAhead(ask.vector, ctx.replica.vector)) ps.ahead = true;
 
     let changes = lim.answerChanges;
     let chars = lim.answerChars;
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      const answer = onSyncMessage(startSession(replica).session, replica, ask, {
-        ...sessionOptions,
+      const answer = onSyncMessage(startSession(ctx.replica).session, ctx.replica, ask, {
+        ...ctx.options,
         limits: roundLimits(changes, chars),
       });
       if (answer.session.refusal) {
@@ -484,7 +642,7 @@ async function run(
           answer.session.subjectDevice ?? answer.session.refusalReason,
         );
       }
-      const packets = answer.send.map((msg) => writePacket(appId, roundId, msg));
+      const packets = answer.send.map((msg) => writePacket(appId, roundId, ctx.name, msg));
       const estimate = packets.reduce(
         (n, p) => n + estimateFrames(p.length, FRAMING_LIMITS.partBytes),
         0,
@@ -497,6 +655,158 @@ async function run(
       chars = Math.max(1, chars >> 1);
     }
     note('answer-too-large', peer.device);
+  }
+
+  // ── envelope traffic ────────────────────────────────────────────────────────────────────────
+
+  /** The bounded view the exchange works on: the newest envelopes only (frames of one answer are bounded). */
+  function viewOf(box: Mailbox): Mailbox {
+    return keepNewest(box, lim.maxExchangeEnvelopes);
+  }
+
+  /** What a step of the exchange brought into the view goes into the full mailbox (quota counted once). */
+  function intake(added: readonly Envelope[], from: string): void {
+    if (added.length === 0) return;
+    const out = addEnvelopes(appId, mailbox, added, today, { from, limits: postLim });
+    if (out.ok) {
+      mailbox = out.mailbox;
+      received.push(...out.added);
+    }
+  }
+
+  async function takePost(
+    peer: Peer,
+    roundId: string,
+    transfer: string,
+    text: string,
+  ): Promise<void> {
+    if (!postCfg) return note('post-disabled', peer.device);
+    if (!mayCarry(peer)) return note('set-not-allowed', peer.device, 'post');
+    const pp = peerState(state, peer.device).post;
+    const message = readPostMessage(appId, text, postLim);
+    if (!message) return note('bad-packet', peer.device);
+    let round = pp.round;
+    let reply: string[] = [];
+    if (!round || round.id !== roundId) {
+      // only a `days` message opens an exchange; two that open at once: the smaller id wins
+      if (message.t !== 'days') return note('stale-round', peer.device);
+      if (pp.answered.includes(roundId)) return note('duplicate-ask', peer.device);
+      if (round && roundId > round.id) return note('stale-round', peer.device);
+      pp.asks = pp.asks.filter((t) => now - t < lim.askWindowMs);
+      if (pp.asks.length >= lim.maxAsksPerWindow) return note('ask-rate-limited', peer.device);
+      pp.asks.push(now);
+      pp.answered.push(roundId);
+      if (pp.answered.length > lim.rememberedAsks) pp.answered.shift();
+      const begun = postStart({ appId, mailbox: viewOf(mailbox), today, limits: postLim });
+      if (!begun.ok) return note('post-refused', peer.device, begun.reason);
+      round = {
+        id: roundId,
+        startedMs: now,
+        session: begun.session,
+        view: begun.mailbox,
+        pieces: 0,
+        seen: new Set(),
+      };
+      pp.round = round;
+      reply = [...begun.send];
+    }
+    if (round.seen.has(transfer)) return note('duplicate-piece', peer.device);
+    round.seen.add(transfer);
+    round.pieces += 1;
+    if (round.pieces > lim.maxPiecesPerRound) {
+      pp.round = undefined;
+      pp.endedMs = now;
+      return note('round-overflow', peer.device, 'post');
+    }
+    const step = postStep({
+      appId,
+      session: round.session,
+      mailbox: round.view,
+      message: text,
+      today,
+      from: peer.device,
+      limits: postLim,
+    });
+    if (!step.ok) {
+      pp.round = undefined;
+      pp.endedMs = now;
+      return note('post-refused', peer.device, step.reason);
+    }
+    round.session = step.session;
+    round.view = step.mailbox;
+    intake(step.added, peer.device);
+    reply.push(...step.send);
+    if (postDone(step.session)) {
+      pp.round = undefined;
+      pp.endedMs = now;
+    }
+    if (reply.length > 0) {
+      const packets = reply.map((t) => writePostPacket(appId, roundId, t));
+      if (!(await sealAndQueue(peer, packets, lim.maxFramesPerAnswer))) {
+        pp.round = undefined;
+        pp.endedMs = now;
+      }
+    }
+  }
+
+  /** Receipts of the app's data drop what they cover (strict reader; the app says who may acknowledge). */
+  function takeReceipts(): void {
+    if (!postCfg?.receipts || mailbox.items.length === 0) return;
+    let raw: unknown;
+    try {
+      raw = postCfg.receipts(new Map([...ctxs].map(([name, ctx]) => [name, ctx.replica])));
+    } catch {
+      return;
+    }
+    const receipts = readReceipts(raw, postLim);
+    if (!receipts) return;
+    const out = applyReceipts(
+      appId,
+      mailbox,
+      receipts,
+      (by) => {
+        try {
+          return postCfg.mayAcknowledge?.(by, trust) === true;
+        } catch {
+          return false;
+        }
+      },
+      today,
+      postLim,
+    );
+    if (out.ok) {
+      mailbox = out.mailbox;
+      acknowledged += out.dropped;
+    }
+  }
+
+  async function askPost(): Promise<void> {
+    if (!postCfg) return;
+    const presentIds = new Set(present);
+    let check: string | undefined;
+    for (const peer of roster.peers.values()) {
+      if (!presentIds.has(peer.relayId) || !mayCarry(peer)) continue;
+      const pp = peerState(state, peer.device).post;
+      if (pp.round) continue;
+      check ??= mailboxCheck(appId, mailbox);
+      const due =
+        pp.askedCheck !== check || pp.endedMs === undefined || now - pp.endedMs >= lim.idleRoundMs;
+      if (!due) continue;
+      const begun = postStart({ appId, mailbox: viewOf(mailbox), today, limits: postLim });
+      if (!begun.ok) continue;
+      const id = Array.from(cfg.random(8), (b) => b.toString(16).padStart(2, '0')).join('');
+      const packets = begun.send.map((t) => writePostPacket(appId, id, t));
+      if (!(await sealAndQueue(peer, packets, lim.maxFramesPerAnswer))) continue;
+      pp.round = {
+        id,
+        startedMs: now,
+        session: begun.session,
+        view: begun.mailbox,
+        pieces: 0,
+        seen: new Set(),
+      };
+      pp.askedCheck = check;
+    }
   }
 
   // ── outbound ────────────────────────────────────────────────────────────────────────────────
@@ -542,37 +852,45 @@ async function run(
   }
 
   async function askPeers(): Promise<void> {
-    const here = vectorKey(replica.vector);
     const presentIds = new Set(present);
-    for (const peer of roster.peers.values()) {
-      if (!presentIds.has(peer.relayId)) continue;
-      const ps = peerState(state, peer.device);
-      if (ps.round) continue;
-      const due =
-        ps.ahead ||
-        ps.again ||
-        ps.askedVector !== here ||
-        ps.endedMs === undefined ||
-        now - ps.endedMs >= lim.idleRoundMs;
-      if (!due) continue;
-      const started = startSession(replica);
-      const id = Array.from(cfg.random(8), (b) => b.toString(16).padStart(2, '0')).join('');
-      const first = started.send[0];
-      if (!first) continue;
-      if (!(await sealAndQueue(peer, [writePacket(appId, id, first)], lim.maxFramesPerAnswer))) {
-        continue;
+    for (const ctx of ctxs.values()) {
+      const here = vectorKey(ctx.replica.vector);
+      for (const peer of roster.peers.values()) {
+        if (!presentIds.has(peer.relayId) || !may(ctx, peer)) continue;
+        const ps: SetPeerState = setPeer(state, peer.device, ctx.name);
+        if (ps.round) continue;
+        const due =
+          ps.ahead ||
+          ps.again ||
+          ps.askedVector !== here ||
+          ps.endedMs === undefined ||
+          now - ps.endedMs >= lim.idleRoundMs;
+        if (!due) continue;
+        const started = startSession(ctx.replica);
+        const id = Array.from(cfg.random(8), (b) => b.toString(16).padStart(2, '0')).join('');
+        const first = started.send[0];
+        if (!first) continue;
+        if (
+          !(await sealAndQueue(
+            peer,
+            [writePacket(appId, id, ctx.name, first)],
+            lim.maxFramesPerAnswer,
+          ))
+        ) {
+          continue;
+        }
+        const round: Round = {
+          id,
+          startedMs: now,
+          session: started.session,
+          pieces: 0,
+          seen: new Set(),
+        };
+        ps.round = round;
+        ps.ahead = false;
+        ps.again = false;
+        ps.askedVector = here;
       }
-      const round: Round = {
-        id,
-        startedMs: now,
-        session: started.session,
-        pieces: 0,
-        seen: new Set(),
-      };
-      ps.round = round;
-      ps.ahead = false;
-      ps.again = false;
-      ps.askedVector = here;
     }
   }
 

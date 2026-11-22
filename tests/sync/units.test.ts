@@ -8,6 +8,8 @@ import {
   syncOnce,
   totals,
   writePacket,
+  writePostPacket,
+  isSetName,
 } from '../../src/sync/index.ts';
 import type { Trust, TrustedDevice } from '../../src/trust/index.ts';
 import { APP, TRUST, freshRandom, note, prng, rounds, step, text, world } from './helpers.ts';
@@ -66,11 +68,13 @@ describe('roster: who gets content comes from the trust derivation', () => {
 
 describe('packet reader', () => {
   const stand = { t: 'stand' as const, vector: { 'device-a': 2 }, tips: {} };
-  const bytes = writePacket(APP, '0123456789abcdef', stand);
+  const bytes = writePacket(APP, '0123456789abcdef', 'main', stand);
   it('reads what it writes', () => {
     expect(looksLikePacket(APP, bytes)).toBe(true);
     expect(readPacket(APP, bytes)).toMatchObject({
+      kind: 'log',
       round: '0123456789abcdef',
+      set: 'main',
       message: { t: 'stand' },
     });
   });
@@ -158,3 +162,35 @@ describe('a device that is not on the device list', () => {
 void TRUST;
 void freshRandom;
 void rounds;
+
+describe('packet reader: sets and the mailbox shape', () => {
+  const post = writePostPacket(
+    APP,
+    '0123456789abcdef',
+    `{"m":"${APP}-post:2","t":"days","days":{"2026-11-10":"AAAAAAAAAAAAAAAAAAAAAA"}}`,
+  );
+  it('reads a mailbox packet and a set name of one spelling', () => {
+    expect(readPacket(APP, post)).toMatchObject({ kind: 'post', round: '0123456789abcdef' });
+    for (const ok of ['main', 'times:p-1', 'a.b_c', 'A1']) expect(isSetName(ok), ok).toBe(true);
+    for (const bad of ['', ' x', 'x y', ':x', '-x', 'x'.repeat(81), 'é', 1, undefined]) {
+      expect(isSetName(bad), String(bad)).toBe(false);
+    }
+  });
+  it('refuses a mailbox text that is not a mailbox message, and both member lists mixed', () => {
+    const text = new TextDecoder().decode(post);
+    const enc = (t: string): Uint8Array => new TextEncoder().encode(t);
+    expect(readPacket(APP, enc(text.replaceAll('days', 'dayz')))).toBeUndefined();
+    expect(readPacket(APP, enc(text.replace('"post":', '"s":"main","post":')))).toBeUndefined();
+    expect(readPacket(APP, enc(text.replace('"post":"', '"post":5,"x":"')))).toBeUndefined();
+  });
+  it('never throws on 3000 damaged mailbox packets', () => {
+    const r = prng(9);
+    for (let i = 0; i < 3000; i += 1) {
+      const copy = Uint8Array.from(post);
+      for (let k = 0; k < 1 + Math.floor(r() * 3); k += 1)
+        copy[Math.floor(r() * copy.length)] = Math.floor(r() * 256);
+      const cut = r() < 0.3 ? copy.subarray(0, Math.floor(r() * copy.length)) : copy;
+      expect(() => readPacket(APP, cut)).not.toThrow();
+    }
+  });
+});

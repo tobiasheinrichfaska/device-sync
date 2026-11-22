@@ -40,12 +40,15 @@ describe('docs/sync.md against the code', () => {
   });
 
   it('the packet text is the one written in the document', () => {
-    expect(DOC).toContain('{"m":"<app>-sync:1","r":"<16 hex>","msg":{...}}');
+    expect(DOC).toContain('{"m":"<app>-sync:2","r":"<16 hex>","s":"<set>","msg":{...}}');
+    expect(DOC).toContain('{"m":"<app>-sync:2","r":"<16 hex>","post":"<message text>"}');
     const text = new TextDecoder().decode(
-      writePacket('demo', '0123456789abcdef', { t: 'stand', vector: {}, tips: {} }),
+      writePacket('demo', '0123456789abcdef', 'main', { t: 'stand', vector: {}, tips: {} }),
     );
-    expect(text.startsWith(`{"m":"${syncMark('demo')}","r":"0123456789abcdef","msg":`)).toBe(true);
-    expect(syncMark('demo')).toBe('demo-sync:1');
+    expect(
+      text.startsWith(`{"m":"${syncMark('demo')}","r":"0123456789abcdef","s":"main","msg":`),
+    ).toBe(true);
+    expect(syncMark('demo')).toBe('demo-sync:2');
   });
 
   it('the figures quoted from the relay are the relay limits', () => {

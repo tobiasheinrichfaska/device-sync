@@ -8,6 +8,7 @@ import {
   type FramingLimits,
 } from '../relay/index.ts';
 import type { Session } from '../log/index.ts';
+import type { Mailbox, PostSession } from '../post/index.ts';
 import type { SyncCode } from './limits.ts';
 
 export interface Round {
@@ -19,9 +20,10 @@ export interface Round {
   readonly seen: Set<string>;
 }
 
-export interface PeerState {
+/** What this device remembers of one data set with one peer. */
+export interface SetPeerState {
   round?: Round | undefined;
-  /** Times of asks of this peer that were answered or refused (sliding window). */
+  /** Times of asks of this peer for this set that were answered or refused (sliding window). */
   asks: number[];
   /** Round ids of asks already answered (an identical repeat is ignored). */
   answered: string[];
@@ -29,10 +31,36 @@ export interface PeerState {
   ahead: boolean;
   /** The last round took something or was cut: ask again at once. */
   again: boolean;
-  /** The vector of this device when it last asked this peer (a change since then is news to tell). */
+  /** The vector of this set when it last asked this peer (a change since then is news to tell). */
   askedVector?: string;
   /** When the last round ended (or failed). */
   endedMs?: number;
+}
+
+/** A mailbox exchange with one peer (`postStart` / `postStep`), over the exchange's own view of the mailbox. */
+export interface PostRound {
+  readonly id: string;
+  readonly startedMs: number;
+  session: PostSession;
+  /** The newest envelopes the exchange works on (a bounded view of the mailbox). */
+  view: Mailbox;
+  pieces: number;
+  readonly seen: Set<string>;
+}
+
+export interface PostPeerState {
+  round?: PostRound | undefined;
+  asks: number[];
+  answered: string[];
+  /** The mailbox check when this device last asked this peer (a changed mailbox is news to tell). */
+  askedCheck?: string;
+  endedMs?: number;
+}
+
+export interface PeerState {
+  /** Per data set name. */
+  readonly sets: Map<string, SetPeerState>;
+  readonly post: PostPeerState;
 }
 
 export interface Queued {
@@ -72,7 +100,14 @@ export function newSyncState(appId: string, framing: FramingLimits = FRAMING_LIM
 
 export const peerState = (state: SyncState, device: string): PeerState => {
   let p = state.peers.get(device);
-  if (!p) state.peers.set(device, (p = { asks: [], answered: [], ahead: false, again: false }));
+  if (!p) state.peers.set(device, (p = { sets: new Map(), post: { asks: [], answered: [] } }));
+  return p;
+};
+
+export const setPeer = (state: SyncState, device: string, set: string): SetPeerState => {
+  const peer = peerState(state, device);
+  let p = peer.sets.get(set);
+  if (!p) peer.sets.set(set, (p = { asks: [], answered: [], ahead: false, again: false }));
   return p;
 };
 

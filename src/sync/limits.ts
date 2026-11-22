@@ -30,6 +30,16 @@ export interface SyncLimits {
   readonly answerChars: number;
   /** Most frames of one answer; the answer budget is halved until the answer fits, else it is not sent. */
   readonly maxFramesPerAnswer: number;
+  /** Most data sets a registry may hold besides the main one (more is refused as `bad-input`). */
+  readonly maxSets: number;
+  /** Most envelopes (the newest) one mailbox exchange of a step offers and announces. */
+  readonly maxExchangeEnvelopes: number;
+  /** An exchange file (`makeExchangeFile`): most payload bytes before sealing; the answer budget is halved until it fits. */
+  readonly maxExchangeFileBytes: number;
+  /** The optional notice slot of an exchange file: most characters. */
+  readonly maxNoticeChars: number;
+  /** Peers the stand memory of an exchange file remembers (the least recently used one goes first). */
+  readonly maxRememberedPeers: number;
   /** Files that are not sync packets (e.g. key grants) handed to the app per step. */
   readonly maxPassedPerStep: number;
   /** Events listed in one report. */
@@ -57,6 +67,11 @@ export const SYNC_LIMITS: SyncLimits = Object.freeze({
   answerChanges: 400,
   answerChars: 240_000,
   maxFramesPerAnswer: 60,
+  maxSets: 16,
+  maxExchangeEnvelopes: 100,
+  maxExchangeFileBytes: 8_000_000,
+  maxNoticeChars: 8000,
+  maxRememberedPeers: 256,
   maxPassedPerStep: 16,
   maxEvents: 50,
   busyHoldMs: 30_000,
@@ -90,6 +105,10 @@ export const SYNC_CODES = [
   'duplicate-ask',
   'stale-round',
   'duplicate-piece',
+  'unknown-set',
+  'set-not-allowed',
+  'post-disabled',
+  'post-refused',
   // rounds and answers
   'round-timeout',
   'round-overflow',
