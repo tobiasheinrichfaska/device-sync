@@ -39,6 +39,13 @@ export interface Expectation {
   readonly body?: unknown;
   /** The answer has no body (a preflight answer). */
   readonly empty?: boolean;
+  /**
+   * The server may close the connection instead of answering (the runner then counts the step as
+   * passed). For a body far larger than the socket buffers: a server that answers 413 at once and
+   * closes while the client is still writing can make the client see a reset instead of the answer
+   * (RFC 9112, 9.6); an answer that does arrive must still match.
+   */
+  readonly mayCloseConnection?: boolean;
 }
 
 export interface ControlStep {
@@ -386,6 +393,7 @@ async function runStep(
       });
       text = await response.text();
     } catch (e) {
+      if (step.expect?.mayCloseConnection === true && !controller.signal.aborted) return;
       reasons.push(`${tag}: no answer (${e instanceof Error ? e.name : 'error'})`);
       return;
     } finally {
