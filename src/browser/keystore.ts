@@ -1,4 +1,5 @@
 import type { DeviceKeys } from '../core/keys.ts';
+import { wrapKeyProblem } from '../group/rest.ts';
 import { BROWSER_LIMITS, fail, isName, pass, type BrowserResult } from './limits.ts';
 import {
   errorName,
@@ -16,6 +17,7 @@ export const RECORD_NAMES = {
   deviceKeys: 'device-keys',
   deviceId: 'device-id',
   relayCredential: 'relay-credential',
+  groupWrapKey: 'group-wrap-key',
 } as const;
 
 export type StoreReason =
@@ -42,6 +44,12 @@ export interface KeyStore {
   putKeys(name: string, keys: DeviceKeys): Promise<StoreResult<null>>;
   getText(name: string): Promise<StoreResult<string | undefined>>;
   putText(name: string, text: string): Promise<StoreResult<null>>;
+  /** A non-extractable AES-256-GCM key (the wrap key of the group state), structured-cloned. */
+  getWrapKey(name: string): Promise<StoreResult<CryptoKey | undefined>>;
+  putWrapKey(name: string, key: CryptoKey): Promise<StoreResult<null>>;
+  /** A sealed text (up to `sealedMax` characters); the layer does not look inside. */
+  getSealed(name: string): Promise<StoreResult<string | undefined>>;
+  putSealed(name: string, text: string): Promise<StoreResult<null>>;
   /** Removes one record (no error when it does not exist). */
   remove(name: string): Promise<StoreResult<null>>;
   /** Deletes every record and then the database itself. The store is closed afterwards. */
@@ -51,6 +59,9 @@ export interface KeyStore {
   /** False once closed, by `close`, `wipe` or a version change from another tab. */
   isOpen(): boolean;
 }
+
+/** The kinds of stored record. */
+export type RecordKind = 'text' | 'keys' | 'sealed' | 'wrapkey';
 
 // ── records ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -121,15 +132,26 @@ function keysProblem(keys: unknown): 'bad' | 'extractable' | undefined {
  */
 export function readRecord(
   value: unknown,
-  kind: 'text' | 'keys',
-): StoreResult<string | DeviceKeys> {
+  kind: RecordKind,
+): StoreResult<string | DeviceKeys | CryptoKey> {
   if (!plain(value)) return fail('corrupt');
   const v = value['v'];
   if (typeof v === 'number' && Number.isInteger(v) && v > BROWSER_LIMITS.recordVersion)
     return fail('unsupported-version');
   if (v !== BROWSER_LIMITS.recordVersion) return fail('corrupt');
   const k = value['kind'];
-  if (k !== 'text' && k !== 'keys') return fail('corrupt');
+  if (k !== 'text' && k !== 'keys' && k !== 'sealed' && k !== 'wrapkey') return fail('corrupt');
+  if (k === 'sealed') {
+    if (!sameMembers(value, ['v', 'kind', 'text'])) return fail('corrupt');
+    const text = value['text'];
+    if (typeof text !== 'string' || text.length > BROWSER_LIMITS.sealedMax) return fail('corrupt');
+    return k === kind ? pass(text) : fail('wrong-kind');
+  }
+  if (k === 'wrapkey') {
+    if (!sameMembers(value, ['v', 'kind', 'key'])) return fail('corrupt');
+    if (wrapKeyProblem(value['key'])) return fail('corrupt');
+    return k === kind ? pass(value['key'] as CryptoKey) : fail('wrong-kind');
+  }
   if (k === 'text') {
     if (!sameMembers(value, ['v', 'kind', 'text'])) return fail('corrupt');
     const text = value['text'];
@@ -309,8 +331,8 @@ function wrap(idb: IdbFactoryLike, dbName: string, db: IdbDatabaseLike): KeyStor
 
   const read = async (
     name: string,
-    kind: 'text' | 'keys',
-  ): Promise<StoreResult<string | DeviceKeys | undefined>> => {
+    kind: RecordKind,
+  ): Promise<StoreResult<string | DeviceKeys | CryptoKey | undefined>> => {
     if (!isName(name)) return fail('bad-name');
     const r = await transact('readonly', (os) => os.get(name));
     if (!r.ok) return r;
@@ -351,6 +373,24 @@ function wrap(idb: IdbFactoryLike, dbName: string, db: IdbDatabaseLike): KeyStor
       if (typeof text !== 'string' || text.length > BROWSER_LIMITS.textMax)
         return fail('bad-value');
       return write(name, { v: BROWSER_LIMITS.recordVersion, kind: 'text', text });
+    },
+    async getWrapKey(name) {
+      return (await read(name, 'wrapkey')) as StoreResult<CryptoKey | undefined>;
+    },
+    async putWrapKey(name, key) {
+      if (!isName(name)) return fail('bad-name');
+      if (wrapKeyProblem(key))
+        return fail(key?.extractable ? 'extractable-private-key' : 'bad-value');
+      return write(name, { v: BROWSER_LIMITS.recordVersion, kind: 'wrapkey', key });
+    },
+    async getSealed(name) {
+      return (await read(name, 'sealed')) as StoreResult<string | undefined>;
+    },
+    async putSealed(name, text) {
+      if (!isName(name)) return fail('bad-name');
+      if (typeof text !== 'string' || text.length > BROWSER_LIMITS.sealedMax)
+        return fail('bad-value');
+      return write(name, { v: BROWSER_LIMITS.recordVersion, kind: 'sealed', text });
     },
     async remove(name) {
       if (!isName(name)) return fail('bad-name');

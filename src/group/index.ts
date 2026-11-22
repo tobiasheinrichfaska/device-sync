@@ -52,3 +52,20 @@ export type {
 } from './data.ts';
 export { parseGrant, parseRequest } from './wire.ts';
 export type { KeyGrant, RotationRequest } from './wire.ts';
+export {
+  REST_IV_BYTES,
+  REST_VERSION,
+  maxSealedStateChars,
+  openGroupState,
+  readSealedState,
+  sealGroupState,
+  wrapKeyProblem,
+} from './rest.ts';
+export type {
+  OpenStateOptions,
+  OpenStateRefusal,
+  OpenedState,
+  SealStateOptions,
+  SealStateRefusal,
+  SealedState,
+} from './rest.ts';

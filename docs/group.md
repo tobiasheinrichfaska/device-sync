@@ -22,6 +22,7 @@ HKDF-derived key. An independent `node:crypto` derivation (`tests/group/referenc
 | `sealRotationRequest`, `openRotationRequest`                    | Rotation by request: one trusted device asks another that holds the key                                         |
 | `encryptGroup`, `decryptGroup`                                  | Opaque bytes under the key of an epoch; epoch, key id, app, data set and context bound in                       |
 | `GroupState`, `storeGroupState`, `readGroupState`, `pruneGroup` | The state as a plain storable value with a strict reader; retention                                             |
+| `sealGroupState`, `openGroupState`                              | The stored state text encrypted at rest under an app-held AES-256-GCM key (see "The state at rest")             |
 
 ## Model
 
@@ -138,6 +139,65 @@ checks the key ids by deriving them again. Strictness: the audience is strictly 
 order and holds the author; keys are strictly increasing by (epoch, author); epochs are at least the
 floor; there are at most `maxPerEpoch` keys per epoch and `maxKeys` in all.
 
+## The state at rest
+
+`storeGroupState` gives a text that holds the raw keys. `sealGroupState(state, wrapKey, { appId, random })`
+turns it into a text that is safe to put in storage, and `openGroupState(text, wrapKey, { appId, dataSet? })`
+reads it back. The wrap key is an AES-256-GCM `CryptoKey` that the app keeps non-extractable (the browser
+layer generates it and keeps it in the key store, see `docs/browser.md`); the group layer only checks that
+it is such a key (`bad-key` otherwise, an extractable key included).
+
+```
+{"m":"<appId>-grest:1","set":"<set>","iv":"<12 bytes>","ct":"<state text as UTF-8, encrypted, with the 16-byte tag>"}
+```
+
+- Compact JSON, members in this order, canonical unpadded base64url; the reader re-encodes what it read and
+  compares, so there is one spelling. The version is the number after `grest:`: a higher one is
+  `unsupported-version`, which is not a format to guess at.
+- The IV is 12 bytes from the injected `random(12)`, fresh for every sealing (never derived, never counted).
+- Authenticated data: `<appId>-grest:1|<byte length>:<set>`, so the app, the version and the data set cannot be
+  changed without the text failing to open; the data set in the clear is the one that was authenticated.
+- The plaintext is exactly the text of `storeGroupState`; after the one decryption it is read by the strict
+  state reader (`readGroupState`, which derives and checks every key id), and its data set must be the one in
+  the header (`bad-state` otherwise). Only a state that the strict reader accepts is sealed.
+- **Message budget.** A random 96-bit IV under one key is safe for far fewer than 2^32 sealings (NIST SP
+  800-38D). An app seals once per change of the state, which never comes near that; an app that seals in a
+  loop re-seals under a new wrap key long before. Nothing here counts sealings.
+- **Bounded work.** Before the one `decrypt` (no other WebCrypto call precedes it): the text length
+  (`maxSealedStateChars`, about 4 times `maxStateChars`: a state is at most 3 bytes per character), the
+  marker and version, the exact members and spelling, the length of IV and ciphertext, the data set when the
+  caller names one. A refusal costs no WebCrypto call (`tests/group/rest.test.ts` counts them). After the
+  decryption: `readGroupState` (key id derivations, one per key, at most `maxKeys`).
+- Codes: `bad-input`, `bad-key`, `bad-random` (not exactly 12 bytes, or it threw), `too-large`,
+  `crypto-failure` when sealing. When opening: `bad-input`, `bad-key`, `not-sealed` (not this format or not
+  this app), `truncated` (cut off, or less than a tag of ciphertext), `unsupported-version`,
+  `wrong-data-set`, `cannot-open` (a wrong key and a changed text give the same answer: GCM cannot tell
+  them apart), `bad-state`.
+- Independent derivation: `tests/group/rest-reference.ts` (`node:crypto`, written from this section) agrees
+  byte for byte; a sweep changes every character of a sealed text and every bit of IV and ciphertext.
+
+**What it protects.** A copy of the IndexedDB (or another storage) without access to the browser profile's
+key store: the text is ciphertext, and the key behind it is a non-extractable `CryptoKey` that never leaves
+the browser's key handling. Also the group keys leaking by accident into a backup, a log or a sync of the
+storage only.
+
+**What it does NOT protect.**
+
+- **A script running in the origin.** It can ask the browser to decrypt with the stored wrap key exactly as the
+  app does, and read the state. Non-extractable stops copying the key, not using it.
+- **Malware with the logged-in profile or session**, or a person using the unlocked browser: they use the key
+  as the app does.
+- **A rollback.** An older sealed text of the same data set is a valid sealed text and opens fine: whoever can
+  write the storage can put an earlier state back (an old epoch's keys, a lost key, an undone pruning). The
+  floor in a rolled-back state is lower again; the app learns of newer keys only when grants come again. The
+  seal is not a version counter and this layer has none.
+- **Metadata**: the data set, the number of keys (through the length) and the time of writing show; there is
+  no padding.
+- **Deletion of the wrap key without the state** (a cleared key store with the sealed text left) makes the
+  state unreadable for good (`cannot-open`): the app asks the other devices for the keys again, like for a
+  lost key store.
+- Memory: the opened state is a plain value; JavaScript cannot wipe it.
+
 ## Limits
 
 | Limit               | Default (`GROUP_LIMITS`) | Meaning                                                                          |
@@ -195,8 +255,8 @@ and `crypto-failure`.
   no post-compromise security beyond rotation, and the audience cannot reveal a secret hand-over.
 - **No forward secrecy.** A key that leaks opens everything under it, past and future of that epoch. The
   state holds raw keys: they are not non-extractable like the device keys, the stored text is secret, and
-  JavaScript cannot wipe memory. Keep the text where the app keeps its other secrets; nothing here
-  encrypts it at rest.
+  JavaScript cannot wipe memory. The stored text can be sealed at rest (`sealGroupState`, see "The state at
+  rest" for what that does and does not protect); the plain text of `storeGroupState` is secret.
 - **Rotation has a window.** Until a device has seen the removal and rotated, a removed device still gets
   everything the others write under the old key; devices that see the removal at different times may
   rotate concurrently (they converge, see above); a removed device that still acts on an old view can
