@@ -1,4 +1,4 @@
-# Architecture (built layer by layer; core, log, trust, post and relay exist)
+# Architecture (built layer by layer; core, log, trust, post, relay and push exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
@@ -153,4 +153,20 @@ open points a server owner still has to decide. The layer has five parts.
   repository tests it against an in-memory reference server written from the document alone, and against
   deliberately broken variants of that server.
 
-The push layer that builds the ring request, and the browser layer that supplies a credential store, come later.
+## Push layer (`src/push/`, `docs/push.md`)
+
+Pure (time and the salt are parameters; WebCrypto is the only other source), depends on `core` for encoding,
+point checks and strict readers and on `relay` only for the `RingRequest` type and the relay's limits.
+
+- **`ring`**: `buildRingRequest` turns a browser push subscription into exactly the request
+  `RelayClient.ring` takes; every input is checked before any cryptography runs; `readSubscription` is the
+  strict reader of the subscription; `isRingRequest`/`isRingEndpoint`/`isRingVapid` are the relay's own
+  conditions.
+- **`message`**: Web Push encryption, RFC 8291 over RFC 8188 `aes128gcm`, one record, with the RFC appendix A
+  vector and an independent `node:crypto` derivation in the tests; `decryptPushMessage` is for receivers
+  and tests.
+- **`vapid`**: RFC 8292 token and header, `exp` at most 24 hours, and the check a push service makes.
+- **`worker`**: `buildServiceWorkerSource` returns the text of a service worker for a content-free push:
+  local texts only, no payload, no network; tested by running it in a `node:vm` sandbox.
+
+The browser layer that supplies a credential store comes later.

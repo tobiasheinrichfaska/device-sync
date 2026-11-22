@@ -28,7 +28,8 @@ export type SubscriptionRefusal = 'subscription' | 'endpoint' | 'receiver-key' |
 
 /**
  * Reads `{endpoint, keys: {p256dh, auth}}` (and the optional `expirationTime`, which is ignored): no other
- * member, no `__proto__`/`constructor`/`prototype` key, one spelling per key. The endpoint must be one a
+ * member, no `__proto__`/`constructor`/`prototype` key, one spelling per key (shape only: that the receiver key lies on
+ * the curve is checked when the message is encrypted). The endpoint must be one a
  * relay hands a ring to.
  */
 export function readSubscription(value: unknown): PushResult<Subscription, SubscriptionRefusal> {
