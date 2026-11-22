@@ -3,6 +3,7 @@
 // acceptance cases of the earlier implementation's file exchange: the edit of a row another device made
 // in the SAME batch, the rule that names the author's role, a removed device that cannot finally delete
 // through a device that has not heard of the removal, and a batch that is refused as a whole.
+import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   checkRights,
@@ -31,9 +32,9 @@ import {
 } from '../../src/trust/index.ts';
 import { APP, SET, dev, drop, emptyOf, enter, known, opts, signed, type Dev } from './helpers.ts';
 
-const O = opts(vouchRoles(['office']));
+const O = opts(vouchRoles(['coordinator']));
 
-/** The rule of the earlier implementation, as a rights hook: the office changes all, an LB only its own rows. */
+/** The rule of the earlier implementation, as a rights hook: the coordinator changes all, an helper only its own rows. */
 const rule = (
   author: string,
   change: Change,
@@ -41,18 +42,18 @@ const rule = (
   view: TrustView,
 ): boolean | string => {
   const role = view.roleOf(author);
-  if (role === 'office') return true;
-  if (role === undefined || !role.startsWith('lb:')) return 'no-role';
-  const person = role.slice(3);
-  if (change.kind === 'delete') return 'final-delete-office-only';
-  if (change.collection !== 'plan') return 'office-only';
+  if (role === 'coordinator') return true;
+  if (role === undefined || !role.startsWith('helper:')) return 'no-role';
+  const person = role.slice('helper:'.length);
+  if (change.kind === 'delete') return 'final-delete-coord-only';
+  if (change.collection !== 'plan') return 'coord-only';
   const owner = change.id.split('|')[2];
   if (owner !== person) return 'other-person';
-  const was = findRecord(state, 'plan', change.id)?.fields.lb?.value;
-  if (was === undefined && !('lb' in (change.fields ?? {}))) return 'unknown-row';
+  const was = findRecord(state, 'plan', change.id)?.fields.helper?.value;
+  if (was === undefined && !('helper' in (change.fields ?? {}))) return 'unknown-row';
   if (
     (was !== undefined && was !== person) ||
-    (change.fields && 'lb' in change.fields && change.fields.lb !== person)
+    (change.fields && 'helper' in change.fields && change.fields.helper !== person)
   ) {
     return 'other-person';
   }
@@ -61,10 +62,10 @@ const rule = (
 
 const rights = (direct: () => readonly KnownDevice[]): RightsOptions<TrustView> => ({
   view: rightsView(direct, O),
-  rank: (author, view) => (view.roleOf(author) === 'office' ? 0 : 1),
+  rank: (author, view) => (view.roleOf(author) === 'coordinator' ? 0 : 1),
   mayWrite: rule,
   allowFinalDelete: (author, _c, _s, view) =>
-    view.trusted(author) && view.roleOf(author) === 'office' ? true : 'not-office',
+    view.trusted(author) && view.roleOf(author) === 'coordinator' ? true : 'not-coordinator',
 });
 
 const judgeFor = (
@@ -91,28 +92,30 @@ const put = async (
   return signed(out.replica, d);
 };
 
-let lb: Dev, office: Dev, other: Dev, recv: Dev;
+let helper: Dev, coordinator: Dev, other: Dev, recv: Dev;
 beforeAll(async () => {
-  // the ids sort in this order: lb < office: the LB's id is SMALLER (the earlier test used ids that way)
-  lb = await dev('lb-art');
-  office = await dev('office');
-  other = await dev('office2');
+  // the ids sort in this order: helper < coordinator: the helper's id is SMALLER (the earlier test used ids that way)
+  helper = await dev('helper');
+  coordinator = await dev('coordinator');
+  other = await dev('coordinator2');
   recv = await dev('receiver');
 });
 
-/** The office enters the LB and makes a row; the LB edits that row; a third device holds both logs, nothing before. */
+/** The coordinator enters the helper and makes a row; the helper edits that row; a third device holds both logs, nothing before. */
 async function sameBatch() {
-  let a = await enter(office, emptyOf(office), lb, 'lb:art', O);
-  a = await put(office, a, 'Mo|VM1|art', { tag: 'Mo', lb: 'art', stufen: ['1-3'] });
-  const c = await put(lb, merge(emptyOf(lb), a.log).replica, 'Mo|VM1|art', { stufen: ['4-6'] });
-  const direct = [known(office, 'office'), known(lb, 'lb:art')];
+  let a = await enter(coordinator, emptyOf(coordinator), helper, 'helper:p1', O);
+  a = await put(coordinator, a, 'd1|b1|p1', { tag: 'd1', helper: 'p1', levels: ['x1'] });
+  const c = await put(helper, merge(emptyOf(helper), a.log).replica, 'd1|b1|p1', {
+    levels: ['x2'],
+  });
+  const direct = [known(coordinator, 'coordinator'), known(helper, 'helper:p1')];
   return { a, c, direct, batch: [...c.log, ...a.log] as Change[] };
 }
 
 describe("the earlier implementation's acceptance cases", () => {
-  it('an LB edit of a row the office made in the SAME batch passes, whatever the device ids', async () => {
+  it('an helper edit of a row the coordinator made in the SAME batch passes, whatever the device ids', async () => {
     const { direct, batch } = await sameBatch();
-    expect(lb.id < office.id).toBe(true);
+    expect(helper.id < coordinator.id).toBe(true);
     const r = emptyOf(recv);
     const read = await readChanges(
       r,
@@ -122,15 +125,15 @@ describe("the earlier implementation's acceptance cases", () => {
     expect(read.rejections).toEqual([]);
     expect(read.accepted.length).toBe(batch.length);
     expect(
-      merge(r, read.accepted).replica.collections.plan?.['Mo|VM1|art']?.fields.stufen?.value,
-    ).toEqual(['4-6']);
+      merge(r, read.accepted).replica.collections.plan?.['d1|b1|p1']?.fields.levels?.value,
+    ).toEqual(['x2']);
   });
 
   it('without the batch-aware state the same batch is refused (the plain hook sees only the state before)', async () => {
     const { direct, batch } = await sameBatch();
     const plain: JudgeOptions['mayWrite'] = (author, change, state) =>
       rule(author, change, state, {
-        roleOf: (d) => (d === office.id ? 'office' : 'lb:art'),
+        roleOf: (d) => (d === coordinator.id ? 'coordinator' : 'helper:p1'),
       } as TrustView) === true;
     const read = await readChanges(
       emptyOf(recv),
@@ -141,7 +144,7 @@ describe("the earlier implementation's acceptance cases", () => {
     expect(read.rejections[0]).toMatchObject({ reason: 'not-allowed' });
   });
 
-  it("the order is the app's rank: without one, by device id, the LB edit is asked first and refused with its code", async () => {
+  it("the order is the app's rank: without one, by device id, the helper edit is asked first and refused with its code", async () => {
     const { direct, batch } = await sameBatch();
     const { rank: _rank, ...noRank } = rights(() => direct);
     const read = await readChanges(
@@ -150,16 +153,16 @@ describe("the earlier implementation's acceptance cases", () => {
       judgeFor(recv, direct, { rights: noRank }),
     );
     expect(read.rejections.map((x) => [x.reason, x.detail, x.change.device])).toEqual([
-      ['not-allowed', 'unknown-row', lb.id],
+      ['not-allowed', 'unknown-row', helper.id],
     ]);
   });
 
-  it('a row an LB adds in the batch is its own for its next change in it', async () => {
-    let a = await enter(office, emptyOf(office), lb, 'lb:art', O);
-    const direct = [known(office, 'office'), known(lb, 'lb:art')];
-    let c = merge(emptyOf(lb), a.log).replica;
-    c = await put(lb, c, 'Di|VM1|art', { tag: 'Di', lb: 'art', stufen: ['1-3'] });
-    c = await put(lb, c, 'Di|VM1|art', { stufen: ['4-6'] });
+  it('a row an helper adds in the batch is its own for its next change in it', async () => {
+    let a = await enter(coordinator, emptyOf(coordinator), helper, 'helper:p1', O);
+    const direct = [known(coordinator, 'coordinator'), known(helper, 'helper:p1')];
+    let c = merge(emptyOf(helper), a.log).replica;
+    c = await put(helper, c, 'd2|b1|p1', { tag: 'd2', helper: 'p1', levels: ['x1'] });
+    c = await put(helper, c, 'd2|b1|p1', { levels: ['x2'] });
     a = merge(a, []).replica;
     const read = await readChanges(
       emptyOf(recv),
@@ -170,15 +173,15 @@ describe("the earlier implementation's acceptance cases", () => {
     expect(read.accepted.length).toBe(c.log.length);
   });
 
-  it("an LB cannot take another person's fixed slot: the batch is refused as a whole, with the code", async () => {
+  it("an helper cannot take another person's fixed slot: the batch is refused as a whole, with the code", async () => {
     const { a, direct } = await sameBatch();
-    const c = await put(lb, merge(emptyOf(lb), a.log).replica, 'Mo|VM1|enno', {
-      tag: 'Mo',
-      lb: 'art',
+    const c = await put(helper, merge(emptyOf(helper), a.log).replica, 'd1|b1|p2', {
+      tag: 'd1',
+      helper: 'p1',
     });
     const read = await readChanges(
       emptyOf(recv),
-      [...a.log, ...c.log.filter((x) => x.device === lb.id)],
+      [...a.log, ...c.log.filter((x) => x.device === helper.id)],
       judgeFor(recv, direct, { rights: rights(() => direct) }),
     );
     expect(read.rejected).toBe(1);
@@ -186,47 +189,47 @@ describe("the earlier implementation's acceptance cases", () => {
     expect(read.rejections[0]).toMatchObject({ reason: 'not-allowed', detail: 'other-person' });
   });
 
-  it('a removed office device cannot finally delete through a device that has not heard of the removal', async () => {
+  it('a removed coordinator device cannot finally delete through a device that has not heard of the removal', async () => {
     const o2 = other;
-    // office enters office2 and the LB; office2 deletes a row for good; office then removes office2
-    let a = await enter(office, emptyOf(office), o2, 'office', O);
-    a = await enter(office, a, lb, 'lb:art', O);
-    a = await put(office, a, 'Mo|VM1|enno', { tag: 'Mo', lb: 'enno' });
+    // coordinator enters coordinator2 and the helper; coordinator2 deletes a row for good; coordinator then removes coordinator2
+    let a = await enter(coordinator, emptyOf(coordinator), o2, 'coordinator', O);
+    a = await enter(coordinator, a, helper, 'helper:p1', O);
+    a = await put(coordinator, a, 'd1|b1|p2', { tag: 'd1', helper: 'p2' });
     const atO2 = merge(emptyOf(o2), a.log).replica;
-    const del = remove(atO2, 'plan', 'Mo|VM1|enno', { time: 3 });
+    const del = remove(atO2, 'plan', 'd1|b1|p2', { time: 3 });
     if (!del.ok) throw new Error(del.reason);
     const o2log = (await signed(del.replica, o2)).log.filter((x) => x.device === o2.id);
-    const aWeg = await drop(office, a, o2, O);
-    const direct = [known(office, 'office')];
+    const aWeg = await drop(coordinator, a, o2, O);
+    const direct = [known(coordinator, 'coordinator')];
     const judge = judgeFor(recv, direct, { rights: rights(() => direct) });
     // the receiver has heard of the removal: the deletion is refused with the code, nothing is taken
     const informed = merge(emptyOf(recv), aWeg.log).replica;
     const refused = await readChanges(informed, o2log, judge);
     expect(refused.rejections.map((x) => [x.reason, x.detail])).toEqual([
-      ['delete-not-allowed', 'not-office'],
+      ['delete-not-allowed', 'not-coordinator'],
     ]);
-    expect(findRecord(informed, 'plan', 'Mo|VM1|enno')?.deleted).toBe(false);
-    // the same deletion from an office device that was not removed passes
+    expect(findRecord(informed, 'plan', 'd1|b1|p2')?.deleted).toBe(false);
+    // the same deletion from an coordinator device that was not removed passes
     const fine = merge(emptyOf(recv), a.log).replica;
     expect((await readChanges(fine, o2log, judge)).rejections).toEqual([]);
-    // an LB never deletes for good
-    const lbDel = remove(merge(emptyOf(lb), a.log).replica, 'plan', 'Mo|VM1|enno', { time: 3 });
+    // an helper never deletes for good
+    const lbDel = remove(merge(emptyOf(helper), a.log).replica, 'plan', 'd1|b1|p2', { time: 3 });
     if (!lbDel.ok) throw new Error(lbDel.reason);
-    const lbLog = (await signed(lbDel.replica, lb)).log.filter((x) => x.device === lb.id);
+    const lbLog = (await signed(lbDel.replica, helper)).log.filter((x) => x.device === helper.id);
     expect((await readChanges(fine, lbLog, judge)).rejections.map((x) => x.reason)).toEqual([
       'delete-not-allowed',
     ]);
   });
 
-  it('what an LB wrote before it was removed still passes on (the removed device keeps its vouched role for its past)', async () => {
-    let a = await enter(office, emptyOf(office), lb, 'lb:art', O);
-    const direct = [known(office, 'office')];
-    const c = await put(lb, merge(emptyOf(lb), a.log).replica, 'Di|VM1|art', {
-      tag: 'Di',
-      lb: 'art',
+  it('what an helper wrote before it was removed still passes on (the removed device keeps its vouched role for its past)', async () => {
+    let a = await enter(coordinator, emptyOf(coordinator), helper, 'helper:p1', O);
+    const direct = [known(coordinator, 'coordinator')];
+    const c = await put(helper, merge(emptyOf(helper), a.log).replica, 'd2|b1|p1', {
+      tag: 'd2',
+      helper: 'p1',
     });
-    a = await drop(office, a, lb, O);
-    const lbLog = c.log.filter((x) => x.device === lb.id);
+    a = await drop(coordinator, a, helper, O);
+    const lbLog = c.log.filter((x) => x.device === helper.id);
     const read = await readChanges(
       merge(emptyOf(recv), a.log).replica,
       lbLog,
@@ -234,9 +237,9 @@ describe("the earlier implementation's acceptance cases", () => {
     );
     expect(read.rejections).toEqual([]);
     const view = rightsView(direct, O)(merge(emptyOf(recv), a.log).replica);
-    expect(view.roleOf(lb.id)).toBe('lb:art');
-    expect(view.trusted(lb.id)).toBe(false);
-    expect(view.fallenOut(lb.id)).toBe(true);
+    expect(view.roleOf(helper.id)).toBe('helper:p1');
+    expect(view.trusted(helper.id)).toBe(false);
+    expect(view.fallenOut(helper.id)).toBe(true);
   });
 });
 
@@ -264,10 +267,10 @@ describe('batch semantics', () => {
       verdicts.push(JSON.stringify([r.rejected, r.accepted.length]));
     }
     expect(new Set(verdicts).size).toBe(1);
-    // pieces of a session: one change per piece, the LB's pieces first
+    // pieces of a session: one change per piece, the helper's pieces first
     for (const cut of [1, 2, 100]) {
       const sorted = [...batch].sort((x, y) =>
-        x.device === lb.id ? -1 : y.device === lb.id ? 1 : 0,
+        x.device === helper.id ? -1 : y.device === helper.id ? 1 : 0,
       );
       let step = {
         session: startSession(emptyOf(recv)).session,
@@ -471,7 +474,33 @@ describe('cost', () => {
 describe('the synchronous trust', () => {
   it('computeTrustSync is the derivation of the judged log, no signature checked again', async () => {
     const { a } = await sameBatch();
-    const t = computeTrustSync(merge(emptyOf(recv), a.log).replica, [known(office, 'office')], O);
-    expect(t.trusted.map((d) => d.device).sort()).toEqual([lb.id, office.id].sort());
+    const t = computeTrustSync(
+      merge(emptyOf(recv), a.log).replica,
+      [known(coordinator, 'coordinator')],
+      O,
+    );
+    expect(t.trusted.map((d) => d.device).sort()).toEqual([helper.id, coordinator.id].sort());
+  });
+});
+
+describe('docs/rights.md against the code', () => {
+  const DOC = readFileSync(new URL('../../docs/rights.md', import.meta.url), 'utf8');
+  it('names the codes the stage answers with and the hooks it has', () => {
+    for (const word of [
+      'invalid-rule-answer',
+      'delete-not-allowed',
+      'field-rules',
+      'not-allowed',
+      'computeTrustSync',
+      'rightsView',
+      'roleOf',
+      'trusted',
+      'fallenOut',
+      'rank',
+    ]) {
+      expect(DOC, word).toContain(word);
+    }
+    const o: RightsOptions = { view: () => 0 };
+    expect(Object.keys(o)).toEqual(['view']);
   });
 });

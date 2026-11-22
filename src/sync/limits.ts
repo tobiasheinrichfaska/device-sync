@@ -36,6 +36,14 @@ export interface SyncLimits {
   readonly maxEvents: number;
   /** After a frame came or went the step stays "busy" (fast cadence) this long. */
   readonly busyHoldMs: number;
+  /** Removed devices that may be told of their removal at once (asked for presence in the same call as the peers). */
+  readonly maxNoticeTargets: number;
+  /** A removed device that is still present this long after it was told is told again (a lost message is never noticed). */
+  readonly retellMs: number;
+  /** Removal notices judged per step; more are dropped (`notice-rate-limited`). */
+  readonly maxNoticesPerStep: number;
+  /** Devices remembered as told (RAM only; the oldest is forgotten first and may be told again). */
+  readonly rememberedNotices: number;
   /** The pause after relay failures in a row: base, doubled each time, at most the cap. */
   readonly failureBaseMs: number;
   readonly failureCapMs: number;
@@ -60,6 +68,10 @@ export const SYNC_LIMITS: SyncLimits = Object.freeze({
   maxPassedPerStep: 16,
   maxEvents: 50,
   busyHoldMs: 30_000,
+  maxNoticeTargets: 20,
+  retellMs: 600_000,
+  maxNoticesPerStep: 2,
+  rememberedNotices: 200,
   failureBaseMs: 2_000,
   failureCapMs: 60_000,
 });
@@ -107,6 +119,12 @@ export const SYNC_CODES = [
   // roster
   'no-relay-id',
   'relay-id-clash',
+  // removal notice
+  'bad-notice',
+  'notice-refused',
+  'notice-no-proof',
+  'notice-rate-limited',
+  'notice-too-large',
   // the step
   'self-removed',
   'collect-failed',

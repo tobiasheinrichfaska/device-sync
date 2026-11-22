@@ -7,6 +7,7 @@ export {
   lockMarkWiped,
   lockObserve,
   lockRemoved,
+  lockRemovedBy,
   lockSetDays,
   lockStart,
   lockStatus,
