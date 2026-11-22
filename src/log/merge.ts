@@ -330,3 +330,73 @@ function unique(changes: readonly Change[]): Change[] {
 export function byDeviceThenSeq(a: Change, b: Change): number {
   return a.device < b.device ? -1 : a.device > b.device ? 1 : a.seq - b.seq;
 }
+
+/**
+ * Takes the retained changes of a snapshot into a replica (`catchUp`; the changes were judged by the
+ * caller). They are NOT a gapless run: what lies between them is covered by `vector`, which is the
+ * snapshot's stand, so nothing is held back for a gap or a `knew`. Deletions take effect after the
+ * writes (a deletion wins over any write whatever their order), and the log keeps the changes ordered
+ * by device and number. The caller has dropped everything this replica already holds.
+ */
+export function mergeRetained(
+  replica: Replica,
+  retained: readonly Change[],
+  vector: Replica['vector'],
+  clock: number,
+  base: NonNullable<Replica['base']>,
+): Replica {
+  const log: Change[] = [...replica.log];
+  const collections = copyDict(replica.collections) as Record<string, Record<string, StoredRecord>>;
+  const owned = new Set<string>();
+  const edit = (name: string): Record<string, StoredRecord> => {
+    if (!owned.has(name)) {
+      collections[name] = copyDict(own(collections, name) ?? {});
+      owned.add(name);
+    }
+    return collections[name] as Record<string, StoredRecord>;
+  };
+  const editor = new IndexEditor(indexOf(replica.log));
+  const touched = new Map<string, Map<string, Set<string>>>();
+  const deleted = new Set<string>();
+  const deletions: Change[] = [];
+  const sorted = [...retained].sort(byDeviceThenSeq);
+  for (const change of sorted) {
+    const position = log.length;
+    const record = editor.record(change.collection, change.id);
+    if (change.kind === 'delete') {
+      log.push(change);
+      deletions.push(change);
+    } else {
+      const logged = apply(collections, edit, change);
+      log.push(logged);
+      if (logged.kind === 'set') {
+        editor.addSet(record, logged, position);
+        markTouched(touched, logged);
+      } else {
+        record.devices.add(change.device);
+      }
+    }
+  }
+  for (const change of deletions) {
+    const record = editor.record(change.collection, change.id);
+    apply(collections, edit, change);
+    for (const at of record.positions) log[at] = redacted(log[at] as Change);
+    editor.clear(record, change);
+    deleted.add(JSON.stringify([change.collection, change.id]));
+  }
+  let notices: Notice[] = [...replica.notices];
+  if (deleted.size > 0) {
+    notices = notices.filter((n) => !deleted.has(JSON.stringify([n.collection, n.id])));
+  }
+  if (touched.size > 0) notices = refreshNotices(notices, touched, editor.index, collections);
+  rememberIndex(log, editor.index);
+  return {
+    ...replica,
+    clock: Math.max(replica.clock, clock),
+    vector: copyDict(vector),
+    log,
+    collections,
+    notices,
+    base: { ...replica.base, ...base },
+  };
+}

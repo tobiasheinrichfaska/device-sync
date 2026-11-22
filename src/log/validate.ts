@@ -1,5 +1,5 @@
 import type { Limits } from './limits.ts';
-import type { Origin } from './types.ts';
+import type { Change, FieldRules, Origin, Replica } from './types.ts';
 
 /** Why a change cannot be created or read; the same codes for local writing and for the parser. */
 export type Problem =
@@ -155,4 +155,21 @@ export function validOrigin(origin: Origin, limits: Limits): boolean {
   const { time, by } = origin;
   if (time !== undefined && !count(time)) return false;
   return by === undefined || label(by, limits.maxName);
+}
+
+/**
+ * What a rule says of a change: the code it answered, or undefined for "fine". A rule that throws or
+ * answers anything but undefined or a short text refuses (fail closed): an unreadable answer is
+ * the code `invalid-rule-answer`.
+ */
+export function ruleAnswer(rules: FieldRules, change: Change, state: Replica): string | undefined {
+  try {
+    const answer: unknown = rules(change, state);
+    if (answer === undefined) return undefined;
+    return typeof answer === 'string' && answer.length >= 1 && answer.length <= 120
+      ? answer
+      : 'invalid-rule-answer';
+  } catch {
+    return 'invalid-rule-answer';
+  }
 }

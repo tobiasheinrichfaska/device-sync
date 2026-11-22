@@ -1,6 +1,6 @@
 import { hasDuplicateKeys } from '../core/json.ts';
 import { resolveLimits, type Limits } from './limits.ts';
-import type { Change, ChangeKind, DeviceId, VersionVector } from './types.ts';
+import type { Change, ChangeKind, DeviceId, FieldRules, VersionVector } from './types.ts';
 import { FORBIDDEN_NAMES, checkFields, count, dict, isPlain, label, name } from './validate.ts';
 
 /**
@@ -35,6 +35,14 @@ export interface ParseOptions {
   readonly limits?: Partial<Limits>;
   /** What a device id looks like in this app; the default accepts `DEFAULT_DEVICE_ID`. */
   readonly deviceId?: (id: string) => boolean;
+  /**
+   * The app's validation per collection (`FieldRules`). The same options object serves local
+   * writing (`write`, `remove`, `undo`, `softDelete`: refused as `field-rules` before anything is
+   * created, so a device never makes a change its peers would refuse) and `receiveJudged` (the
+   * default of `JudgeOptions.fieldRules`). The strict parsers themselves have no replica and do
+   * not call it: they check structure only.
+   */
+  readonly fieldRules?: FieldRules;
 }
 
 /** Permissive default for device ids; an app passes its own (e.g. exactly 16 hex digits). */

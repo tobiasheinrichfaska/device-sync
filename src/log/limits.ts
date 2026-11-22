@@ -57,6 +57,13 @@ export interface Limits {
   readonly maxSessionChars: number;
   /** Most changes of a session that wait because their author cannot be checked yet. */
   readonly maxPendingChanges: number;
+  /**
+   * Most retained changes in one snapshot, and its size as JSON (UTF-16 units). A snapshot is one
+   * text that a transport cuts into frames; a receiver refuses what is over (`too-large`), it never
+   * takes a prefix.
+   */
+  readonly maxSnapshotChanges: number;
+  readonly maxSnapshotChars: number;
   /** Longest field name, author label (`by`) and object key inside a value. */
   readonly maxName: number;
   /** Longest collection name and record id. */
@@ -79,6 +86,8 @@ export const LIMITS: Limits = Object.freeze({
   maxGroupChanges: 400_000,
   maxGroupChars: 64_000_000,
   maxPendingChanges: 2000,
+  maxSnapshotChanges: 400_000,
+  maxSnapshotChars: 128_000_000,
   maxName: 120,
   maxId: 200,
 });

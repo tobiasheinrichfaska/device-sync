@@ -3,8 +3,8 @@ import { heldIn, idOf } from './chain.ts';
 import { changeCheckValue, changeLink } from './check.ts';
 import { LogCache } from './logCache.ts';
 import { merge } from './merge.ts';
-import type { Change, DeviceId, Replica } from './types.ts';
-import { own } from './validate.ts';
+import type { Change, DeviceId, FieldRules, Replica } from './types.ts';
+import { own, ruleAnswer } from './validate.ts';
 import { seen as seenIn } from './vector.ts';
 
 /**
@@ -46,18 +46,23 @@ export type Reason =
   | 'never-erase'
   | 'redacted-without-deletion'
   | 'equivocation'
-  | 'own-history';
+  | 'own-history'
+  | 'field-rules';
 
 /** A verdict with the reason when it is 'false'. */
 export interface Judgement {
   readonly verdict: Verdict;
   readonly reason?: Reason;
+  /** With `field-rules`: the code the app's rule answered (see `FieldRules`). */
+  readonly detail?: string;
 }
 
 /** A change that was refused and why. */
 export interface Rejection {
   readonly change: Change;
   readonly reason: Reason;
+  /** With `field-rules`: the code the app's rule answered. */
+  readonly detail?: string;
 }
 
 /**
@@ -126,6 +131,12 @@ export interface JudgeOptions {
    * Default: unlimited. `mayWrite` bounds what an author may write at all.
    */
   readonly quota?: (author: DeviceId, count: number, state: Replica) => boolean;
+  /**
+   * The app's validation of names, values and relations per collection (see `FieldRules`). Asked
+   * last, after the signature and `mayWrite`, once per change that has content or is a final
+   * deletion; an answer other than `undefined` judges the change false (`field-rules`).
+   */
+  readonly fieldRules?: FieldRules;
 }
 
 /** `JudgeOptions` with the replica the changes are judged against (what is known, and for the keys). */
@@ -299,7 +310,11 @@ interface Judged extends Judgement {
   readonly text?: string;
 }
 
-const no = (reason: Reason): Judged => ({ verdict: 'false', reason });
+const no = (reason: Reason, detail?: string): Judged => ({
+  verdict: 'false',
+  reason,
+  ...(detail !== undefined ? { detail } : {}),
+});
 
 async function judgeOne(
   context: JudgeContext,
@@ -355,6 +370,10 @@ async function judgeOne(
   }
   if (context.mayWrite && !context.mayWrite(change.device, change, context.state)) {
     return no('not-allowed');
+  }
+  if (context.fieldRules && change.kind !== 'redacted') {
+    const answer = ruleAnswer(context.fieldRules, change, context.state);
+    if (answer !== undefined) return no('field-rules', answer);
   }
   return { verdict: 'checked', text };
 }
@@ -533,8 +552,8 @@ function appliedErasures(
   }
 }
 
-const withoutText = ({ verdict, reason }: Judged): Judgement =>
-  reason ? { verdict, reason } : { verdict };
+const withoutText = ({ verdict, reason, detail }: Judged): Judgement =>
+  reason ? { verdict, reason, ...(detail !== undefined ? { detail } : {}) } : { verdict };
 
 /**
  * Judges the changes of one batch, in this order: a member the signature does not cover (false,
@@ -576,6 +595,19 @@ export async function judgeDetailed(
     if (c.kind !== 'redacted' || j.verdict !== 'checked' || applied.has(c)) return withoutText(j);
     return deletions.has(recordKey(c)) ? { verdict: 'pending' } : no('redacted-without-deletion');
   });
+}
+
+/**
+ * Judges changes that are not a gapless run (the retained changes of a snapshot): each on its own,
+ * and against each other and the replica for two versions of one number and for the hash chain, but
+ * without the rule that an erased change needs its deletion to be applied beside it (the caller
+ * checks that the snapshot holds the deletion). Verdicts are as `judgeDetailed` gives them.
+ */
+export async function judgeRetained(
+  context: JudgeContext,
+  changes: readonly Change[],
+): Promise<Judgement[]> {
+  return (await judgeEach(context, changes, new Map())).map(withoutText);
 }
 
 /** The verdicts of `judgeDetailed`. */
@@ -717,7 +749,11 @@ export async function admit(
   const rejections: Rejection[] = [];
   judged.forEach((j, i) => {
     if (j.verdict === 'false') {
-      rejections.push({ change: kept[i] as Change, reason: j.reason ?? 'not-allowed' });
+      rejections.push({
+        change: kept[i] as Change,
+        reason: j.reason ?? 'not-allowed',
+        ...(j.detail !== undefined ? { detail: j.detail } : {}),
+      });
     }
   });
   if (rejections.length > 0) return { ok: false, rejections };
@@ -842,7 +878,11 @@ export async function settle(
       const rejections: Rejection[] = [];
       judged.forEach((j, i) => {
         if (j.verdict === 'false') {
-          rejections.push({ change: todo[i] as Change, reason: j.reason ?? 'not-allowed' });
+          rejections.push({
+            change: todo[i] as Change,
+            reason: j.reason ?? 'not-allowed',
+            ...(j.detail !== undefined ? { detail: j.detail } : {}),
+          });
         }
       });
       if (rejections.length > 0) return refusedResult(rejections);
