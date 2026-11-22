@@ -628,6 +628,16 @@ timeout, another refusal, a `gesperrt` that answers an enrolment (no credential 
 credential that is no longer the stored one. With the mark stored the client refuses to enrol (`blocked-mark`)
 until `forget()`; the package wipes nothing (keys, data, screens are the app's, in the hook).
 
+**Invitation links and the reply (client conventions, not part of the protocol).** An invitation link of the
+trust layer may carry the relay's own invitation `e2` (`relayInvitation`): the new device takes it in at the
+relay and gets its role from it. A validator (`relayInvitationValidator`) refuses the whole link when the `e2` is
+not for this app, when its role is not the relay role of the link's role, or when the device that made it is not
+the inviter's relay id the link names; without a validator the member is never accepted. The new device answers
+the inviter through the relay with a message in clear text (`inviteReply.ts`: one JSON spelling, at most 2000
+characters, nothing secret: only the inviter can check the HMAC proof inside), at most one copy per 30 seconds
+(the relay holds a message that long), repeated until the invitation ends or the app says it arrived; the
+inviting device takes at most 5 replies per sender in 10 minutes and 20 per batch of collected messages.
+
 ## Order of checks, revision 2
 
 This extends "Order of checks"; 1 to 7 are as written. For every endpoint except `einschreiben` and
