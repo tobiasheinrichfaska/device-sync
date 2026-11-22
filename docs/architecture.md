@@ -34,8 +34,8 @@ in) and testable without a UI. `transfer` is pure apart from its adapter over an
 - **Partial sessions**: size limits never make a large honest history impossible. A sender cuts its
   answer to a prefix of its own log (`more: true`), a receiver whose limit is hit ends the reading and
   takes what it verified (`Session.truncated`); the next session continues (`docs/wire-format.md`).
-- **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
-  time).
+- **Strategies**: who may vouch for a device, how long a device may work without contact (`deadlinePolicy`:
+  a limit per role and private flag, or none).
 - **Errors** are codes (`art`), not sentences; the app translates.
 
 ## Session and encrypted file (core layer)
@@ -125,8 +125,25 @@ strategies like this:
 
 Left to the app: everything a removed or untrusted device may still do (it stays checkable, so its
 signed changes, earlier and later, verify; the app restricts it with `mayWrite`, stops exchanging with it, and rotates
-the group keys, which this package does not provide yet), the device lock after days without contact, and
-which person a device belongs to.
+the group keys, which this package does not provide yet), where the deadline state is stored and what a lock
+shows the user, and which person a device belongs to.
+
+## Contact deadline (trust layer, `src/trust/deadline.ts`)
+
+How long a device may work without data contact to another trusted device. Pure: the clock is a parameter, the
+caller stores the state (`DeadlineState`, strictly read by `parseDeadline`; a damaged one locks, never unlocks).
+
+- **The policy is the app's.** `deadlinePolicy({ standardMs, privateMs?, noLimitRoles?, roleMs? })` returns a function
+  from `{ role, private }` to a limit in ms or `null` (no time limit). A **private device never gets the exemption** of
+  its role. The package knows no role and no duration.
+- **Rules for every device that has a limit:** the renewing contact must come from another device than the last renewal;
+  once the limit has passed the device stays locked, also when its clock is turned back, until trusted data arrive that
+  do not show it removed; a clock before the last use (beyond a slack) locks too.
+- **A device without a limit** (`null`) still has the clock check and the `removed` lock; only the time limit is missing.
+  Risk to weigh in the app: a lost device without a limit stays readable until another trusted device removes it and the
+  removal reaches it. A long limit instead of none is the milder choice.
+- `contactDeadline` takes a contact in (`from`, `trusted`, `removed`, `created`, `now`) and says whether it counted and why
+  not (`removed`, `not-trusted`, `same-device`, `clock`, `old`).
 
 ## Relay layer (`src/relay/`)
 
