@@ -328,43 +328,44 @@ no for now; retrying at once is useless, the caller decides). The refusals of on
 no status of their own (they are inside a 200) and are marked `—`. The table is data in
 `src/relay/kinds.ts` (`RELAY_KINDS`); `tests/relay/kinds.test.ts` keeps both in step.
 
-| Wire word                     | Name                       | Status | Class   | When                                                                                             |
-| ----------------------------- | -------------------------- | ------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `unbekannt`                   | `unknown-endpoint`         | 404    | fatal   | the path is not `/gesund` or `/v1/<endpoint>`                                                    |
-| `methode`                     | `wrong-method`             | 405    | fatal   | not POST (GET for `/gesund`)                                                                     |
-| `herkunft`                    | `origin-refused`           | 403    | fatal   | no or foreign `Origin`; a token naming another app; also a refused preflight                     |
-| `typ`                         | `wrong-content-type`       | 415    | fatal   | not `application/json`                                                                           |
-| `zu-gross`                    | `body-too-large`           | 413    | fatal   | the body (announced or read) is over the limit of the endpoint                                   |
-| `zu-langsam`                  | `body-too-slow`            | 408    | retry   | the body did not arrive within 14 s                                                              |
-| `unlesbar`                    | `unreadable`               | 400    | fatal   | address with `?`, body not JSON, not an object, unknown or missing member, wrong type, bad value |
-| `zugang-fehlt`                | `access-missing`           | 401    | fatal   | no `Authorization: Bearer ...`                                                                   |
-| `zugang-ungueltig`            | `access-invalid`           | 401    | reenrol | the access is malformed or its MAC is wrong                                                      |
-| `zugang-abgelaufen`           | `access-expired`           | 401    | reenrol | `bis` is in the past                                                                             |
-| `app-unbekannt`               | `app-unknown`              | 403    | fatal   | the app of the access or proof is not served                                                     |
-| `gesperrt`                    | `device-blocked`           | 403    | fatal   | the device id is on the app's blocked list                                                       |
-| `zu-viele-anfragen`           | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute (a server MAY add body-load limits, see "Overload") |
-| `beschaeftigt`                | `relay-busy`               | 503    | retry   | too many bodies on the way at the moment (server load)                                           |
-| `nachweis-ungueltig`          | `proof-malformed`          | 400    | fatal   | the proof or its payload is not shaped as written                                                |
-| `nachweis-nicht-eingerichtet` | `proof-not-set-up`         | 403    | fatal   | the app has no proof key                                                                         |
-| `nachweis-unterschrift`       | `proof-signature`          | 403    | fatal   | no key of the app verifies the signature                                                         |
-| `nachweis-abgelaufen`         | `proof-expired`            | 403    | fatal   | `bis` in the past or more than 360 s ahead                                                       |
-| `einladung-ungueltig`         | `invitation-invalid`       | 403    | fatal   | malformed, wrong MAC, or `bis` more than 600 s ahead                                             |
-| `einladung-abgelaufen`        | `invitation-expired`       | 403    | fatal   | `bis` in the past                                                                                |
-| `einladen-aus`                | `invitations-off`          | 403    | fatal   | invitations are off for the app                                                                  |
-| `verbraucht`                  | `already-used`             | 409    | fatal   | the proof or invitation was used before                                                          |
-| `zu-viele-einschreibungen`    | `enrol-rate-limited`       | 429    | refused | more than 120 enrolments with a proof or 60 with an invitation per app and hour                  |
-| `zu-viele-einladungen`        | `invite-rate-limited`      | 429    | refused | more than 10 invitations per device and hour                                                     |
-| `klingeln-ungueltig`          | `ring-invalid`             | 400    | fatal   | a ring request that does not fit                                                                 |
-| `klingeln-zu-oft`             | `ring-rate-limited`        | 429    | refused | more than 60 rings per device and hour                                                           |
-| `push-dienst`                 | `push-service-unreachable` | 502    | retry   | the push service did not answer within 10 s                                                      |
-| `neue-fassung-noetig`         | `client-update-needed`     | 426    | fatal   | the old procedure is switched off for the app (later admission revision)                         |
-| `geraete-voll`                | `devices-full`             | 409    | refused | the app already has 50 known devices                                                             |
-| `aufnahme-geschlossen`        | `admission-closed`         | 403    | fatal   | the app may not start a (further) group of devices                                               |
-| `intern`                      | `internal`                 | 500    | retry   | an internal error (the text never quotes the request)                                            |
-| `voll`                        | `storage-full`             | —      | retry   | drop, one recipient: the relay's total waiting bytes are full                                    |
-| `app-voll`                    | `app-full`                 | —      | retry   | drop, one recipient: the app's waiting bytes are full                                            |
-| `absender-voll`               | `sender-full`              | —      | refused | drop, one recipient: the sender already has too much waiting                                     |
-| `empfaenger-voll`             | `recipient-full`           | —      | refused | drop, one recipient: its mailbox holds 100 messages or 2 MiB                                     |
+| Wire word                     | Name                       | Status | Class   | When                                                                                               |
+| ----------------------------- | -------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `unbekannt`                   | `unknown-endpoint`         | 404    | fatal   | the path is not `/gesund` or `/v1/<endpoint>`                                                      |
+| `methode`                     | `wrong-method`             | 405    | fatal   | not POST (GET for `/gesund`)                                                                       |
+| `herkunft`                    | `origin-refused`           | 403    | fatal   | no or foreign `Origin`; a token naming another app; also a refused preflight                       |
+| `typ`                         | `wrong-content-type`       | 415    | fatal   | not `application/json`                                                                             |
+| `zu-gross`                    | `body-too-large`           | 413    | fatal   | the body (announced or read) is over the limit of the endpoint                                     |
+| `zu-langsam`                  | `body-too-slow`            | 408    | retry   | the body did not arrive within 14 s                                                                |
+| `unlesbar`                    | `unreadable`               | 400    | fatal   | address with `?`, body not JSON, not an object, unknown or missing member, wrong type, bad value   |
+| `zugang-fehlt`                | `access-missing`           | 401    | fatal   | no `Authorization: Bearer ...`                                                                     |
+| `zugang-ungueltig`            | `access-invalid`           | 401    | reenrol | the access is malformed or its MAC is wrong                                                        |
+| `zugang-abgelaufen`           | `access-expired`           | 401    | reenrol | `bis` is in the past                                                                               |
+| `app-unbekannt`               | `app-unknown`              | 403    | fatal   | the app of the access or proof is not served                                                       |
+| `gesperrt`                    | `device-blocked`           | 403    | fatal   | the device id is on the app's blocked list                                                         |
+| `zu-viele-anfragen`           | `rate-limited`             | 429    | retry   | more than 300 requests per device and minute (a server MAY add body-load limits, see "Overload")   |
+| `beschaeftigt`                | `relay-busy`               | 503    | retry   | too many bodies on the way at the moment (server load)                                             |
+| `relay-voll`                  | `relay-full`               | 503    | refused | the relay already knows its maximum number of devices (`devicesTotal`); a new enrolment is refused |
+| `nachweis-ungueltig`          | `proof-malformed`          | 400    | fatal   | the proof or its payload is not shaped as written                                                  |
+| `nachweis-nicht-eingerichtet` | `proof-not-set-up`         | 403    | fatal   | the app has no proof key                                                                           |
+| `nachweis-unterschrift`       | `proof-signature`          | 403    | fatal   | no key of the app verifies the signature                                                           |
+| `nachweis-abgelaufen`         | `proof-expired`            | 403    | fatal   | `bis` in the past or more than 360 s ahead                                                         |
+| `einladung-ungueltig`         | `invitation-invalid`       | 403    | fatal   | malformed, wrong MAC, or `bis` more than 600 s ahead                                               |
+| `einladung-abgelaufen`        | `invitation-expired`       | 403    | fatal   | `bis` in the past                                                                                  |
+| `einladen-aus`                | `invitations-off`          | 403    | fatal   | invitations are off for the app                                                                    |
+| `verbraucht`                  | `already-used`             | 409    | fatal   | the proof or invitation was used before                                                            |
+| `zu-viele-einschreibungen`    | `enrol-rate-limited`       | 429    | refused | more than 120 enrolments with a proof or 60 with an invitation per app and hour                    |
+| `zu-viele-einladungen`        | `invite-rate-limited`      | 429    | refused | more than 10 invitations per device and hour                                                       |
+| `klingeln-ungueltig`          | `ring-invalid`             | 400    | fatal   | a ring request that does not fit                                                                   |
+| `klingeln-zu-oft`             | `ring-rate-limited`        | 429    | refused | more than 60 rings per device and hour                                                             |
+| `push-dienst`                 | `push-service-unreachable` | 502    | retry   | the push service did not answer within 10 s                                                        |
+| `neue-fassung-noetig`         | `client-update-needed`     | 426    | fatal   | the old procedure is switched off for the app (later admission revision)                           |
+| `geraete-voll`                | `devices-full`             | 409    | refused | the app already has 50 known devices                                                               |
+| `aufnahme-geschlossen`        | `admission-closed`         | 403    | fatal   | the app may not start a (further) group of devices                                                 |
+| `intern`                      | `internal`                 | 500    | retry   | an internal error (the text never quotes the request)                                              |
+| `voll`                        | `storage-full`             | —      | retry   | drop, one recipient: the relay's total waiting bytes are full                                      |
+| `app-voll`                    | `app-full`                 | —      | retry   | drop, one recipient: the app's waiting bytes are full                                              |
+| `absender-voll`               | `sender-full`              | —      | refused | drop, one recipient: the sender already has too much waiting                                       |
+| `empfaenger-voll`             | `recipient-full`           | —      | refused | drop, one recipient: its mailbox holds 100 messages or 2 MiB                                       |
 
 A client that reads a wire word it does not know on a status below 500 (other than 429) treats the answer as
 unreadable (`malformed`, fatal): it MUST NOT guess a meaning. On 429 or 5xx it treats it as `unavailable`
@@ -627,12 +628,11 @@ then a client and a conformance run MUST NOT rely on any particular answer.
    on how many groups an app may open and on a device count that the existing server derives from what it
    has seen since its start. The protocol states the answers, not how a server decides to be full. When the
    whole relay already knows 300 devices (`devicesTotal`) the existing servers refuse a new enrolment with
-   status 503 (class: refused, retry much later) and a wire word that consists of the name of the first
-   relay implementation and `-voll`. That name may not be written in this public repository, so the word is
-   NOT in the error table, the client does not know it (it reads any unknown word on a 503 as `unavailable`,
-   retry later), the conformance cases do not test it, and the reference server answers `beschaeftigt`
-   (503) in its place. A server owner should decide a neutral wire word for this refusal; until then it is
-   undecided here, and the one real word is known only to whoever reads the server.
+   status 503 (class: refused, retry much later) and a wire word that names the first relay implementation
+   (not writable in this public repository). **Decided 2026-11-22: the neutral word is `relay-voll`**
+   (`relay-full`, 503, refused). It is in the error table and the reference server answers it. The existing
+   servers must be changed to send `relay-voll`; until they are, a client reads their old word on a 503 as
+   `unavailable` (retry later).
 10. **Other members.** Whether a relay of a later revision may add members to the answers of `ping`,
     `erneuern` and `einladen` (the existing server does so only for clients that announce a protocol
     version in a header the version-1 client never sends).

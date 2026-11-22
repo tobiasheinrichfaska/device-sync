@@ -62,6 +62,7 @@ export const RELAY_KINDS: readonly RelayKind[] = [
   k('klingeln-zu-oft', 'ring-rate-limited', 429, 'refused', 300_000),
   k('push-dienst', 'push-service-unreachable', 502, 'retry', 5_000),
   k('neue-fassung-noetig', 'client-update-needed', 426, 'fatal'),
+  k('relay-voll', 'relay-full', 503, 'refused', 300_000),
   k('geraete-voll', 'devices-full', 409, 'refused'),
   k('aufnahme-geschlossen', 'admission-closed', 403, 'fatal'),
   k('intern', 'internal', 500, 'retry', 5_000),

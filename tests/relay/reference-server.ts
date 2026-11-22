@@ -88,6 +88,7 @@ const ERRORS: Readonly<Record<string, readonly [number, string]>> = {
   gesperrt: [403, 'blocked'],
   'zu-viele-anfragen': [429, 'rate'],
   beschaeftigt: [503, 'busy'],
+  'relay-voll': [503, 'relay full'],
   'nachweis-ungueltig': [400, 'proof malformed'],
   'nachweis-nicht-eingerichtet': [403, 'proofs not set up'],
   'nachweis-unterschrift': [403, 'proof signature'],
@@ -344,9 +345,7 @@ export function createReferenceServer(config: RefConfig) {
       return err(defect === 'reuse-wrong-kind' ? 'einladung-ungueltig' : 'verbraucht', origin);
     const devices = known.get(appName);
     if ((devices?.size ?? 0) === 0 && app.groups <= 0) return err('aufnahme-geschlossen', origin);
-    // The wire word the existing servers use for this refusal cannot be written in this repository
-    // (see "Open points of version 1"); the reference server says "busy", status 503, retry later.
-    if (devicesTotal() >= limits.devicesTotal) return err('beschaeftigt', origin);
+    if (devicesTotal() >= limits.devicesTotal) return err('relay-voll', origin);
     if ((devices?.size ?? 0) >= limits.devicesPerApp) return err('geraete-voll', origin);
     const per = byInvitation ? limits.enrolInvitePerHour : limits.enrolProofPerHour;
     if (!allow(`${byInvitation ? 'ei' : 'en'}|${appName}`, 3_600_000, per)) {
