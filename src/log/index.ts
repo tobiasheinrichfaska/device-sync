@@ -9,6 +9,7 @@ export type {
   Collection,
   DeviceId,
   FieldHistoryEntry,
+  FieldRules,
   FieldValue,
   HistoryEntry,
   MergeResult,
@@ -22,7 +23,26 @@ export type {
 } from './types.ts';
 export { MAX_CLOCK_JUMP, concurrent, isNewer, seen, unionVector } from './vector.ts';
 export { changeCheckValue, changeLink } from './check.ts';
-export { changeAt, tipConflict, tipsOf } from './chain.ts';
+export { changeAt, needsSnapshot, tipConflict, tipsOf } from './chain.ts';
+export {
+  SNAPSHOT_VERSION,
+  catchUp,
+  condense,
+  parseSnapshot,
+  parseSnapshotText,
+  snapshot,
+  snapshotSigningText,
+} from './snapshot.ts';
+export type {
+  CatchUpFailure,
+  CatchUpOptions,
+  CatchUpResult,
+  Snapshot,
+  SnapshotFailure,
+  SnapshotInfo,
+  SnapshotOptions,
+  SnapshotResult,
+} from './snapshot.ts';
 export { merge } from './merge.ts';
 export {
   APPROVAL_LIMITS,

@@ -294,6 +294,8 @@ app's `mayWrite`.
   replicas do not heal by themselves. An erased change (`y:1 redacted`) whose deletion was the other
   version is refused as `redacted-without-deletion` for ever on a device holding the harmless
   version: the signal is the reason code.
+- `field-rules`: the app's `fieldRules` answered a code for the change (`Session.refusalDetail`,
+  `Rejection.detail`); see `docs/field-rules.md`. Like `not-allowed` it refuses the whole session.
 - `tip-mismatch` (refusal `diverged`, see "A rejected change ends the session"): a `stand` names
   another link for a number this device holds. The link covers the whole signed head and the chain, so
   ANY difference in the history behind the position, in head or content, shows at the first `stand`
@@ -407,25 +409,27 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
 One object, `LIMITS`, holds every default; the parsers, `pieces` and the session functions take
 `{ limits: Partial<Limits> }` to override some of them for one call.
 
-| Limit               | Default  | Meaning                                                                                         |
-| ------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `maxFields`         | 40       | Fields in one `set` change                                                                      |
-| `maxText`           | 2000     | Characters of one text inside a value                                                           |
-| `maxValueChars`     | 16000    | JSON characters of one field value                                                              |
-| `maxDepth`          | 6        | Nested lists/objects in one value                                                               |
-| `maxEntries`        | 200      | Entries in one list or object of a value                                                        |
-| `maxDevices`        | 50       | Devices in one `knew` (concurrent heads of a field)                                             |
-| `maxStandDevices`   | 10000    | Devices in the vector of a `stand` or `done` and in its `tips` (over: session ends, no refusal) |
-| `maxChanges`        | 500      | Changes in one message                                                                          |
-| `pieceBytes`        | 12000    | Size at which a piece is cut (UTF-8 bytes of JSON)                                              |
-| `maxMessageChars`   | 1000000  | One `changes` message as JSON text (all its changes together); more is refused                  |
-| `maxSessionChanges` | 100000   | Changes one session carries: a sender cuts its answer here, a receiver ends reading here        |
-| `maxSessionChars`   | 16000000 | JSON characters of the changes one session carries (same: cut, not refusal)                     |
-| `maxGroupChanges`   | 400000   | `maxSessionChanges` while an erased change waits for its deletion (indivisible group)           |
-| `maxGroupChars`     | 64000000 | `maxSessionChars` while an erased change waits for its deletion                                 |
-| `maxPendingChanges` | 2000     | Changes still unverifiable AFTER the key-learning rounds of a session (cut, not refusal)        |
-| `maxName`           | 120      | Field name, `by`, keys inside a value                                                           |
-| `maxId`             | 200      | Collection name and record id                                                                   |
+| Limit                | Default   | Meaning                                                                                         |
+| -------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `maxFields`          | 40        | Fields in one `set` change                                                                      |
+| `maxText`            | 2000      | Characters of one text inside a value                                                           |
+| `maxValueChars`      | 16000     | JSON characters of one field value                                                              |
+| `maxDepth`           | 6         | Nested lists/objects in one value                                                               |
+| `maxEntries`         | 200       | Entries in one list or object of a value                                                        |
+| `maxDevices`         | 50        | Devices in one `knew` (concurrent heads of a field)                                             |
+| `maxStandDevices`    | 10000     | Devices in the vector of a `stand` or `done` and in its `tips` (over: session ends, no refusal) |
+| `maxChanges`         | 500       | Changes in one message                                                                          |
+| `pieceBytes`         | 12000     | Size at which a piece is cut (UTF-8 bytes of JSON)                                              |
+| `maxMessageChars`    | 1000000   | One `changes` message as JSON text (all its changes together); more is refused                  |
+| `maxSessionChanges`  | 100000    | Changes one session carries: a sender cuts its answer here, a receiver ends reading here        |
+| `maxSessionChars`    | 16000000  | JSON characters of the changes one session carries (same: cut, not refusal)                     |
+| `maxGroupChanges`    | 400000    | `maxSessionChanges` while an erased change waits for its deletion (indivisible group)           |
+| `maxGroupChars`      | 64000000  | `maxSessionChars` while an erased change waits for its deletion                                 |
+| `maxPendingChanges`  | 2000      | Changes still unverifiable AFTER the key-learning rounds of a session (cut, not refusal)        |
+| `maxSnapshotChanges` | 400000    | Retained changes in one snapshot (`docs/snapshot.md`): more is refused, never cut               |
+| `maxSnapshotChars`   | 128000000 | One snapshot as JSON text (UTF-16 units): more is refused, never cut                            |
+| `maxName`            | 120       | Field name, `by`, keys inside a value                                                           |
+| `maxId`              | 200       | Collection name and record id                                                                   |
 
 Where the two earlier implementations differed, the larger value is the default (fields per change,
 text per value). The check value (43) and signature (86) lengths are fixed by the core layer.

@@ -132,6 +132,13 @@ export interface Replica {
    * are NOT in `log` or `vector`, so no stand claims them.
    */
   readonly approval?: ApprovalState;
+  /**
+   * Present only on a replica that started from a snapshot (`catchUp`): per device the highest
+   * number below which this replica's log does NOT hold every change (the changes were condensed
+   * away; only the retained ones and the change AT this number are held). Changes above it are held
+   * gaplessly. Such a replica cannot hand out changes at or below the number (see `docs/snapshot.md`).
+   */
+  readonly base?: Readonly<Record<DeviceId, number>>;
 }
 
 /** A write and what its author knew; `knew` missing = unknown. */
@@ -178,3 +185,14 @@ export interface ApprovalEntry {
 export interface ApprovalState {
   readonly entries: readonly ApprovalEntry[];
 }
+
+/**
+ * The app's validation of what a change says, per collection: field names, values, relations to the
+ * record's present state (who owns it, what it was). Returns `undefined` when the change is fine,
+ * else a short code (1 to 120 characters; the package never shows or translates it). Must be a pure
+ * function of its arguments, and fast: it runs once per change. `state` is the replica as it was
+ * before the batch or session piece the change arrives in, never the half merged one, so a rule
+ * cannot depend on the order inside a batch and every device decides alike. A throwing rule refuses.
+ * `change.fields` is absent for a final deletion.
+ */
+export type FieldRules = (change: Change, state: Replica) => string | undefined;

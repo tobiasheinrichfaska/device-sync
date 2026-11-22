@@ -1,6 +1,6 @@
 import { base64url, canonical, sha256Text } from '../core/index.ts';
 import { resolveLimits } from './limits.ts';
-import { tipConflict, tipsOf } from './chain.ts';
+import { servableTo, tipConflict, tipsOf } from './chain.ts';
 import { mergeApproved, type ApprovalOptions, type ApprovalReport } from './approval.ts';
 import { merge } from './merge.ts';
 import { parseSyncMessage, type ParseOptions, type SyncMessage } from './parse.ts';
@@ -168,6 +168,8 @@ export interface Session {
    * (`forged` and its reasons, as `equivocation` between two changes this device holds).
    */
   readonly refusalDevice?: DeviceId;
+  /** With the reason `field-rules`: the code the app's `FieldRules` answered. */
+  readonly refusalDetail?: string;
   /**
    * With the refusal `diverged` (`tip-mismatch`): the device whose HISTORY differs between the two
    * replicas. It does not say who lies: the other side may have invented the tip, or one of the two
@@ -287,7 +289,13 @@ function answerFor(
   const deleteKeys = new Set(missing.filter((c) => c.kind === 'delete').map(recordKey));
   // A replica that uses an approval hook may hold an erased change of a record that is not deleted
   // (a rejected one): peers would refuse it, so it and what follows it from its author stay here.
-  const unsendable = replica.approval ? rejectedHere(replica) : undefined;
+  const servable = servableTo(replica, vector);
+  const rejected = replica.approval ? rejectedHere(replica) : undefined;
+  // A replica that started from a snapshot cannot hand out what lies below its base (`Replica.base`).
+  const unsendable =
+    replica.base || rejected
+      ? (change: Change): boolean => !servable(change) || rejected?.(change) === true
+      : undefined;
   const sendable = prune(missing, options.signedOnly !== false, deleteKeys, vector, unsendable);
   const withheld = missing.length - sendable.length;
   let size = 0;
@@ -428,6 +436,7 @@ function refused(
   refusalReason: RefusalReason,
   refusalDevice?: DeviceId,
   subjectDevice?: DeviceId,
+  refusalDetail?: string,
 ): Step {
   const { judging: _j, ...rest } = session;
   return {
@@ -437,6 +446,7 @@ function refused(
       refusalReason,
       ...(refusalDevice ? { refusalDevice } : {}),
       ...(subjectDevice ? { subjectDevice } : {}),
+      ...(refusalDetail !== undefined ? { refusalDetail } : {}),
     },
     replica,
     send: [],
@@ -492,6 +502,7 @@ export async function receiveJudged(
   const message = parseSyncMessage(raw, options);
   if (!message) return refused(session, replica, 'unreadable', 'unparsable');
   if (message.t !== 'changes') return onSyncMessage(session, replica, message, options);
+  if (options.fieldRules && !judge.fieldRules) judge = { ...judge, fieldRules: options.fieldRules };
   const limits = resolveLimits(options.limits);
   const admission = await admit(
     replica,
@@ -508,6 +519,8 @@ export async function receiveJudged(
       'forged',
       first?.reason ?? 'not-allowed',
       first?.change.device,
+      undefined,
+      first?.detail,
     );
   }
   const judging = admission.judging;
@@ -519,7 +532,15 @@ export async function receiveJudged(
   });
   if (read.rejected > 0) {
     const first = read.rejections[0];
-    return refused(open, replica, 'forged', first?.reason ?? 'not-allowed', first?.change.device);
+    return refused(
+      open,
+      replica,
+      'forged',
+      first?.reason ?? 'not-allowed',
+      first?.change.device,
+      undefined,
+      first?.detail,
+    );
   }
   const step = onSyncMessage(
     open,
