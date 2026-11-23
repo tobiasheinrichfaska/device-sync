@@ -39,12 +39,13 @@ export interface DataChannelLike extends EventTargetLike {
   binaryType: string;
   readonly bufferedAmount: number;
   bufferedAmountLowThreshold: number;
-  send(data: Uint8Array): void;
+  send(data: Uint8Array<ArrayBuffer>): void;
   close(): void;
 }
 
 export interface DescriptionLike {
-  readonly type?: string;
+  /** The same words as `RTCSdpType`, so a real `RTCPeerConnection` fits `PeerLike` without a cast. */
+  readonly type?: 'offer' | 'answer' | 'pranswer' | 'rollback';
   readonly sdp?: string;
 }
 
@@ -116,6 +117,7 @@ export class DirectConnection {
   private channel: DataChannelLike | undefined;
   private readonly assembler = new ChunkAssembler();
   private readonly inbox: Uint8Array[] = [];
+  private inboxBytes = 0;
   private readers: Reader[] = [];
   private openWaiters: Waiter[] = [];
   private deadlineHandle: unknown;
@@ -252,8 +254,15 @@ export class DirectConnection {
     if (reader) {
       this.o.timers.clear(reader.handle);
       reader.resolve(pass(r.value));
-    } else if (this.inbox.length >= L.inboxMax) this.close('overflow');
-    else this.inbox.push(r.value);
+    } else if (
+      this.inbox.length >= L.inboxMax ||
+      this.inboxBytes + r.value.length > L.inboxBytesMax
+    )
+      this.close('overflow');
+    else {
+      this.inbox.push(r.value);
+      this.inboxBytes += r.value.length;
+    }
   }
 
   private gather(): Promise<string> {
@@ -377,7 +386,10 @@ export class DirectConnection {
   /** The next message; waits up to `ms`. Messages that came earlier wait in the inbox. */
   receive(ms: number): Promise<Result<Uint8Array>> {
     const ready = this.inbox.shift();
-    if (ready) return Promise.resolve(pass(ready));
+    if (ready) {
+      this.inboxBytes -= ready.length;
+      return Promise.resolve(pass(ready));
+    }
     if (this.state.phase === 'failed' || this.state.phase === 'closed')
       return Promise.resolve(fail('closed'));
     return new Promise((resolve) => {

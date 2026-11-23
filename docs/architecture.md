@@ -1,22 +1,25 @@
-# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push and browser exist)
+# Architecture (built layer by layer; core, log, trust, post, relay, transfer, push, browser, group, lock and sync exist)
 
 The package is app-independent. Everything an app decides (record shapes, who may write what,
 approval, texts, storage names) is passed in as a parameter, a hook or a strategy.
 
 ## Layers
 
-| Layer        | Content                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------- |
-| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out |
-| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange  |
-| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                         |
-| **post**     | Mailbox for sealed envelopes carried by third devices                                                    |
-| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring               |
-| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)  |
-| **push**     | Web Push encryption and VAPID, ring request, service worker template                                     |
-| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                |
+| Layer        | Content                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **core**     | Canonical JSON and check values, device keys, signatures, session, encrypted file, envelope with fan-out                                    |
+| **log**      | Change log, version vector, merge, conflict notices, erasure with redaction, catch-up, chunked exchange                                     |
+| **trust**    | Device list, invitation, acquaintance, removal; a strategy decides who may vouch                                                            |
+| **post**     | Mailbox for sealed envelopes carried by third devices                                                                                       |
+| **relay**    | Client of a simple store-and-forward relay: enrol, renew, invite, drop, collect loop, ring; admission (certificates, device list, blocking) |
+| **transfer** | Fountain QR frames, tone messages, direct WebRTC connection by exchanged texts (optional, opaque bytes)                                     |
+| **group**    | Shared group key per data set: epochs, grants to trusted devices, rotation on removal, encrypt/decrypt                                      |
+| **lock**     | Device lock: days without contact (peer or server time), operator orders, wipe instruction as a hook result (`docs/lock.md`)                |
+| **sync**     | Driver: pull rounds of the log exchange over the relay, sealed per trusted device; removal enforced at the transport                        |
+| **push**     | Web Push encryption and VAPID, ring request, service worker template                                                                        |
+| **browser**  | Key storage in IndexedDB, one listener per tab, camera and audio behind narrow interfaces                                                   |
 
-`core`, `log`, `trust`, `post` and `push` are pure: no clock, no randomness, no I/O (both are passed
+`core`, `log`, `trust`, `post`, `group` and `push` are pure: no clock, no randomness, no I/O (both are passed
 in) and testable without a UI. `transfer` is pure apart from its adapter over an injected WebRTC peer. Only `browser` and `relay` touch `fetch`, IndexedDB or WebRTC; the relay layer takes `fetch` and its credential store as parameters, so it runs in a browser, a WebView and a Node test alike.
 
 ## Parameters instead of constants
@@ -27,7 +30,8 @@ in) and testable without a UI. `transfer` is pure apart from its adapter over an
 - **Hooks**: a special case in signature checking, records that are never erased, the right to write
   (the receiver decides, `mayWrite`), whether a final deletion is allowed at all (`allowFinalDelete`, off
   by default), a per-author quota against a flooding member (`quota`; it ends the reading of a
-  session, it does not refuse it), holding a change back until someone approves it. The key source
+  session, it does not refuse it), holding a change back until someone approves it (`ApprovalHook`,
+  `mergeApproved`, `approve`, `reject`; `docs/approval.md`). The key source
   (`KeySource`) gives the key of a device who can be CHECKED (not who may write), optionally the
   collections that are never finally deleted (`neverErase`) and whether it verifies what it reads
   itself (`selfVerifying`).
@@ -37,6 +41,14 @@ in) and testable without a UI. `transfer` is pure apart from its adapter over an
 - **Strategies**: who may vouch for a device, how a device lock is computed (peer contact or server
   time).
 - **Errors** are codes (`art`), not sentences; the app translates.
+
+## Hold back until approved (log layer)
+
+An app hook decides per incoming change: apply, hold or reject (`docs/approval.md`). A held change
+lives in `Replica.approval`, outside the log and the version vector, so the gapless chain, the causal
+holds, the stand and `done` of a session are exactly what they were; a rejected write becomes an erased
+change that keeps its number; a final deletion can only be held or approved. The state is plain JSON
+with a strict reader and two bounds. Without a hook nothing changes.
 
 ## Session and encrypted file (core layer)
 
@@ -148,8 +160,16 @@ open points a server owner still has to decide. The layer has five parts.
   through a hook; polling follows the documented cadence.
 - **`framing`**: the client's own convention for payloads larger than one message: versioned frames, strict
   reassembly with limits (parts, bytes, senders, hold time as parameters).
+- **Revision 2 (admission)**, written in `docs/relay-protocol.md` ("Revision 2"): `admission` (formats of
+  certificate `c1`, invitation `e2` and founder ticket `g1`, the two role rules, strict readers of every
+  answer of that revision), `possession` (the signed text, the header value, a signer over a WebCrypto key
+  pair, the names of the two headers as configuration), `RelayClient` with a `signer` (enrolment with the
+  device's own key, signed requests, `renew`, `upgrade`, `negotiate`, `invite`, `devices`, `block`), the
+  blocked mark in the credential store with the `onBlocked` hook, `blockplan` (the daily repetition of blocks,
+  pure), `invitationPart` (the validator for the relay part of an invitation link) and `inviteReply` (the
+  reply of a new device through the relay in clear text: bounded, paced, repeated until its end).
 - **`conformance`**: a runner that takes the language-neutral cases of
-  `tests/relay/conformance/cases.json` and a running server (exported as `device-sync/conformance`). The
+  `tests/relay/conformance/cases.json` (version 1) and `cases-r2.json` (revision 2) and a running server (exported as `device-sync/conformance`). The
   repository tests it against an in-memory reference server written from the document alone, and against
   deliberately broken variants of that server.
 
@@ -204,3 +224,24 @@ the timer type and the sample limit.
   messages with limits, and a thin adapter over an injected peer (inbox from the first moment, queued sends with
   backpressure, `drain`, protocol violations close the connection). Network helpers keep the kind of an address,
   never the address.
+
+## Group keys (group layer)
+
+`group/` gives an app one symmetric key per data set, in epochs. A key is handed to each trusted device as
+an encrypted file for that device (core layer) whose payload is signed by the issuing device's signing key (the
+reader checks it against the trust layer's signing key before it takes the key), with the recipients taken from the trust layer's `Trust`;
+after a removal `needsRotation` shows that a removed device was given the current key and `rotateGroup`
+makes the next epoch for the trusted devices only. Concurrent rotations converge by one rule (highest epoch,
+then lowest author id in UTF-8 order) and no candidate key is dropped. Messages are opaque bytes under a
+per-message key derived from the epoch key, with epoch, key id, data set and the app's context
+authenticated. The state is a plain value with a strict reader. A removed device keeps every key it
+already held; there is no forward secrecy and no post-compromise security beyond rotation
+(`docs/group.md`).
+
+## Sync driver (`src/sync/`, `docs/sync.md`)
+
+Wires log, trust, core (sealed file) and relay: `syncOnce(config, state, replica, nowMs)` collects, filters
+at the transport (only trusted peers, the sender is the key that opens the file, never the relay's `from`),
+judges and merges, answers asks, asks present peers and drops bounded batches. Recipients come from the
+trust derivation; a removal stops outbound at once and is reported (`newlyRemoved`); `groupAdapter.ts` is
+the only file that touches the group layer.

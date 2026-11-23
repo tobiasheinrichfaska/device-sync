@@ -4,6 +4,8 @@ export const BROWSER_LIMITS = {
   nameMax: 100,
   /** Longest text record (the relay credential is about 600 characters). */
   textMax: 8_192,
+  /** Longest sealed text record (a sealed group state), characters. */
+  sealedMax: 16_777_216,
   /** Version of the IndexedDB schema (one object store). */
   schemaVersion: 1,
   /** Version member of every stored record. */

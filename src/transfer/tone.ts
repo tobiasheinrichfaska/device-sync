@@ -88,7 +88,11 @@ export function durationMs(plan: TonePlan, messageBytes = 1): number {
 }
 
 /** Renders bytes as tones, the whole run `plan.repeats` times with a gap between. */
-function render(bytes: readonly number[], plan: TonePlan, sampleRate: number): Float32Array {
+function render(
+  bytes: readonly number[],
+  plan: TonePlan,
+  sampleRate: number,
+): Float32Array<ArrayBuffer> {
   const toneLen = Math.round((plan.toneMs / 1000) * sampleRate);
   const gapLen = Math.round((plan.gapMs / 1000) * sampleRate);
   const fade = Math.max(1, Math.round((plan.fadeMs / 1000) * sampleRate));
@@ -115,7 +119,7 @@ export function synthesizeByte(
   byte: number,
   plan: TonePlan,
   sampleRate: number,
-): TransferResult<Float32Array, ToneReason> {
+): TransferResult<Float32Array<ArrayBuffer>, ToneReason> {
   if (!Number.isInteger(byte) || byte < 0 || byte > 255) return fail('bad-byte');
   if (!rateFits(plan, sampleRate)) return fail('bad-rate');
   return pass(render([byte], plan, sampleRate));
@@ -152,7 +156,7 @@ export function encodeToneMessage(
   payload: Uint8Array,
   plan: TonePlan,
   sampleRate: number,
-): TransferResult<Float32Array, ToneReason> {
+): TransferResult<Float32Array<ArrayBuffer>, ToneReason> {
   const m = messageBytes(appId, payload);
   if (!m.ok) return m;
   if (!rateFits(plan, sampleRate)) return fail('bad-rate');

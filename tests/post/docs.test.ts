@@ -17,12 +17,12 @@ describe('docs/wire-format.md, envelope and mailbox', () => {
   it('exists and names every text exactly', () => {
     expect(PART.length).toBeGreaterThan(8000);
     for (const t of [
-      '{"m":"<appId>-envelope:2","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}',
-      '<appId>-envid:2|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...',
-      '<appId>-envelope:2|header|<n>:<day>|<n>:<eph>',
-      '"<appId>-envelope:2|slot|<n>:<dh>"',
+      '{"m":"<appId>-envelope:3","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","kc":"<32 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}',
+      '<appId>-envid:3|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<kc>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...',
+      '<appId>-envelope:3|header|<n>:<day>|<n>:<eph>',
+      '"<appId>-envelope:3|slot|<n>:<dh>"',
       '{"from":"<device id>","channel":"<channel>","sig":"<64 bytes>","body":"<base64url of the content>"}',
-      '<appId>-envsig:2|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>',
+      '<appId>-envsig:3|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>',
       '<appId>-postday:2|<n>:<day>|<number of ids>|<n>:<id>|<n>:<id>|...',
       '<appId>-postbox:2|<number of ids>|<n>:<id>|<n>:<id>|...',
       '<appId>-poststand:2|<n>:<fingerprint>|<n>:<mailbox check>',
@@ -36,7 +36,7 @@ describe('docs/wire-format.md, envelope and mailbox', () => {
 
   it('what a real envelope and a real message look like, as documented', () => {
     expect(fake().text).toMatch(
-      /^\{"m":"demo-envelope:2","id":"[A-Za-z0-9_-]{22}","day":"\d{4}-\d{2}-\d{2}","eph":"[A-Za-z0-9_-]{87}","iv":"[A-Za-z0-9_-]{16}","ct":"[A-Za-z0-9_-]+","k":\[("[A-Za-z0-9_-]{64}",?){8}\]\}$/,
+      /^\{"m":"demo-envelope:3","id":"[A-Za-z0-9_-]{22}","day":"\d{4}-\d{2}-\d{2}","eph":"[A-Za-z0-9_-]{87}","iv":"[A-Za-z0-9_-]{16}","kc":"[A-Za-z0-9_-]{43}","ct":"[A-Za-z0-9_-]+","k":\[("[A-Za-z0-9_-]{64}",?){8}\]\}$/,
     );
     expect(startMessage()).toMatch(/^\{"m":"demo-post:2","t":"days","days":\{.*\}\}$/);
   });
@@ -73,6 +73,7 @@ describe('docs/wire-format.md, envelope and mailbox', () => {
       'bad-point',
       'not-for-me',
       'damaged',
+      'key-mismatch',
       'unknown-author',
       'bad-signature',
       // mailbox and session
@@ -109,8 +110,10 @@ describe('docs/wire-format.md, envelope and mailbox', () => {
 
   it('the marker kinds it names are the ones the code uses', () => {
     expect(APP).toBe('demo');
-    for (const kind of ['envelope', 'envid', 'envsig', 'post', 'postday', 'postbox', 'poststand']) {
+    for (const kind of ['envelope', 'envid', 'envsig']) expect(PART).toContain(`-${kind}:3`);
+    for (const kind of ['post', 'postday', 'postbox', 'poststand']) {
       expect(PART).toContain(`-${kind}:2`);
     }
+    expect(PART).toContain('<appId>-envelope:3|commit|<header text>|');
   });
 });

@@ -1,3 +1,4 @@
+import { servableTo } from './chain.ts';
 import { changeLink } from './check.ts';
 import { byDeviceThenSeq, merge, originOf } from './merge.ts';
 import type {
@@ -21,6 +22,7 @@ import {
   own,
   validHead,
   validOrigin,
+  ruleAnswer,
   type Problem,
 } from './validate.ts';
 import { isNewer, seen } from './vector.ts';
@@ -76,11 +78,13 @@ export type WriteFailure =
   /** The clock or the numbering cannot count further. */
   | 'clock-overflow'
   /** The log does not hold this device's previous change (a hand-built replica): the hash chain cannot continue. */
-  | 'missing-history';
+  | 'missing-history'
+  /** The app's `FieldRules` refused the change; `detail` is the code it answered. */
+  | 'field-rules';
 
 export type WriteResult =
   | { readonly ok: true; readonly replica: Replica }
-  | { readonly ok: false; readonly reason: WriteFailure };
+  | { readonly ok: false; readonly reason: WriteFailure; readonly detail?: string };
 
 /**
  * Writes fields on this device; fields not named keep their value. Everything a receiver's strict
@@ -277,7 +281,10 @@ export function undo(
 
 /** The changes a device with this stand lacks, in an order it can apply directly. */
 export function missingFor(replica: Replica, vector: VersionVector): Change[] {
-  return replica.log.filter((c) => c.seq > seen(vector, c.device)).sort(byDeviceThenSeq);
+  const servable = servableTo(replica, vector);
+  return replica.log
+    .filter((c) => c.seq > seen(vector, c.device) && servable(c))
+    .sort(byDeviceThenSeq);
 }
 
 /**
@@ -368,6 +375,10 @@ function commit(
     ...(prev !== undefined ? { prev } : {}),
   };
   const change: Change = fields ? { ...base, fields } : base;
+  if (options.fieldRules) {
+    const answer = ruleAnswer(options.fieldRules, change, replica);
+    if (answer !== undefined) return { ok: false, reason: 'field-rules', detail: answer };
+  }
   // What a receiver reads must fit its message limit.
   if (JSON.stringify(change).length > limits.maxMessageChars) {
     return { ok: false, reason: 'too-large' };

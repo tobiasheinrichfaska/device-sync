@@ -58,3 +58,23 @@ export function tipConflict(
   }
   return undefined;
 }
+
+/**
+ * The devices whose changes this replica cannot hand to a peer with this stand: the replica started
+ * from a snapshot (`Replica.base`) and the peer lacks changes below the condensed number, which this
+ * replica no longer holds. That peer needs a snapshot itself (or a device that holds the whole log).
+ */
+export function needsSnapshot(replica: Replica, vector: VersionVector): DeviceId[] {
+  return Object.entries(replica.base ?? {})
+    .filter(([device, base]) => seen(vector, device) < base)
+    .map(([device]) => device)
+    .sort();
+}
+
+/** Whether this replica can hand the change to a peer with this stand (see `needsSnapshot`). */
+export function servableTo(replica: Replica, vector: VersionVector): (change: Change) => boolean {
+  const base = replica.base;
+  if (!base) return () => true;
+  const blocked = new Set(needsSnapshot(replica, vector));
+  return (change) => !blocked.has(change.device);
+}

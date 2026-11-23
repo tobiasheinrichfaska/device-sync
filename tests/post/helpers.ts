@@ -32,6 +32,7 @@ export function fake(day = TODAY, extra = 0, appId = APP): Envelope {
     day,
     eph: EPH,
     iv: 'A'.repeat(16),
+    kc: 'D'.repeat(42) + 'A',
     ct: base64url(ct),
     k: Array.from({ length: 8 }, () => 'C'.repeat(64)),
   });

@@ -19,5 +19,11 @@
     "allowImportingTsExtensions": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "tests", "vitest.config.ts"]
+  "include": [
+    "src",
+    "tests",
+    "vitest.config.ts",
+    "vitest.browser.config.ts",
+    "vitest.relay-real.config.ts"
+  ]
 }

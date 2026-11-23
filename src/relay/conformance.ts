@@ -6,6 +6,7 @@
 // `control` object (spec: "Test interface"); a case that needs one the caller did not give is skipped,
 // never counted as passed. It uses Web Crypto only, so it runs in browsers and in Node.
 import { base64url, fromBase64url } from '../core/encoding.ts';
+import { bodyHash, possessionText } from './possession.ts';
 
 export interface ConformanceFixture {
   /** HMAC secrets (base64url) the server under test must be configured with, by name. */
@@ -16,6 +17,14 @@ export interface ConformanceFixture {
   >;
   /** The apps the server must serve (documentation for the server owner; the runner does not read it). */
   readonly apps: Readonly<Record<string, unknown>>;
+  /** Revision 2: the developer's key pairs (founder tickets): the raw public key goes into the server, the private JWK signs. */
+  readonly developerKeys?: Readonly<
+    Record<string, { readonly publicRaw: string; readonly privateJwk: JsonWebKey }>
+  >;
+  /** Revision 2: developer passwords the server must hold (documentation; the runner sends them as the cases say). */
+  readonly developerPasswords?: readonly unknown[];
+  /** Revision 2: the names of the two request headers; the server under test may use others, the caller then says so here. */
+  readonly headers?: { readonly possession: string; readonly version: string };
 }
 
 export type BodySpec =
@@ -37,8 +46,32 @@ export interface Expectation {
   readonly headers?: Readonly<Record<string, string | null>>;
   /** Exact JSON, with the typed patterns of the spec ("Conformance case format"). */
   readonly body?: unknown;
+  /** Revision 2: for a header whose value is a comma separated list: every token named here is in it (case and spaces do not matter). */
+  readonly headersInclude?: Readonly<Record<string, readonly string[]>>;
   /** The answer has no body (a preflight answer). */
   readonly empty?: boolean;
+  /**
+   * The server may close the connection instead of answering (the runner then counts the step as
+   * passed). For a body far larger than the socket buffers: a server that answers 413 at once and
+   * closes while the client is still writing can make the client see a reset instead of the answer
+   * (RFC 9112, 9.6); an answer that does arrive must still match.
+   */
+  readonly mayCloseConnection?: boolean;
+}
+
+/** Revision 2: sign the request with a key the runner made (placeholder `devicekey`), for a certificate. */
+export interface PossessionSpec {
+  /** The name of the runner's device key. */
+  readonly key: string;
+  /** The certificate that goes in the signed text (placeholders allowed). */
+  readonly certificate: string;
+  /** Seconds added to the server's now for the signed time. Default 0. */
+  readonly offset?: number;
+  /** Made once under this name and reused (a replay of the same request). */
+  readonly name?: string;
+  /** Sign this path / this body instead of the ones sent (a signature for another request). */
+  readonly signPath?: string;
+  readonly signBody?: string;
 }
 
 export interface ControlStep {
@@ -55,6 +88,10 @@ export interface ConformanceStep {
     readonly path: string;
     readonly headers?: Readonly<Record<string, string>>;
     readonly body?: BodySpec;
+    /** Revision 2: adds the possession header. */
+    readonly possession?: PossessionSpec;
+    /** Revision 2: adds the version header with this number. */
+    readonly version?: number;
   };
   readonly expect?: Expectation;
   /** JSON pointers into the answer body; the string found is kept under that name. */
@@ -118,6 +155,8 @@ class Context {
   readonly vars = new Map<string, string>();
   readonly proofs = new Map<string, string>();
   readonly invitations = new Map<string, string>();
+  readonly keys = new Map<string, { publicRaw: string; privateKey: CryptoKey }>();
+  readonly possessions = new Map<string, string>();
 }
 
 const randomHex = (bytes: number): string =>
@@ -154,6 +193,24 @@ async function signProof(jwk: JsonWebKey, text: string): Promise<string> {
     utf8.encode(text),
   );
   return base64url(new Uint8Array(sig));
+}
+
+async function deviceKey(
+  name: string,
+  env: { readonly ctx: Context },
+): Promise<{ publicRaw: string; privateKey: CryptoKey }> {
+  let k = env.ctx.keys.get(name);
+  if (!k) {
+    const pair = (await globalThis.crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign', 'verify'],
+    )) as CryptoKeyPair;
+    const raw = new Uint8Array(await globalThis.crypto.subtle.exportKey('raw', pair.publicKey));
+    k = { publicRaw: base64url(raw), privateKey: pair.privateKey };
+    env.ctx.keys.set(name, k);
+  }
+  return k;
 }
 
 interface Env {
@@ -223,6 +280,52 @@ async function mint(kind: string, args: string[], env: Env): Promise<string> {
       env.ctx.proofs.set(name ?? '', text);
       return text;
     }
+    case 'header': {
+      const names = env.fixture.headers ?? {
+        possession: 'x-relay-signature',
+        version: 'x-relay-protocol',
+      };
+      const name = names[(args[0] ?? '') as 'possession' | 'version'];
+      if (!name) throw new Error(`unknown header "${args[0]}"`);
+      return name;
+    }
+    case 'devicekey':
+      return (await deviceKey(args[0] ?? '', env)).publicRaw;
+    case 'certificate': {
+      // certificate:APP:GROUP:DEVICE:ROLE:KEY:OFFSET:SECRET[:NAME]; in a role `~` stands for `:`
+      const [app, group, deviceName, role, keyName, off, secret, memo] = args;
+      const kept = memo === undefined ? undefined : env.ctx.vars.get(`certificate:${memo}`);
+      if (kept) return kept;
+      const device = await mint('device', [deviceName ?? ''], env);
+      const key = (await deviceKey(keyName ?? '', env)).publicRaw;
+      const head = `c1.${app}.${group}.${device}.${(role ?? '').replace('~', ':')}.${key}.${nowS + offset(off)}`;
+      const text = `${head}.${await hmac(secretBytes(secret), `zertifikat:${head}`)}`;
+      if (memo !== undefined) env.ctx.vars.set(`certificate:${memo}`, text);
+      return text;
+    }
+    case 'invitation2': {
+      // invitation2:APP:GROUP:INVITER:ROLE:OFFSET:SECRET:NAME
+      const [app, group, inviter, role, off, secret, name] = args;
+      const have = env.ctx.invitations.get(name ?? '');
+      if (have) return have;
+      const device = await mint('device', [inviter ?? ''], env);
+      const head = `e2.${app}.${group}.${device}.${(role ?? '').replace('~', ':')}.${nowS + offset(off)}.${randomB64(16)}`;
+      const text = `${head}.${await hmac(secretBytes(secret), `einladung:${head}`)}`;
+      env.ctx.invitations.set(name ?? '', text);
+      return text;
+    }
+    case 'founder': {
+      // founder:APP:GROUP:OFFSET:DEVELOPERKEY:NAME
+      const [app, group, off, keyName, name] = args;
+      const have = env.ctx.invitations.get(`g:${name}`);
+      if (have) return have;
+      const key = env.fixture.developerKeys?.[keyName ?? ''];
+      if (!key) throw new Error(`unknown developer key "${keyName}"`);
+      const head = `g1.${app}.${group}.${nowS + offset(off)}.${randomB64(16)}`;
+      const text = `${head}.${await signProof(key.privateJwk, head)}`;
+      env.ctx.invitations.set(`g:${name}`, text);
+      return text;
+    }
     default:
       throw new Error(`unknown placeholder "${kind}"`);
   }
@@ -232,7 +335,7 @@ async function mint(kind: string, args: string[], env: Env): Promise<string> {
 async function expandText(text: string, env: Env): Promise<string> {
   const parts: string[] = [];
   let last = 0;
-  for (const m of text.matchAll(/\{\{([a-z]+)((?::[^:{}]*)*)\}\}/g)) {
+  for (const m of text.matchAll(/\{\{([a-z0-9]+)((?::[^:{}]*)*)\}\}/g)) {
     parts.push(text.slice(last, m.index));
     const args = m[2] === '' ? [] : (m[2] as string).slice(1).split(':');
     parts.push(await mint(m[1] as string, args, env));
@@ -359,7 +462,7 @@ async function runStep(
     const path = (await expand(step.request.path, env)) as string;
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(step.request.headers ?? {})) {
-      headers[k] = (await expand(v, env)) as string;
+      headers[await expandText(k, env)] = (await expand(v, env)) as string;
     }
     let body: string | undefined;
     const spec = step.request.body;
@@ -372,6 +475,33 @@ async function runStep(
         const suffix = await expandText(g.suffix, env);
         body = prefix + g.fill.repeat(Math.max(0, g.count)) + suffix;
       }
+    }
+    const pz = step.request.possession;
+    if (pz) {
+      const certificate = await expandText(pz.certificate, env);
+      let value = pz.name === undefined ? undefined : env.ctx.possessions.get(pz.name);
+      if (value === undefined) {
+        const key = await deviceKey(pz.key, env);
+        const t = Math.floor(env.nowMs() / 1000) + (pz.offset ?? 0);
+        const text = possessionText(
+          step.request.method,
+          pz.signPath === undefined ? path : await expandText(pz.signPath, env),
+          t,
+          await bodyHash(pz.signBody === undefined ? (body ?? '') : pz.signBody),
+          certificate,
+        );
+        const sig = await globalThis.crypto.subtle.sign(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          key.privateKey,
+          utf8.encode(text),
+        );
+        value = `${t}.${base64url(new Uint8Array(sig))}`;
+        if (pz.name !== undefined) env.ctx.possessions.set(pz.name, value);
+      }
+      headers[env.fixture.headers?.possession ?? 'x-relay-signature'] = value;
+    }
+    if (step.request.version !== undefined) {
+      headers[env.fixture.headers?.version ?? 'x-relay-protocol'] = String(step.request.version);
     }
     const controller = new AbortController();
     const timer = globalThis.setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
@@ -386,6 +516,7 @@ async function runStep(
       });
       text = await response.text();
     } catch (e) {
+      if (step.expect?.mayCloseConnection === true && !controller.signal.aborted) return;
       reasons.push(`${tag}: no answer (${e instanceof Error ? e.name : 'error'})`);
       return;
     } finally {
@@ -403,6 +534,15 @@ async function runStep(
           reasons.push(
             `${tag}: header ${name} is ${got === null ? 'absent' : `"${got}"`}, expected ${want === null ? 'absent' : `"${want}"`}`,
           );
+        }
+      }
+      for (const [name, tokens] of Object.entries(expect.headersInclude ?? {})) {
+        const got = (response.headers.get(name) ?? '')
+          .split(',')
+          .map((x) => x.trim().toLowerCase());
+        for (const raw of tokens) {
+          const want = (await expandText(raw, env)).toLowerCase();
+          if (!got.includes(want)) reasons.push(`${tag}: header ${name} lacks "${want}"`);
         }
       }
       if (expect.empty && text !== '') reasons.push(`${tag}: expected no body`);

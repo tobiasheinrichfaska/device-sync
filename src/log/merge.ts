@@ -1,4 +1,5 @@
 import { canonical } from '../core/index.ts';
+import { heldIn } from './chain.ts';
 import { changeCheckValue } from './check.ts';
 import { IndexEditor, indexOf, rememberIndex, type LogIndex } from './recordIndex.ts';
 import type {
@@ -103,7 +104,8 @@ export function merge(replica: Replica, incoming: readonly Change[]): MergeResul
         waitingForDevice.set(missing, list);
         break;
       }
-      // Extension point: a future `ApprovalHook` is asked here; a refused change is held.
+      // Approval (a hook that holds a change back) never happens here: `mergeApproved` decides
+      // before and passes on only what is to be applied (`approval.ts`).
       const position = log.length;
       const logged = apply(collections, edit, change);
       log.push(logged);
@@ -210,7 +212,7 @@ class MinHeap {
   }
 }
 
-function apply(
+export function apply(
   collections: Readonly<Record<string, Collection>>,
   edit: (collection: string) => Record<string, StoredRecord>,
   change: Change,
@@ -328,4 +330,91 @@ function unique(changes: readonly Change[]): Change[] {
 
 export function byDeviceThenSeq(a: Change, b: Change): number {
   return a.device < b.device ? -1 : a.device > b.device ? 1 : a.seq - b.seq;
+}
+
+/**
+ * Takes the retained changes of a snapshot into a replica (`catchUp`; the changes were judged by the
+ * caller). They are NOT a gapless run: what lies between them is covered by `vector`, which is the
+ * snapshot's stand, so nothing is held back for a gap or a `knew`. Deletions take effect after the
+ * writes (a deletion wins over any write whatever their order), and the log keeps the changes ordered
+ * by device and number. The caller has dropped everything this replica already holds.
+ */
+export function mergeRetained(
+  replica: Replica,
+  retained: readonly Change[],
+  vector: Replica['vector'],
+  clock: number,
+  base: NonNullable<Replica['base']>,
+): Replica {
+  const log: Change[] = [...replica.log];
+  const collections = copyDict(replica.collections) as Record<string, Record<string, StoredRecord>>;
+  const owned = new Set<string>();
+  const edit = (name: string): Record<string, StoredRecord> => {
+    if (!owned.has(name)) {
+      collections[name] = copyDict(own(collections, name) ?? {});
+      owned.add(name);
+    }
+    return collections[name] as Record<string, StoredRecord>;
+  };
+  const editor = new IndexEditor(indexOf(replica.log));
+  const touched = new Map<string, Map<string, Set<string>>>();
+  const deleted = new Set<string>();
+  const deletions: Change[] = [];
+  const sorted = [...retained].sort(byDeviceThenSeq);
+  for (const change of sorted) {
+    const position = log.length;
+    const record = editor.record(change.collection, change.id);
+    if (change.kind === 'delete') {
+      log.push(change);
+      deletions.push(change);
+    } else {
+      const logged = apply(collections, edit, change);
+      log.push(logged);
+      if (logged.kind === 'set') {
+        editor.addSet(record, logged, position);
+        markTouched(touched, logged);
+      } else {
+        record.devices.add(change.device);
+      }
+    }
+  }
+  for (const change of deletions) {
+    const record = editor.record(change.collection, change.id);
+    apply(collections, edit, change);
+    for (const at of record.positions) log[at] = redacted(log[at] as Change);
+    editor.clear(record, change);
+    deleted.add(JSON.stringify([change.collection, change.id]));
+  }
+  let notices: Notice[] = [...replica.notices];
+  if (deleted.size > 0) {
+    notices = notices.filter((n) => !deleted.has(JSON.stringify([n.collection, n.id])));
+  }
+  if (touched.size > 0) notices = refreshNotices(notices, touched, editor.index, collections);
+  rememberIndex(log, editor.index);
+  return {
+    ...replica,
+    clock: Math.max(replica.clock, clock),
+    vector: copyDict(vector),
+    log,
+    collections,
+    notices,
+    base: { ...replica.base, ...base },
+  };
+}
+
+/**
+ * The replica with sparse changes put in: changes that are NOT a gapless run (the writes a removal
+ * notice carries, the retained changes of a snapshot), applied without waiting for a gap or a `knew`.
+ * It is for judging on a throw-away copy (`vector` and the clock stay as they were, so nothing here
+ * says the replica "has" these numbers, and the copy must never be stored or sent on). Changes the
+ * replica already holds are left out. Cost linear in the changes (plus the copy of the log).
+ */
+export function mergeSparse(replica: Replica, changes: readonly Change[]): Replica {
+  const held = heldIn(replica.log);
+  const fresh = unique(changes).filter((c) => !held.has(keyOf(c)));
+  if (fresh.length === 0) return replica;
+  const out = mergeRetained(replica, fresh, replica.vector, replica.clock, {});
+  if (replica.base) return out;
+  const { base: _marker, ...plain } = out;
+  return plain;
 }

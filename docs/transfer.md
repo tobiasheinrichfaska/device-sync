@@ -82,7 +82,9 @@ is a failure. The texts travel by any means (QR codes, a relay, a message).
 
 `readSdp` accepts a description only if it is printable ASCII with CRLF line ends, within the limits, starts
 with `v=0`, has **exactly one media section and that one is `application`** (so a text cannot ask for a camera
-or a microphone), and carries at least one DTLS fingerprint line of the usual shape. `fingerprintsOf` returns
+or a microphone), has **no bare CR or LF inside a line** (a parser that splits on LF would see a line the checks
+did not), and carries DTLS fingerprint lines of the usual shape that **all name one value** (the same one may repeat
+at session and media level; two different values are refused as `bad-sdp`). `fingerprintsOf` returns
 those lines: an app that has an authenticated channel (a sealed session) should sign or compare them, because
 the fingerprint is what binds the data channel to the description that was exchanged.
 
@@ -97,7 +99,7 @@ Messages over the channel are opaque bytes up to 4 MiB, cut into chunks of at mo
 passes unsplit): version 1, message id (4), chunk index (2), chunk count (2), data. All chunks but the last are
 full, the last is not empty unless the message is. The channel is ordered; the assembler takes the chunks in
 order and refuses anything else (`out-of-order`, `mismatch`), except that chunk 0 starts a new message and
-drops a half-received one. A broken chunk, an out-of-order chunk or more than `inboxMax` unread messages **close
+drops a half-received one. A broken chunk, an out-of-order chunk or more than `inboxMax` unread messages (or more than `inboxBytesMax` bytes of them) **close
 the connection** (`closeReason()` is `protocol` or `overflow`). Text messages on the channel are ignored.
 
 Receiving starts the moment the channel exists, and what arrives before anybody calls `receive` waits in the
@@ -129,33 +131,34 @@ still waits there.
 
 ## Limits
 
-| Name               | Value     | Meaning                                                                   |
-| ------------------ | --------- | ------------------------------------------------------------------------- |
-| `frameVersion`     | 1         | Fountain frame: version octet                                             |
-| `frameHeaderBytes` | 19        | Header: version 1, transfer id 4, sequence 4, blocks 2, length 4, check 4 |
-| `frameCheckBytes`  | 4         | Trailer: the check value over everything before it                        |
-| `blockBytesMax`    | 2_048     | Largest block (fits a QR code at the lowest correction level)             |
-| `blocksMax`        | 1_024     | Most blocks of one payload                                                |
-| `payloadMax`       | 1_048_576 | Largest payload of one transfer                                           |
-| `seqMax`           | 1_000_000 | Highest frame sequence number                                             |
-| `frameBytesMax`    | 2_071     | Largest frame in octets                                                   |
-| `frameCharsMax`    | 2_762     | Largest frame as base64url text                                           |
-| `framesMax`        | 100_000   | Frames one receiver looks at per transfer before it refuses more          |
-| `seenMax`          | 16_384    | Sequence numbers one receiver remembers                                   |
-| `toneMessageMax`   | 16        | Tone message: most payload octets                                         |
-| `toneCheckBytes`   | 2         | Tone message: octets of check value                                       |
-| `toneSymbolsMax`   | 4_096     | Tone listener: most analysis frames kept                                  |
-| `textCharsMax`     | 11_000    | Most characters of one offer or answer text                               |
-| `sdpCharsMax`      | 8_192     | Most characters of one description                                        |
-| `sdpLinesMax`      | 200       | Most lines of a description                                               |
-| `sdpLineCharsMax`  | 512       | Longest line of a description                                             |
-| `chunkHeaderBytes` | 9         | Data channel chunk: version 1, message id 4, index 2, count 2             |
-| `chunkBytes`       | 16_384    | Largest data channel message                                              |
-| `messageBytesMax`  | 4_194_304 | Largest message sent over the data channel                                |
-| `inboxMax`         | 256       | Unread messages a connection buffers                                      |
-| `statsMax`         | 500       | Entries of `getStats()` the path reader looks at                          |
-| `highWaterBytes`   | 1_048_576 | A sender waits while more than this is buffered                           |
-| `lowWaterBytes`    | 262_144   | The buffer level that wakes a waiting sender                              |
+| Name               | Value      | Meaning                                                                   |
+| ------------------ | ---------- | ------------------------------------------------------------------------- |
+| `frameVersion`     | 1          | Fountain frame: version octet                                             |
+| `frameHeaderBytes` | 19         | Header: version 1, transfer id 4, sequence 4, blocks 2, length 4, check 4 |
+| `frameCheckBytes`  | 4          | Trailer: the check value over everything before it                        |
+| `blockBytesMax`    | 2_048      | Largest block (fits a QR code at the lowest correction level)             |
+| `blocksMax`        | 1_024      | Most blocks of one payload                                                |
+| `payloadMax`       | 1_048_576  | Largest payload of one transfer                                           |
+| `seqMax`           | 1_000_000  | Highest frame sequence number                                             |
+| `frameBytesMax`    | 2_071      | Largest frame in octets                                                   |
+| `frameCharsMax`    | 2_762      | Largest frame as base64url text                                           |
+| `framesMax`        | 100_000    | Frames one receiver looks at per transfer before it refuses more          |
+| `seenMax`          | 16_384     | Sequence numbers one receiver remembers                                   |
+| `toneMessageMax`   | 16         | Tone message: most payload octets                                         |
+| `toneCheckBytes`   | 2          | Tone message: octets of check value                                       |
+| `toneSymbolsMax`   | 4_096      | Tone listener: most analysis frames kept                                  |
+| `textCharsMax`     | 11_000     | Most characters of one offer or answer text                               |
+| `sdpCharsMax`      | 8_192      | Most characters of one description                                        |
+| `sdpLinesMax`      | 200        | Most lines of a description                                               |
+| `sdpLineCharsMax`  | 512        | Longest line of a description                                             |
+| `chunkHeaderBytes` | 9          | Data channel chunk: version 1, message id 4, index 2, count 2             |
+| `chunkBytes`       | 16_384     | Largest data channel message                                              |
+| `messageBytesMax`  | 4_194_304  | Largest message sent over the data channel                                |
+| `inboxMax`         | 256        | Unread messages a connection buffers                                      |
+| `inboxBytesMax`    | 16_777_216 | Bytes of the unread messages together                                     |
+| `statsMax`         | 500        | Entries of `getStats()` the path reader looks at                          |
+| `highWaterBytes`   | 1_048_576  | A sender waits while more than this is buffered                           |
+| `lowWaterBytes`    | 262_144    | The buffer level that wakes a waiting sender                              |
 
 ## Codes
 

@@ -66,11 +66,13 @@ export function readPostMessage(
       return undefined;
     }
     if (!(ids as unknown[]).every(isId)) return undefined;
+    // only the last piece may be empty: an endless run of empty pieces would keep a session open
+    if (ids.length === 0 && !last) return undefined;
     message = { t: 'ids', ids: [...(ids as string[])], last };
   } else if (raw.t === 'envelopes' && hasMembers(raw, ['m', 't', 'envelopes', 'last'])) {
     const { envelopes, last } = raw;
     if (!Array.isArray(envelopes) || envelopes.length > lim.maxPerMessage) return undefined;
-    if (typeof last !== 'boolean') return undefined;
+    if (typeof last !== 'boolean' || (envelopes.length === 0 && !last)) return undefined;
     const read: Envelope[] = [];
     for (const value of envelopes as unknown[]) {
       const envelope = envelopeFromValue(appId, value, lim);

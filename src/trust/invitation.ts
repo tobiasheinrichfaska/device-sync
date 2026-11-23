@@ -31,6 +31,12 @@ export interface Invitation {
   readonly newName?: string;
   /** The inviter's relay id, so the answer can go there. */
   readonly relayId?: string;
+  /**
+   * The relay's own invitation (`e2`, 10 minutes, once): the new device takes it in at the relay as its
+   * access. It must satisfy the app's `relayInvitation` validator for this role and inviter, else the
+   * whole invitation is refused.
+   */
+  readonly relayInvitation?: string;
   readonly private?: true;
 }
 
@@ -51,7 +57,13 @@ export interface Reply {
 }
 
 export type InviteError =
-  'not-allowed' | 'bad-inviter' | 'bad-random' | 'bad-role' | 'bad-name' | 'private-role';
+  | 'not-allowed'
+  | 'bad-inviter'
+  | 'bad-random'
+  | 'bad-role'
+  | 'bad-name'
+  | 'private-role'
+  | 'bad-relay-invitation';
 
 export type Creation =
   | { readonly ok: true; readonly invitation: Invitation; readonly open: OpenInvitation }
@@ -69,7 +81,11 @@ export function createInvitation(
   role: string,
   random: Uint8Array,
   now: number,
-  extra: { readonly newName?: string; readonly private?: boolean } = {},
+  extra: {
+    readonly newName?: string;
+    readonly private?: boolean;
+    readonly relayInvitation?: string;
+  } = {},
 ): Creation {
   const valid = resolveValidators(o.valid);
   if (!parseIntroduction(inviter, valid)) return { ok: false, reason: 'bad-inviter' };
@@ -86,6 +102,14 @@ export function createInvitation(
   }
   const isPrivate = extra.private === true;
   if (isPrivate && !valid.privateRoles(role)) return { ok: false, reason: 'private-role' };
+  const relayId =
+    inviter.relayId !== undefined && valid.relayId(inviter.relayId) ? inviter.relayId : undefined;
+  if (
+    extra.relayInvitation !== undefined &&
+    !valid.relayInvitation(extra.relayInvitation, { role, inviterRelayId: relayId })
+  ) {
+    return { ok: false, reason: 'bad-relay-invitation' };
+  }
   const code = base64url(random);
   const until = now + INVITATION_MS;
   const invitation: Invitation = {
@@ -94,9 +118,8 @@ export function createInvitation(
     code,
     until,
     ...(extra.newName !== undefined ? { newName: extra.newName } : {}),
-    ...(inviter.relayId !== undefined && valid.relayId(inviter.relayId)
-      ? { relayId: inviter.relayId }
-      : {}),
+    ...(relayId !== undefined ? { relayId } : {}),
+    ...(extra.relayInvitation !== undefined ? { relayInvitation: extra.relayInvitation } : {}),
     ...(isPrivate ? { private: true as const } : {}),
   };
   const open: OpenInvitation = {
@@ -119,6 +142,7 @@ const MEMBERS = [
   'until',
   'newName',
   'relayId',
+  'relayInvitation',
   'private',
 ];
 
@@ -134,6 +158,7 @@ function invitationJson(appId: string, e: Invitation): string {
     until: e.until,
     ...(e.newName !== undefined ? { newName: e.newName } : {}),
     ...(e.relayId !== undefined ? { relayId: e.relayId } : {}),
+    ...(e.relayInvitation !== undefined ? { relayInvitation: e.relayInvitation } : {}),
     ...(e.private === true ? { private: true } : {}),
   });
 }
@@ -160,13 +185,26 @@ export function parseInvitation(o: ProtocolOptions, text: string): Invitation | 
     if (raw.m !== marker(o.appId, 'invite', FORMAT_VERSION)) return undefined;
     const valid = resolveValidators(o.valid);
     const from = parseIntroduction(raw, valid);
-    const { role, code, until, newName, relayId } = raw;
+    const { role, code, until, newName, relayId, relayInvitation } = raw;
     if (!from || typeof role !== 'string' || !valid.role(role)) return undefined;
     if (!isCode(code) || !isCount(until)) return undefined;
     if (newName !== undefined && !(typeof newName === 'string' && valid.name(newName))) {
       return undefined;
     }
     if (relayId !== undefined && !(typeof relayId === 'string' && valid.relayId(relayId))) {
+      return undefined;
+    }
+    // The relay's own invitation must fit this invitation's role and inviter: else the WHOLE invitation is refused.
+    if (
+      relayInvitation !== undefined &&
+      !(
+        typeof relayInvitation === 'string' &&
+        valid.relayInvitation(relayInvitation, {
+          role,
+          inviterRelayId: typeof relayId === 'string' ? relayId : undefined,
+        })
+      )
+    ) {
       return undefined;
     }
     if (raw.private !== undefined && raw.private !== true) return undefined;
@@ -178,6 +216,7 @@ export function parseInvitation(o: ProtocolOptions, text: string): Invitation | 
       until,
       ...(typeof newName === 'string' ? { newName } : {}),
       ...(typeof relayId === 'string' ? { relayId } : {}),
+      ...(typeof relayInvitation === 'string' ? { relayInvitation } : {}),
       ...(raw.private === true ? { private: true as const } : {}),
     };
     // One spelling only (no duplicate members, other order, escapes, a re-encoded payload).

@@ -6,6 +6,10 @@ export const CASES = JSON.parse(
   readFileSync(new URL('./conformance/cases.json', import.meta.url), 'utf8'),
 ) as ConformanceCases;
 
+export const CASES_R2 = JSON.parse(
+  readFileSync(new URL('./conformance/cases-r2.json', import.meta.url), 'utf8'),
+) as ConformanceCases;
+
 export const BASE = 'https://relay.test';
 
 /** Tiny seeded PRNG (mulberry32): same seed, same sequence. */
@@ -21,8 +25,14 @@ export function mulberry32(seed: number): () => number {
 }
 
 /** A reference server configured exactly as the fixture of the cases says. */
-export function serverFor(opts: { defect?: Defect; now?: () => number } = {}) {
-  const fx = CASES.fixture;
+/**
+ * The reference server configured exactly as the fixture of a case file says. Version 1 (`revision: 1`)
+ * unless asked otherwise, so the version-1 tests stay what they were; `serverForR2` is the admission revision.
+ */
+export function serverFor(
+  opts: { defect?: Defect; now?: () => number; revision?: 1 | 2; cases?: ConformanceCases } = {},
+) {
+  const fx = (opts.cases ?? CASES).fixture as ConformanceCases['fixture'];
   const apps: Record<string, RefApp> = {};
   for (const [name, raw] of Object.entries(fx.apps)) {
     const a = raw as {
@@ -31,6 +41,7 @@ export function serverFor(opts: { defect?: Defect; now?: () => number } = {}) {
       invitations: boolean;
       groups: number;
       blockedDevices?: string[];
+      strictGroups?: string[];
     };
     apps[name] = {
       origins: a.origins,
@@ -38,15 +49,45 @@ export function serverFor(opts: { defect?: Defect; now?: () => number } = {}) {
       invitations: a.invitations,
       groups: a.groups,
       ...(a.blockedDevices ? { blocked: a.blockedDevices } : {}),
+      ...(a.strictGroups ? { strict: a.strictGroups } : {}),
     };
   }
+  const passwords = (fx.developerPasswords ?? []) as {
+    app: string;
+    group: string;
+    password: string;
+    until: number;
+    max: number;
+    alsoWithDevices?: boolean;
+  }[];
   return createReferenceServer({
     secret: Buffer.from(fx.secrets['main'] as string, 'base64url'),
     apps,
+    revision: opts.revision ?? 1,
+    ...(fx.headers ? { headers: fx.headers } : {}),
+    ...(fx.developerKeys
+      ? { developerKeys: [(fx.developerKeys['main'] as { publicRaw: string }).publicRaw] }
+      : {}),
+    ...(passwords.length > 0
+      ? {
+          developerPasswords: passwords.map((p) => ({
+            app: p.app,
+            group: p.group,
+            password: p.password,
+            until: p.until,
+            max: p.max,
+            alsoWithDevices: p.alsoWithDevices === true,
+          })),
+        }
+      : {}),
     ...(opts.defect ? { defect: opts.defect } : {}),
     ...(opts.now ? { now: opts.now } : {}),
   });
 }
+
+/** The reference server of revision 2 with the fixture of `cases-r2.json`. */
+export const serverForR2 = (opts: { defect?: Defect; now?: () => number } = {}) =>
+  serverFor({ ...opts, revision: 2, cases: CASES_R2 });
 
 /** App ids and origins of the fixture, for tests that need a client. */
 export const ALPHA = { app: 'alpha', origin: 'https://alpha.example' };

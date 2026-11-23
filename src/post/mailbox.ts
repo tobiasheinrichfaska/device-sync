@@ -113,7 +113,9 @@ function update(
       continue;
     }
     if (present.has(id) || acked.has(id) || !isCurrent(day)) continue;
-    const envelope = isKnownEnvelope(item, appId) ? item : readEnvelope(appId, candidate.text, lim);
+    const envelope = isKnownEnvelope(item, appId, lim)
+      ? item
+      : readEnvelope(appId, candidate.text, lim);
     if (!envelope || envelope.id !== id || envelope.day !== day) {
       invalid += 1;
       continue;
@@ -227,27 +229,56 @@ export function keepNewest(mailbox: Mailbox, count: number): Mailbox {
   return { ...mailbox, items: Object.freeze(mailbox.items.filter((e) => stay.has(e.id))) };
 }
 
+/** What `storeMailbox` did. A failed write keeps nothing (the old stored state stays as it was). */
+export type StoreMailboxResult =
+  | {
+      readonly ok: true;
+      /** The envelopes that were written (all of them, or the newest days after halving). */
+      readonly kept: number;
+      /** The envelopes that did not fit: 0 = everything was written. */
+      readonly dropped: number;
+      /** What was written. */
+      readonly mailbox: Mailbox;
+    }
+  | {
+      readonly ok: false;
+      readonly kept: 0;
+      /** Everything the mailbox held: none of it was written (0 for an empty mailbox). */
+      readonly dropped: number;
+    };
+
+/** How often `storeMailbox` tries to write: the whole mailbox, then seven halvings of it. */
+export const STORE_ATTEMPTS = 8;
+
 /**
  * Writes the mailbox with `write`. The mailbox only carries envelopes for others (it is nobody's
  * data), so a store that is full must not refuse what a file brought: when the write fails the
- * mailbox is halved (newest days stay) and tried again, up to 8 times, down to nothing; then the old
- * stored state stays as it was. Returns how many envelopes did not fit (0 = all kept); never throws.
+ * mailbox is halved (newest days stay) and tried again, at most `STORE_ATTEMPTS` (8) writes in all:
+ * a full mailbox of 2000 is tried at 2000, 1000, 500 ... down to 15, not down to nothing. If every
+ * write fails the old stored state stays as it was and the result is `{ ok: false }`; a mailbox
+ * that was written, even a halved one, is `{ ok: true }` with the number kept and dropped, so
+ * "nothing was written" can never be read as "everything was kept". Never throws.
  */
 export async function storeMailbox(
   write: (mailbox: Mailbox) => Promise<void> | void,
   mailbox: Mailbox,
-): Promise<number> {
+): Promise<StoreMailboxResult> {
   let candidate = mailbox;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < STORE_ATTEMPTS; attempt += 1) {
     try {
       await write(candidate);
-      return mailbox.items.length - candidate.items.length;
+      return {
+        ok: true,
+        kept: candidate.items.length,
+        dropped: mailbox.items.length - candidate.items.length,
+        mailbox: candidate,
+      };
     } catch {
       if (candidate.items.length === 0) break;
       candidate = keepNewest(candidate, Math.floor(candidate.items.length / 2));
     }
   }
-  return mailbox.items.length;
+  return { ok: false, kept: 0, dropped: mailbox.items.length };
 }
 
 // ---- receipts ------------------------------------------------------------------------------

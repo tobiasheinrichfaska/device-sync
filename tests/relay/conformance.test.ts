@@ -145,3 +145,15 @@ describe('conformance runner against broken servers', () => {
     expect(report.results[0]?.reasons[0]).toContain('no answer');
   });
 });
+
+describe('the version-1 cases against a server of revision 2', () => {
+  it('a relay with the admission revision still answers every version-1 case as version 1 says', async () => {
+    const server = serverFor({ revision: 2 });
+    const report = await runConformance(BASE, server.fetch, {
+      cases: CASES,
+      control: server.control,
+    });
+    expect(failures(report)).toEqual([]);
+    expect(report.passed).toBe(CASES.cases.length);
+  });
+});

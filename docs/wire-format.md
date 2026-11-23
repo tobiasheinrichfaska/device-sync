@@ -294,6 +294,8 @@ app's `mayWrite`.
   replicas do not heal by themselves. An erased change (`y:1 redacted`) whose deletion was the other
   version is refused as `redacted-without-deletion` for ever on a device holding the harmless
   version: the signal is the reason code.
+- `field-rules`: the app's `fieldRules` answered a code for the change (`Session.refusalDetail`,
+  `Rejection.detail`); see `docs/field-rules.md`. Like `not-allowed` it refuses the whole session.
 - `tip-mismatch` (refusal `diverged`, see "A rejected change ends the session"): a `stand` names
   another link for a number this device holds. The link covers the whole signed head and the chain, so
   ANY difference in the history behind the position, in head or content, shows at the first `stand`
@@ -407,25 +409,27 @@ exactly the shape, and never throw (a throwing getter, a revoked proxy or a thro
 One object, `LIMITS`, holds every default; the parsers, `pieces` and the session functions take
 `{ limits: Partial<Limits> }` to override some of them for one call.
 
-| Limit               | Default  | Meaning                                                                                         |
-| ------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `maxFields`         | 40       | Fields in one `set` change                                                                      |
-| `maxText`           | 2000     | Characters of one text inside a value                                                           |
-| `maxValueChars`     | 16000    | JSON characters of one field value                                                              |
-| `maxDepth`          | 6        | Nested lists/objects in one value                                                               |
-| `maxEntries`        | 200      | Entries in one list or object of a value                                                        |
-| `maxDevices`        | 50       | Devices in one `knew` (concurrent heads of a field)                                             |
-| `maxStandDevices`   | 10000    | Devices in the vector of a `stand` or `done` and in its `tips` (over: session ends, no refusal) |
-| `maxChanges`        | 500      | Changes in one message                                                                          |
-| `pieceBytes`        | 12000    | Size at which a piece is cut (UTF-8 bytes of JSON)                                              |
-| `maxMessageChars`   | 1000000  | One `changes` message as JSON text (all its changes together); more is refused                  |
-| `maxSessionChanges` | 100000   | Changes one session carries: a sender cuts its answer here, a receiver ends reading here        |
-| `maxSessionChars`   | 16000000 | JSON characters of the changes one session carries (same: cut, not refusal)                     |
-| `maxGroupChanges`   | 400000   | `maxSessionChanges` while an erased change waits for its deletion (indivisible group)           |
-| `maxGroupChars`     | 64000000 | `maxSessionChars` while an erased change waits for its deletion                                 |
-| `maxPendingChanges` | 2000     | Changes still unverifiable AFTER the key-learning rounds of a session (cut, not refusal)        |
-| `maxName`           | 120      | Field name, `by`, keys inside a value                                                           |
-| `maxId`             | 200      | Collection name and record id                                                                   |
+| Limit                | Default   | Meaning                                                                                         |
+| -------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `maxFields`          | 40        | Fields in one `set` change                                                                      |
+| `maxText`            | 2000      | Characters of one text inside a value                                                           |
+| `maxValueChars`      | 16000     | JSON characters of one field value                                                              |
+| `maxDepth`           | 6         | Nested lists/objects in one value                                                               |
+| `maxEntries`         | 200       | Entries in one list or object of a value                                                        |
+| `maxDevices`         | 50        | Devices in one `knew` (concurrent heads of a field)                                             |
+| `maxStandDevices`    | 10000     | Devices in the vector of a `stand` or `done` and in its `tips` (over: session ends, no refusal) |
+| `maxChanges`         | 500       | Changes in one message                                                                          |
+| `pieceBytes`         | 12000     | Size at which a piece is cut (UTF-8 bytes of JSON)                                              |
+| `maxMessageChars`    | 1000000   | One `changes` message as JSON text (all its changes together); more is refused                  |
+| `maxSessionChanges`  | 100000    | Changes one session carries: a sender cuts its answer here, a receiver ends reading here        |
+| `maxSessionChars`    | 16000000  | JSON characters of the changes one session carries (same: cut, not refusal)                     |
+| `maxGroupChanges`    | 400000    | `maxSessionChanges` while an erased change waits for its deletion (indivisible group)           |
+| `maxGroupChars`      | 64000000  | `maxSessionChars` while an erased change waits for its deletion                                 |
+| `maxPendingChanges`  | 2000      | Changes still unverifiable AFTER the key-learning rounds of a session (cut, not refusal)        |
+| `maxSnapshotChanges` | 400000    | Retained changes in one snapshot (`docs/snapshot.md`): more is refused, never cut               |
+| `maxSnapshotChars`   | 128000000 | One snapshot as JSON text (UTF-16 units): more is refused, never cut                            |
+| `maxName`            | 120       | Field name, `by`, keys inside a value                                                           |
+| `maxId`              | 200       | Collection name and record id                                                                   |
 
 Where the two earlier implementations differed, the larger value is the default (fields per change,
 text per value). The check value (43) and signature (86) lengths are fixed by the core layer.
@@ -490,6 +494,9 @@ A large honest history must never make a join impossible, so size limits do not 
   false when either side cut (`truncated`, `peerMore`, `sentMore`); run the next session. Sessions
   repeat until a session is complete. In a partial session an erased change without a deletion in
   sight is not a forgery but a cut: it waits (not refused).
+- **Held for approval** (`docs/approval.md`) is not a cut: `outcome(...).complete` stays true and the
+  fingerprints still differ; `outcome(...).held` counts this replica's held changes, so an app can tell
+  "decide first" (`held > 0`) from "run the next session" (`complete` false).
 - **Hostile input** is unchanged: forged, equivocating, unreadable, unexpected and not-allowed
   changes refuse the session at the piece that carries them. A hostile change AFTER the cut is not
   seen (reading had ended).
@@ -794,7 +801,8 @@ opened.
 The caller supplies: `appId`, own `device` and agreement pair, the `peer` (`device`, `dh`), the own
 ephemeral pair and both hellos. Refused with a code: `bad-own`, `bad-peer`, `bad-hello` (a hello that is
 not exactly device and eph), `own-hello-mismatch` (own hello has another device id or another point than
-the ephemeral pair), `wrong-device` (the peer's hello names another device than `peer.device`),
+the ephemeral pair), `bad-own` also when the "ephemeral" pair has the same public point as the static agreement pair (every
+secret would be a static one: no forward secrecy), `wrong-device` (the peer's hello names another device than `peer.device`),
 `same-device`, `mirrored` (both hellos carry the same ephemeral point: a message fed back), `bad-peer-key`
 (not a point), `same-key` (the peer's static point is this device's own), `bad-point` (the peer's
 ephemeral point is not on the curve), `ephemeral-reused`, `crypto-failure`. An invalid app id is a
@@ -1006,6 +1014,10 @@ vectors in `tests/vectors/envelope.json` and `tests/vectors/mailbox.json` are ch
 text with `node:crypto` (`tests/core/envelope-reference.ts`). The common rules of the end-to-end layer
 (primitives, length-prefixed fields, device ids, points, one spelling, refusals are codes) hold here too.
 
+The envelope's own markers (`envelope`, `envid`, `envsig`, the header, slot and commitment texts) carry the
+version `:3` since the key commitment `kc` was added (`ENVELOPE_VERSION`); the markers of the mailbox and the
+exchange (`post`, `postday`, `postbox`, `poststand`) stay at `:2`. An envelope of version 2 is not an envelope.
+
 ## Envelope
 
 ### Wire text
@@ -1013,13 +1025,20 @@ text with `node:crypto` (`tests/core/envelope-reference.ts`). The common rules o
 UTF-8 (in fact ASCII) bytes of one compact JSON text, members in this order:
 
 ```
-{"m":"<appId>-envelope:2","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}
+{"m":"<appId>-envelope:3","id":"<id>","day":"<YYYY-MM-DD>","eph":"<ephemeral point>","iv":"<12 bytes>","kc":"<32 bytes>","ct":"<base64url of ciphertext || tag>","k":["<48 bytes>", ...]}
 ```
 
 - `day` is a real calendar day, `YYYY-MM-DD`, year 1970 to 9999 (`2026-02-30` is not one). A carrier drops
   the envelope after a while (see the mailbox).
 - `eph` is a fresh ephemeral ECDH P-256 point per envelope (87 characters, canonical, first byte 4).
 - `iv` is the 12-byte nonce of the content (16 characters); `ct` is at least 16 bytes.
+- `kc` is the **key commitment** (32 bytes, 43 characters): SHA-256 over the UTF-8 text
+  `<appId>-envelope:3|commit|<header text>|` followed by the 32 raw bytes of the content key (the header
+  text is defined below). AES-GCM does not commit to its key: an author could craft one ciphertext and tag
+  that decrypt under two different keys and wrap one key for reader A and the other for reader B, so that
+  the two readers would get different signed bodies under one id. Every reader checks `kc` against the
+  key its slot gave it before it decrypts the content (see "Opening"), so every reader that gets a
+  content at all gets the same one. A hash of a random 256-bit key tells a carrier nothing.
 - `k` is the **fan**: 8, 16, 24 ... up to `maxFans` slots, each exactly 48 bytes (64 characters, the
   wrapped 32-byte content key plus the 16-byte tag). Some slots are real, the rest are random bytes of the
   same size; their order is shuffled, so no slot can be told from another.
@@ -1035,7 +1054,7 @@ UTF-8 (in fact ASCII) bytes of one compact JSON text, members in this order:
 `<n>:<text>` with `<n>` the UTF-8 byte length (the count of slots is a plain decimal):
 
 ```
-<appId>-envid:2|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...
+<appId>-envid:3|<n>:<day>|<n>:<eph>|<n>:<iv>|<n>:<kc>|<n>:<ct>|<number of slots>|<n>:<slot 1>|<n>:<slot 2>|...
 ```
 
 A changed copy cannot pass under the id of the real envelope, and the id is the same on every device, so a
@@ -1051,19 +1070,20 @@ twice is one reader. Steps:
 1. Sign (below), make a fresh ephemeral ECDH key `E` (WebCrypto), draw 32 random bytes as the **content
    key** `CK`, 12 as `iv`, 48 for every padding slot and 4 per slot for the shuffle (all from the
    `random(n)` the caller passes; sealing itself uses no clock and draws nothing else except `E`).
-2. Header text: `<appId>-envelope:2|header|<n>:<day>|<n>:<eph>` (the same text for every reader).
+2. Header text: `<appId>-envelope:3|header|<n>:<day>|<n>:<eph>` (the same text for every reader).
 3. For every reader with agreement point `dh`: `secret = ECDH(E, dh)` (the 32-byte X coordinate), key
    encryption key `KEK = HKDF-SHA-256(ikm = secret, salt = SHA-256(header text), info =
-"<appId>-envelope:2|slot|<n>:<dh>")` (32 bytes), slot = AES-256-GCM(`KEK`, **zero nonce**, no additional
+"<appId>-envelope:3|slot|<n>:<dh>")` (32 bytes), slot = AES-256-GCM(`KEK`, **zero nonce**, no additional
    data, `CK`) = 48 bytes. A zero nonce is safe because `KEK` is unique per envelope and reader (fresh `E`,
    `dh` in the info).
 4. Pad with random 48-byte slots to the next multiple of 8, then shuffle the list (Fisher-Yates from the
    last element down, `j = u32(bytes[4i .. 4i+4]) mod (i + 1)`, big endian; the modulo bias is below
    2^-26 per step).
-5. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
-6. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
+5. `kc` = SHA-256(`<appId>-envelope:3|commit|<header text>|` followed by `CK`), base64url.
+6. `ct` = AES-256-GCM(`CK`, `iv`, additional data = the header text, the inside text below).
+7. Compute `id`, write the text, refuse it with `too-large` if it is longer than `maxEnvelopeBytes`.
 
-Making is refused with a code, changing nothing: `bad-author` (device id or signing key unusable),
+Making is refused with a code, changing nothing: `bad-author` (device id unusable, or the signing key is not an ECDSA private key that can sign),
 `bad-channel`, `bad-day`, `bad-input` (the content is not bytes), `bad-random` (the source is not a
 function, throws or gives the wrong number of bytes), `no-recipients`, `too-many-recipients` (more than
 `maxFans` readers listed), `bad-recipient` (not a point, or not on the curve), `too-large` (the content or
@@ -1081,7 +1101,7 @@ The **author's signature** (ECDSA P-256 / SHA-256, low-s, 64 bytes, as the log l
 UTF-8 text
 
 ```
-<appId>-envsig:2|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>
+<appId>-envsig:3|<n>:<from>|<n>:<channel>|<n>:<day>|<n>:<body as base64url>
 ```
 
 so it binds the app, the author's device id, the channel, the day and the content. The recipients are not
@@ -1097,15 +1117,19 @@ function `authorKey(from)` that gives the author's signing public point as the t
 nothing). Refused with a code: `bad-own` (no usable agreement pair), `not-an-envelope` (not exactly the
 spelling above, another marker or app id, too long, wrong id), `bad-point` (the ephemeral point is not on
 the curve), `not-for-me` (no slot opens with this device's key: the answer for every stranger, and also for
-an envelope whose day or ephemeral key was changed), `damaged` (a slot opened but the content does not
+an envelope whose day or ephemeral key was changed), `key-mismatch` (a slot opened, but not one holds the
+key that `kc` commits to: the author wrapped another key for this reader; nothing was decrypted),
+`damaged` (the slot with the committed key opened but the content does not
 decrypt or its inside is not exactly the spelling above), `unknown-author` (`authorKey` gave nothing, a
 point that is not on the curve, or threw), `bad-signature`.
 
 Cost of an envelope that is **not for this device**: one point check, one ECDH, one HKDF derivation and at
 most `maxFans` small AES-GCM trials (one per slot); nothing else (the test counts the calls). Cost of one that
 is: the same, one decryption of the content, one `authorKey` call (made once, with the author found
-**inside**) and one signature check. The first slot that opens decides: a sealer that wraps the key for
-one reader in several slots cannot make the reader decrypt more than once.
+**inside**) and one signature check. The first slot that opens **and holds the committed key** decides (a slot that opens but holds another key
+is skipped; if none holds the committed one the answer is `key-mismatch`): a sealer that wraps the key for
+one reader in several slots cannot make the reader decrypt the content more than once, and the extra work
+is one SHA-256 per slot that opened.
 
 ### Limits
 
@@ -1182,7 +1206,9 @@ not: clocks differ). `addEnvelopes(mailbox, incoming, today, { from })` works in
 2. drop what is too old or acknowledged from the mailbox (and acknowledgements older than `postDays`);
 3. for each incoming envelope: skip it if its id is already there or acknowledged, or its day is not
    carried; count it as `invalid` if it is not an envelope of this app with exactly that id and day (an
-   object this package made or read is trusted; any other object is read again strictly);
+   object this package made or read is trusted, but only within the limits of this call: its size and its
+   number of fan slots are remembered and checked against the limits of the mailbox, because it may have
+   been read under larger ones; any other object is read again strictly);
 4. **quota**: with `from` (another device brought them: a session or a file) at most `maxPerSupplier` (400)
    new envelopes per day from that device are taken, the newest days first (within a day in the order
    given), the rest is refused and counted (`rejected`); a further device beyond `maxSuppliers` different
@@ -1192,8 +1218,12 @@ not: clocks differ). `addEnvelopes(mailbox, incoming, today, { from })` works in
    step above is linear: the days are bucketed (at most about 32 different days are carried).
 
 `pruneMailbox` does steps 2 and 5. `keepNewest(mailbox, n)` keeps the newest n; `storeMailbox(write,
-mailbox)` writes with a callback and, when a write fails, halves the mailbox (newest stay) up to 8 times
-and tells how many envelopes did not fit (it never throws; the mailbox is nobody's data, only a carrier).
+mailbox)` writes with a callback and, when a write fails, halves the mailbox (newest stay) and tries again,
+at most 8 writes in all (`STORE_ATTEMPTS`: 2000 envelopes are tried at 2000, 1000, 500 ... 15, not down to
+nothing). It never throws and never answers with a bare number: the result is `{ ok: true, kept, dropped,
+mailbox }` (what was written; `dropped` 0 means everything was kept) or `{ ok: false, kept: 0, dropped }`
+when every write failed (the old stored state stays as it was; `dropped` is everything the mailbox held, 0
+for an empty one). The mailbox is nobody's data, only a carrier.
 
 ### Receipts
 
@@ -1237,7 +1267,10 @@ before parsing: at most `max(pieceChars, maxEnvelopeBytes) + 512` characters):
 
 A piece is cut at `pieceChars` (12 000) characters and `maxPerMessage` (400) items; one envelope may exceed
 the piece alone. There is always at least one `ids` and one `envelopes` message (an empty one carries
-`last`).
+`last`). **Only the last message of a kind may be empty**: an `ids` or `envelopes` message with an empty
+list and `last: false` is refused by the reader (an honest sender never makes one, and without the rule a
+neighbour could keep a session open for ever with empty messages, each one costing a pass over the
+mailbox).
 
 ### The session
 
@@ -1371,7 +1404,7 @@ collection, id, kind, check[, prev]}`, a `redacted` change counting as `set`; `p
   HKDF (salt = SHA-256 of the header text, info names the reader's point); the author signature is over
   the `envsig` text. `envelope.json` holds the author's PUBLIC signing point and two readers' throw-away
   private keys (JWK), the id's hashed text, the header text, the salt, each reader's key encryption key,
-  slot index and content key, the inside text and the signature, and variants that must be refused with
+  slot index and content key, the commitment prefix and value, the inside text and the signature, and variants that must be refused with
   the code that is written down; `mailbox.json` holds three envelopes without crypto content, the check
   value texts with their hashes, and one message of each kind. A port derives the keys from the JWKs and
   must reproduce every hex value and open the envelope.

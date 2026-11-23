@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_HEADER_NAMES,
   ENDPOINTS,
   FRAMING_LIMITS,
   RELAY_KINDS,
@@ -92,8 +93,44 @@ describe('docs/relay-protocol.md against the code', () => {
     }
   });
 
-  it('every wire word of the endpoints appears in the cases', () => {
-    const cases = readFileSync(new URL('./conformance/cases.json', import.meta.url), 'utf8');
+  it('every wire word of the endpoints appears in the cases (version 1 and revision 2)', () => {
+    const cases =
+      readFileSync(new URL('./conformance/cases.json', import.meta.url), 'utf8') +
+      readFileSync(new URL('./conformance/cases-r2.json', import.meta.url), 'utf8');
     for (const wire of Object.values(ENDPOINTS)) expect(cases, wire).toContain(wire);
+  });
+
+  it("the numbers and names of revision 2 written in the document are the code's", () => {
+    expect(DOC).toContain('5 184 000 s');
+    expect(RELAY_LIMITS.certificateDays * 86_400).toBe(5_184_000);
+    expect(DOC).toContain('`now < bis <= now + 3660`');
+    expect(RELAY_LIMITS.founderMaxSeconds + RELAY_LIMITS.founderSkewSeconds).toBe(3_660);
+    expect(DOC).toContain('most 120 seconds (`possessionSkewSeconds`), either way');
+    expect(RELAY_LIMITS.possessionSkewSeconds).toBe(120);
+    expect(DOC).toContain(DEFAULT_HEADER_NAMES.possession);
+    expect(DOC).toContain(DEFAULT_HEADER_NAMES.version);
+    expect(DOC).toContain('47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU');
+    expect(DOC).toContain('## Open points of revision 2');
+    expect(DOC).toContain('## Order of checks, revision 2');
+    expect(DOC).toContain('## Revision 2: what changes (admission)');
+  });
+
+  it('every revision-2 error word of the code is explained in the revision 2 sections or the error table', () => {
+    for (const token of [
+      'besitz-fehlt',
+      'besitz-ungueltig',
+      'besitz-zeit',
+      'rolle-nicht-erlaubt',
+      'sperrliste-voll',
+      'entwickler-nicht-eingerichtet',
+      'entwickler-ungueltig',
+      'entwickler-abgelaufen',
+      'entwickler-belegt',
+    ]) {
+      expect(
+        section('Revision 2: what changes (admission)') + section('Error kinds'),
+        token,
+      ).toContain(`\`${token}\``);
+    }
   });
 });

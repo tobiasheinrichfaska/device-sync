@@ -16,21 +16,35 @@ const sha = (text: BinaryLike): Buffer => createHash('sha256').update(text).dige
 const ZERO_IV = Buffer.alloc(12);
 
 export const refHeader = (appId: string, day: string, eph: string): string =>
-  `${appId}-envelope:2|header|${field(day)}|${field(eph)}`;
+  `${appId}-envelope:3|header|${field(day)}|${field(eph)}`;
 
 export function refKek(appId: string, secret: Buffer, header: string, readerDh: string): Buffer {
   return Buffer.from(
-    hkdfSync('sha256', secret, sha(header), `${appId}-envelope:2|slot|${field(readerDh)}`, 32),
+    hkdfSync('sha256', secret, sha(header), `${appId}-envelope:3|slot|${field(readerDh)}`, 32),
   );
 }
 
-function gcm(key: Buffer, iv: Buffer, aad: string | undefined, data: Buffer): Buffer {
+/** The key commitment: SHA-256 over `<appId>-envelope:3|commit|<header>|` and the raw content key. */
+export const refCommit = (appId: string, header: string, contentKey: Buffer): string =>
+  b64(
+    createHash('sha256')
+      .update(`${appId}-envelope:3|commit|${header}|`)
+      .update(contentKey)
+      .digest(),
+  );
+
+export function gcm(key: Buffer, iv: Buffer, aad: string | undefined, data: Buffer): Buffer {
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   if (aad !== undefined) cipher.setAAD(Buffer.from(aad));
   return Buffer.concat([cipher.update(data), cipher.final(), cipher.getAuthTag()]);
 }
 
-function ungcm(key: Buffer, iv: Buffer, aad: string | undefined, data: Buffer): Buffer | undefined {
+export function ungcm(
+  key: Buffer,
+  iv: Buffer,
+  aad: string | undefined,
+  data: Buffer,
+): Buffer | undefined {
   try {
     const decipher = createDecipheriv('aes-256-gcm', key, iv);
     if (aad !== undefined) decipher.setAAD(Buffer.from(aad));
@@ -45,19 +59,20 @@ export interface EnvelopeParts {
   day: string;
   eph: string;
   iv: string;
+  kc: string;
   ct: string;
   k: string[];
 }
 
 export function refId(appId: string, p: EnvelopeParts): string {
-  const text = `${appId}-envid:2|${field(p.day)}|${field(p.eph)}|${field(p.iv)}|${field(p.ct)}|${
+  const text = `${appId}-envid:3|${field(p.day)}|${field(p.eph)}|${field(p.iv)}|${field(p.kc)}|${field(p.ct)}|${
     p.k.length
   }|${p.k.map(field).join('|')}`;
   return b64(sha(text).subarray(0, 16));
 }
 
 export const refText = (appId: string, id: string, p: EnvelopeParts): string =>
-  `{"m":"${appId}-envelope:2","id":"${id}","day":"${p.day}","eph":"${p.eph}","iv":"${p.iv}","ct":"${
+  `{"m":"${appId}-envelope:3","id":"${id}","day":"${p.day}","eph":"${p.eph}","iv":"${p.iv}","kc":"${p.kc}","ct":"${
     p.ct
   }","k":[${p.k.map((s) => `"${s}"`).join(',')}]}`;
 
@@ -68,7 +83,7 @@ export const refSigned = (
   channel: string,
   day: string,
   body: string,
-): string => `${appId}-envsig:2|${field(from)}|${field(channel)}|${field(day)}|${field(body)}`;
+): string => `${appId}-envsig:3|${field(from)}|${field(channel)}|${field(day)}|${field(body)}`;
 
 export const refInner = (from: string, channel: string, sig: string, body: string): string =>
   `{"from":${JSON.stringify(from)},"channel":${JSON.stringify(channel)},"sig":"${sig}","body":"${body}"}`;
@@ -103,6 +118,7 @@ export function refSeal(input: RefSealInput): { text: string; id: string; parts:
     day,
     eph,
     iv: b64(iv),
+    kc: refCommit(appId, header, contentKey),
     ct: b64(gcm(contentKey, iv, header, Buffer.from(inner))),
     k: order.map((i) => slots[i] as string),
   };
@@ -121,13 +137,20 @@ export interface RefOpened {
 
 /** The inside text of an envelope for the holder of `ownPriv`, or undefined; `slotIndex` = where it sat. */
 export function refOpen(appId: string, text: string, ownPriv: PrivateJwk): RefOpened | undefined {
-  const raw = JSON.parse(text) as { day: string; eph: string; iv: string; ct: string; k: string[] };
+  const raw = JSON.parse(text) as {
+    day: string;
+    eph: string;
+    iv: string;
+    kc: string;
+    ct: string;
+    k: string[];
+  };
   const header = refHeader(appId, raw.day, raw.eph);
   const ownDh = jwkToPoint(ownPriv);
   const kek = refKek(appId, dh(ownPriv, raw.eph), header, ownDh);
   for (const [slotIndex, slot] of raw.k.entries()) {
     const contentKey = ungcm(kek, ZERO_IV, undefined, Buffer.from(slot, 'base64url'));
-    if (!contentKey) continue;
+    if (!contentKey || refCommit(appId, header, contentKey) !== raw.kc) continue;
     const inner = ungcm(
       contentKey,
       Buffer.from(raw.iv, 'base64url'),

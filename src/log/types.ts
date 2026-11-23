@@ -127,6 +127,18 @@ export interface Replica {
   readonly collections: Readonly<Record<string, Collection>>;
   /** Conflict notices this device found while merging (each device finds the same ones). */
   readonly notices: readonly Notice[];
+  /**
+   * Changes held back by an approval hook (`mergeApproved`); absent until a hook was ever used. They
+   * are NOT in `log` or `vector`, so no stand claims them.
+   */
+  readonly approval?: ApprovalState;
+  /**
+   * Present only on a replica that started from a snapshot (`catchUp`): per device the highest
+   * number below which this replica's log does NOT hold every change (the changes were condensed
+   * away; only the retained ones and the change AT this number are held). Changes above it are held
+   * gaplessly. Such a replica cannot hand out changes at or below the number (see `docs/snapshot.md`).
+   */
+  readonly base?: Readonly<Record<DeviceId, number>>;
 }
 
 /** A write and what its author knew; `knew` missing = unknown. */
@@ -143,9 +155,44 @@ export interface MergeResult {
   readonly held: readonly Change[];
 }
 
+/** What an approval hook says of one incoming change (see `approval.ts`). */
+export type ApprovalDecision = 'apply' | 'hold' | 'reject';
+
 /**
- * Extension point (not used yet): a future merge option may ask this hook before it applies the
- * next change in line; `false` = hold the change back until someone approves it. The default is to
- * apply everything.
+ * Asked once per incoming change that is new to a replica (not applied, not already held back).
+ * `apply`: merge takes it as usual. `hold`: not applied, remembered in `Replica.approval` until the app
+ * approves or rejects it. `reject`: dropped for good, its number still counted (see `docs/approval.md`).
+ * `true` means `apply`, `false` means `hold`; a hook that throws or answers anything else holds.
+ * `replica` is the replica as it was when the call began (never the half merged one), so the answer
+ * cannot depend on the order inside one batch. For convergence between replicas answer from the
+ * change alone.
  */
-export type ApprovalHook = (change: Change, replica: Replica) => boolean;
+export type ApprovalHook = (change: Change, replica: Replica) => boolean | ApprovalDecision;
+
+/** `hold`: waits for the app. `approved` / `rejected`: decided, waits until it can be applied. */
+export type ApprovalStatus = 'hold' | 'approved' | 'rejected';
+
+/** One change the approval layer remembers. */
+export interface ApprovalEntry {
+  readonly change: Change;
+  readonly decision: ApprovalStatus;
+}
+
+/**
+ * The changes held back for approval: a plain value (JSON), sorted by device and number, stored
+ * with the replica and read back with `readApprovalState`.
+ */
+export interface ApprovalState {
+  readonly entries: readonly ApprovalEntry[];
+}
+
+/**
+ * The app's validation of what a change says, per collection: field names, values, relations to the
+ * record's present state (who owns it, what it was). Returns `undefined` when the change is fine,
+ * else a short code (1 to 120 characters; the package never shows or translates it). Must be a pure
+ * function of its arguments, and fast: it runs once per change. `state` is the replica as it was
+ * before the batch or session piece the change arrives in, never the half merged one, so a rule
+ * cannot depend on the order inside a batch and every device decides alike. A throwing rule refuses.
+ * `change.fields` is absent for a final deletion.
+ */
+export type FieldRules = (change: Change, state: Replica) => string | undefined;

@@ -7,6 +7,8 @@
   "private": true,
   "scripts": {
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:relay-real": "vitest run --config vitest.relay-real.config.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -31,11 +33,13 @@
       "types": "./dist/relay/conformance.d.ts",
       "import": "./dist/relay/conformance.js"
     },
-    "./conformance/cases.json": "./tests/relay/conformance/cases.json"
+    "./conformance/cases.json": "./tests/relay/conformance/cases.json",
+    "./conformance/cases-r2.json": "./tests/relay/conformance/cases-r2.json"
   },
   "files": [
     "dist",
     "tests/relay/conformance/cases.json",
+    "tests/relay/conformance/cases-r2.json",
     "docs/relay-protocol.md"
   ],
   "dependencies": {

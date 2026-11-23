@@ -1,10 +1,15 @@
 export type {
+  ApprovalDecision,
+  ApprovalEntry,
   ApprovalHook,
+  ApprovalState,
+  ApprovalStatus,
   Change,
   ChangeKind,
   Collection,
   DeviceId,
   FieldHistoryEntry,
+  FieldRules,
   FieldValue,
   HistoryEntry,
   MergeResult,
@@ -18,14 +23,54 @@ export type {
 } from './types.ts';
 export { MAX_CLOCK_JUMP, concurrent, isNewer, seen, unionVector } from './vector.ts';
 export { changeCheckValue, changeLink } from './check.ts';
-export { changeAt, tipConflict, tipsOf } from './chain.ts';
-export { merge } from './merge.ts';
+export { changeAt, needsSnapshot, tipConflict, tipsOf } from './chain.ts';
+export {
+  SNAPSHOT_VERSION,
+  catchUp,
+  condense,
+  parseSnapshot,
+  parseSnapshotText,
+  snapshot,
+  snapshotSigningText,
+} from './snapshot.ts';
+export type {
+  CatchUpFailure,
+  CatchUpOptions,
+  CatchUpResult,
+  Snapshot,
+  SnapshotFailure,
+  SnapshotInfo,
+  SnapshotOptions,
+  SnapshotResult,
+} from './snapshot.ts';
+export { merge, mergeSparse } from './merge.ts';
+export { checkRights } from './rights.ts';
+export type { RightsAnswer, RightsOptions, RightsRefusal } from './rights.ts';
+export {
+  APPROVAL_LIMITS,
+  approve,
+  decide,
+  decidedWaiting,
+  mergeApproved,
+  pendingApproval,
+  readApprovalState,
+  reject,
+} from './approval.ts';
+export type {
+  ApprovalOptions,
+  ApprovalReadFailure,
+  ApprovalReadResult,
+  ApprovalReport,
+  ApprovedMergeResult,
+  ChangeRef,
+} from './approval.ts';
 export {
   changeSigningText,
   insertSignatures,
   judgeChange,
   judgeChanges,
   judgeDetailed,
+  judgeRetained,
   proveEquivocation,
   readChanges,
   signChange,
@@ -90,3 +135,46 @@ export type {
   SessionOptions,
   Step,
 } from './protocol.ts';
+export {
+  approveAll,
+  approveChange,
+  correctValue,
+  keepValue,
+  recordsWithRequests,
+  requestCount,
+  review,
+  reviewConflicts,
+  reviewRequests,
+  reviewSettlements,
+  reviewView,
+  takeApproverValue,
+} from './review.ts';
+export type {
+  ApproveAllOptions,
+  ReviewConfig,
+  ReviewConflict,
+  ReviewConflictKind,
+  ReviewFailure,
+  ReviewRequest,
+  ReviewSettlement,
+  ReviewState,
+  ReviewValue,
+  ReviewWriteResult,
+} from './review.ts';
+export {
+  REPLICA_AT_REST,
+  REPLICA_VERSION,
+  readReplica,
+  readReplicaText,
+  replicaToStored,
+  storeReplica,
+} from './readReplica.ts';
+export type {
+  ReadReplicaFailure,
+  ReadReplicaOptions,
+  ReadReplicaResult,
+  StoredReplica,
+  StoreReplicaResult,
+} from './readReplica.ts';
+export { rehome } from './rehome.ts';
+export type { RehomeResult } from './rehome.ts';
